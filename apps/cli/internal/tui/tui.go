@@ -175,10 +175,8 @@ func (r *Runner) reorder() {
 }
 
 func (r *Runner) render() {
-	// Clear screen and move to top.
-	fmt.Print("\033[2J\033[H")
-	// Show cursor.
-	fmt.Print("\033[?25l")
+	// Hide cursor during redraw, clear screen, move to top.
+	fmt.Print("\033[?25l\033[2J\033[H")
 
 	s := r.snippets[r.index]
 	st := r.store.Get(s.ID)

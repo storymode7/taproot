@@ -22,8 +22,10 @@ func enableRawMode() (*rawMode, error) {
 
 	raw := saved
 	// Disable echo, canonical mode, signals, flow control.
+	// NOTE: intentionally keep OPOST so \n → \r\n translation is preserved.
+	// Without it the terminal produces a staircase effect (each line indented
+	// further right) since raw output mode suppresses the CR-NL mapping.
 	raw.Iflag &^= syscall.BRKINT | syscall.ICRNL | syscall.INPCK | syscall.ISTRIP | syscall.IXON
-	raw.Oflag &^= syscall.OPOST
 	raw.Cflag |= syscall.CS8
 	raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.IEXTEN | syscall.ISIG
 	raw.Cc[syscall.VMIN] = 1
