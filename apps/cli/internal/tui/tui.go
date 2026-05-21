@@ -36,7 +36,7 @@ func View(snippets []*engine.Snippet, store *state.Store) {
 	for i, s := range snippets {
 		st := store.Get(s.ID)
 		printSnippetHeader(i+1, len(snippets), s, st.Status)
-		printDiffLines(s.DiffLines)
+		printDiffLines(s.FilePath, s.DiffLines)
 		fmt.Println()
 	}
 }
@@ -59,18 +59,9 @@ func printSnippetHeader(idx, total int, s *engine.Snippet, status string) {
 	fmt.Println(strings.Repeat("─", 72))
 }
 
-func printDiffLines(lines []string) {
-	for _, line := range lines {
-		switch {
-		case strings.HasPrefix(line, "+"):
-			fmt.Print(green + line + reset + "\n")
-		case strings.HasPrefix(line, "-"):
-			fmt.Print(red + line + reset + "\n")
-		case strings.HasPrefix(line, "@"):
-			fmt.Print(cyan + line + reset + "\n")
-		default:
-			fmt.Println(line)
-		}
+func printDiffLines(filePath string, lines []string) {
+	for _, line := range highlightLines(filePath, lines) {
+		fmt.Println(line)
 	}
 }
 
@@ -189,7 +180,7 @@ func (r *Runner) render() {
 	fmt.Println(strings.Repeat("─", 80))
 
 	printSnippetHeader(r.index+1, len(r.snippets), s, st.Status)
-	printDiffLines(s.DiffLines)
+	printDiffLines(s.FilePath, s.DiffLines)
 
 	// Progress bar
 	done := 0
