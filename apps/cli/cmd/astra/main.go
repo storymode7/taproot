@@ -26,14 +26,18 @@ USAGE
   astra diff [options]
 
 OPTIONS
-  --ref <ref>        Diff against this git ref (default: working tree)
-                     Examples: origin/main  HEAD~1  v1.2.3
-  --preset <name>    Ordering preset (default: top-down)
-                       top-down   Entry-point first, deps after
-                       bottom-up  Leaves first, entry-point last
-                       clusters   Group by connected component
-  --no-tty           Print diff to stdout without interactive UI
-  --help             Show this help
+  --ref <ref>          Diff against this git ref (default: working tree)
+                       Examples: origin/main  HEAD~1  v1.2.3
+  --preset <name>      Ordering preset (default: top-down)
+                         top-down   Entry-point first, deps after
+                         bottom-up  Leaves first, entry-point last
+                         clusters   Group by connected component
+  --no-tty             Print diff to stdout without interactive UI
+  --no-delta-config    Ignore ~/.gitconfig delta settings (useful if your
+                       delta config uses side-by-side or other modes that
+                       interfere with captured output). Uses Monokai Extended
+                       theme; override with ASTRA_DELTA_THEME env var.
+  --help               Show this help
 
 KEYBOARD SHORTCUTS (interactive mode)
   j / ↓   Next snippet      a   Accept       1   top-down preset
@@ -76,6 +80,8 @@ func run(args []string) error {
 			presetName = args[i]
 		case "--no-tty":
 			noTTY = true
+		case "--no-delta-config":
+			tui.NoDeltaConfig = true
 		case "diff":
 			// subcommand, no-op (default action)
 		default:

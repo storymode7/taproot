@@ -75,30 +75,36 @@ func highlightLines(filePath string, diffLines []string) []string {
 // delta backend
 // ---------------------------------------------------------------------------
 
+// NoDeltaConfig, when true, passes --no-gitconfig to delta and uses the
+// built-in theme. Set via the --no-delta-config CLI flag.
+var NoDeltaConfig bool
+
 func runDelta(filePath string, diffLines []string) []string {
 	// Construct a minimal git unified diff header so delta detects the language.
 	header := fmt.Sprintf("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n",
 		filePath, filePath, filePath, filePath)
 	input := header + strings.Join(diffLines, "\n") + "\n"
 
-	// --no-gitconfig prevents the user's delta settings (e.g. side-by-side=true,
-	// navigate=true) from interfering with our output.
-	// We must then supply a theme explicitly; default to Monokai Extended dark.
-	theme := os.Getenv("ASTRA_DELTA_THEME")
-	if theme == "" {
-		theme = "Monokai Extended"
-	}
-
-	cmd := exec.Command("delta",
-		"--no-gitconfig",
+	// --true-color=always forces ANSI output even when our stdout is a pipe
+	// (cmd.Output() uses a pipe, not a TTY; delta's default 'auto' strips colors).
+	args := []string{
 		"--paging=never",
 		"--file-style=omit",
 		"--hunk-header-style=omit",
 		"--true-color=always",
-		"--dark",
-		"--syntax-theme="+theme,
 		fmt.Sprintf("--width=%d", termWidth),
-	)
+	}
+
+	if NoDeltaConfig {
+		// Ignore the user's ~/.gitconfig delta section and use a safe default theme.
+		theme := os.Getenv("ASTRA_DELTA_THEME")
+		if theme == "" {
+			theme = "Monokai Extended"
+		}
+		args = append([]string{"--no-gitconfig", "--dark", "--syntax-theme=" + theme}, args...)
+	}
+
+	cmd := exec.Command("delta", args...)
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.Output()
 	if err != nil {
