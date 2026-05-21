@@ -1,0 +1,21 @@
+# Build outputs
+/dist/
+apps/cli/astra
+apps/cli/astra.exe
+
+# Go
+*.test
+*.out
+
+# Review state (per-repo, not committed)
+.git/astra/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
