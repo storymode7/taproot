@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Astra</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <header class="panel-header">
+    <span class="astra-logo">⭐ Astra</span>
+    <div class="panel-controls">
+      <select id="preset-select" title="Review order preset">
+        <option value="top-down">Top-down</option>
+        <option value="bottom-up">Bottom-up</option>
+        <option value="clusters">Clusters</option>
+      </select>
+      <button id="btn-close" title="Close panel">✕</button>
+    </div>
+  </header>
+
+  <div id="panel-status">Waiting for PR diff&hellip;</div>
+  <div id="snippet-list"></div>
+
+  <!-- All JS local, no CDN, no npm at runtime -->
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Astra — AST-aware PR reviewer</title>
+  <meta name="description" content="Reorders GitHub PR diffs by call-graph depth. No backend, no login, no telemetry. Public repos only." />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header class="astra-header">
+    <span class="astra-logo">⭐ Astra</span>
+    <span class="astra-tagline">AST-aware PR reviewer &mdash; no backend, no login</span>
+  </header>
+
+  <main id="app">
+    <!-- URL input screen (shown on load) -->
+    <section id="screen-input" class="screen active">
+      <h1>Paste a public GitHub PR URL</h1>
+      <p class="note">
+        Astra only reads public PRs via GitHub&rsquo;s unauthenticated API.
+        Private repos require the <a href="https://github.com/astra-review/astra/tree/main/apps/extension">Chrome extension</a>
+        (uses your existing GitHub session &mdash; no token stored).
+      </p>
+      <form id="pr-form">
+        <input
+          id="pr-url"
+          type="url"
+          placeholder="https://github.com/owner/repo/pull/123"
+          autocomplete="off"
+          spellcheck="false"
+          required
+        />
+        <button type="submit">Review</button>
+      </form>
+      <p id="input-error" class="error" hidden></p>
+    </section>
+
+    <!-- Loading screen -->
+    <section id="screen-loading" class="screen">
+      <p class="loading-msg">Fetching diff&hellip;</p>
+    </section>
+
+    <!-- Rate-limit warning -->
+    <section id="screen-ratelimit" class="screen">
+      <h2>GitHub rate limit reached</h2>
+      <p>
+        Unauthenticated requests to <code>api.github.com</code> are limited to 60/hr per IP.
+        Wait a moment and try again, or install the
+        <a href="https://github.com/astra-review/astra/tree/main/apps/extension">Chrome extension</a>
+        which uses your logged-in session (no token stored by Astra).
+      </p>
+      <button id="btn-back-ratelimit">← Back</button>
+    </section>
+
+    <!-- Review screen (populated by app.js) -->
+    <section id="screen-review" class="screen">
+      <div id="review-header">
+        <button id="btn-back-review">← Back</button>
+        <span id="review-title"></span>
+        <div id="preset-controls">
+          <label>Order:
+            <select id="preset-select">
+              <option value="top-down">Top-down (entry → deps)</option>
+              <option value="bottom-up">Bottom-up (utils → caller)</option>
+              <option value="clusters">Feature clusters</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div id="snippet-list">
+        <!-- Snippet cards inserted here by app.js -->
+      </div>
+    </section>
+  </main>
+
+  <!-- All JS is local. No CDN, no external scripts. -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>

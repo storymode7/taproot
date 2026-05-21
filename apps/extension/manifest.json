@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Astra — AST-aware PR reviewer",
+  "version": "0.1.0",
+  "description": "Reorders GitHub PR diffs by call-graph depth. Runs entirely locally — no backend, no OAuth, no telemetry.",
+
+  "host_permissions": [
+    "https://github.com/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*/*/pull/*/files*"],
+      "js": ["content.js"],
+      "css": ["panel/panel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "panel/panel.html",
+        "panel/panel.js",
+        "panel/panel.css",
+        "vendor/tree-sitter.wasm",
+        "vendor/web-tree-sitter.js",
+        "vendor/tree-sitter-javascript.wasm",
+        "vendor/tree-sitter-typescript.wasm",
+        "vendor/tree-sitter-python.wasm",
+        "vendor/tree-sitter-go.wasm",
+        "vendor/tree-sitter-java.wasm",
+        "vendor/tree-sitter-rust.wasm",
+        "queries/*"
+      ],
+      "matches": ["https://github.com/*"]
+    }
+  ],
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
