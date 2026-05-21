@@ -1,0 +1,43 @@
+package tui
+
+import (
+	"os"
+	"syscall"
+	"unsafe"
+)
+
+type rawMode struct {
+	fd    int
+	saved syscall.Termios
+}
+
+func enableRawMode() (*rawMode, error) {
+	fd := int(os.Stdin.Fd())
+
+	var saved syscall.Termios
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+		uintptr(fd), syscall.TCGETS, uintptr(unsafe.Pointer(&saved))); errno != 0 {
+		return nil, errno
+	}
+
+	raw := saved
+	// Disable echo, canonical mode, signals, flow control.
+	raw.Iflag &^= syscall.BRKINT | syscall.ICRNL | syscall.INPCK | syscall.ISTRIP | syscall.IXON
+	raw.Oflag &^= syscall.OPOST
+	raw.Cflag |= syscall.CS8
+	raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.IEXTEN | syscall.ISIG
+	raw.Cc[syscall.VMIN] = 1
+	raw.Cc[syscall.VTIME] = 0
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+		uintptr(fd), syscall.TCSETS, uintptr(unsafe.Pointer(&raw))); errno != 0 {
+		return nil, errno
+	}
+
+	return &rawMode{fd: fd, saved: saved}, nil
+}
+
+func (r *rawMode) restore() {
+	syscall.Syscall(syscall.SYS_IOCTL, //nolint:errcheck
+		uintptr(r.fd), syscall.TCSETS, uintptr(unsafe.Pointer(&r.saved)))
+}

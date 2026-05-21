@@ -101,6 +101,11 @@ func (a *GitDiffAdapter) MarkFileViewed(_ string, _ bool) error {
 	return ErrReadOnly
 }
 
+// RunGit runs a git command and returns stdout. Exported for use by the CLI.
+func (a *GitDiffAdapter) RunGit(args ...string) (string, error) {
+	return a.git(args...)
+}
+
 // git runs a git command in RepoRoot and returns stdout as a string.
 func (a *GitDiffAdapter) git(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
@@ -121,7 +126,7 @@ func (a *GitDiffAdapter) git(args ...string) (string, error) {
 // ---------------------------------------------------------------------------
 
 var (
-	reDiffHeader = regexp.MustCompile(`^diff --git a/(.+) b/(.+)$`)
+	reDiffHeader = regexp.MustCompile(`^diff --git \S+/(.+) \S+/(.+)$`)
 	reHunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 )
 
