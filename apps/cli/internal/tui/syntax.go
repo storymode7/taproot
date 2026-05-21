@@ -81,10 +81,22 @@ func runDelta(filePath string, diffLines []string) []string {
 		filePath, filePath, filePath, filePath)
 	input := header + strings.Join(diffLines, "\n") + "\n"
 
+	// --no-gitconfig prevents the user's delta settings (e.g. side-by-side=true,
+	// navigate=true) from interfering with our output.
+	// We must then supply a theme explicitly; default to Monokai Extended dark.
+	theme := os.Getenv("ASTRA_DELTA_THEME")
+	if theme == "" {
+		theme = "Monokai Extended"
+	}
+
 	cmd := exec.Command("delta",
+		"--no-gitconfig",
 		"--paging=never",
 		"--file-style=omit",
 		"--hunk-header-style=omit",
+		"--true-color=always",
+		"--dark",
+		"--syntax-theme="+theme,
 		fmt.Sprintf("--width=%d", termWidth),
 	)
 	cmd.Stdin = strings.NewReader(input)
@@ -93,22 +105,7 @@ func runDelta(filePath string, diffLines []string) []string {
 		return nil
 	}
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	return stripDeltaArtifacts(lines)
-}
-
-// stripDeltaArtifacts removes the blank separator line delta adds at the end
-// and any accidental file-header lines that slipped through.
-func stripDeltaArtifacts(lines []string) []string {
-	result := make([]string, 0, len(lines))
-	for _, l := range lines {
-		// Skip delta's "──── filename ────" file header lines (in case the
-		// user's delta config doesn't honour --file-style=omit).
-		if strings.HasPrefix(l, "\033") && strings.Contains(l, "─") {
-			continue
-		}
-		result = append(result, l)
-	}
-	return result
+	return lines
 }
 
 // ---------------------------------------------------------------------------
