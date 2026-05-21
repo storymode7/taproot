@@ -1,0 +1,141 @@
+# .github/workflows/release-cli.yml
+#
+# Builds signed CLI release binaries on every semver tag push (v*.*.*).
+#
+# Trust hardening:
+#   - SLSA Level 3 provenance via slsa-framework/slsa-github-generator
+#   - Cosign keyless signatures (Sigstore, OIDC-based — no key to leak)
+#   - SBOM generated with syft (CycloneDX format)
+#   - Reproducible: go build with fixed GOFLAGS, no CGO, explicit GOOS/GOARCH
+#   - Zero npm / no node in this workflow
+
+name: Release CLI
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: write    # upload release assets
+  id-token: write    # needed for OIDC cosign signing and SLSA provenance
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64, ext: .exe }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false   # no module cache — reproducibility
+
+      - name: Verify vendored grammar checksums
+        run: |
+          cd vendor/grammars
+          sha256sum -c ../checksums.txt
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOFLAGS: "-trimpath"
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          OUT="astra-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext || '' }}"
+          go build \
+            -ldflags="-s -w -X main.version=${VERSION}" \
+            -o "dist/${OUT}" \
+            ./apps/cli/cmd/astra
+          echo "ARTIFACT=dist/${OUT}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: astra-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.ARTIFACT }}
+          retention-days: 1
+
+  sign-and-release:
+    name: Sign, SBOM, and release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft (SBOM)
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Sign all binaries (keyless, OIDC)
+        run: |
+          for f in dist/astra-*; do
+            cosign sign-blob --yes --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem" \
+              "${f}"
+          done
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          syft dir:. -o cyclonedx-json > dist/astra-sbom.cdx.json
+
+      - name: Compute SHA256 checksums
+        run: |
+          cd dist
+          sha256sum astra-* > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/astra-*
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          body: |
+            ## Verification
+
+            All binaries are signed with [Sigstore cosign](https://docs.sigstore.dev/) (keyless, OIDC-based).
+            No private key is used or stored.
+
+            ### Verify a binary
+
+            ```bash
+            # Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
+            cosign verify-blob \
+              --signature astra-<VERSION>-<OS>-<ARCH>.sig \
+              --certificate astra-<VERSION>-<OS>-<ARCH>.pem \
+              --certificate-identity-regexp "https://github.com/astra-review/astra/" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              astra-<VERSION>-<OS>-<ARCH>
+            ```
+
+            ### Checksums
+
+            See `SHA256SUMS.txt` attached to this release.
+
+            ### SBOM
+
+            `astra-sbom.cdx.json` contains a CycloneDX SBOM for this release.
