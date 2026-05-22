@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -12,23 +13,35 @@ type Highlighter int
 
 const (
 	HighlightBuiltin Highlighter = iota // simple +/-/@ coloring (always available)
-	HighlightDelta                      // https://github.com/dandavison/delta
 	HighlightBat                        // https://github.com/sharkdp/bat
+	HighlightDelta                      // https://github.com/dandavison/delta
 )
 
+// UseDelta is kept for backwards compat but no longer changes behaviour —
+// delta is now the default when installed.  Set NoDelta=true (--no-delta flag)
+// to skip delta and use bat/builtin instead.
+var UseDelta bool
+
+// NoDelta forces bat/builtin even when delta is installed.
+var NoDelta bool
+
+// NoDeltaConfig passes --no-gitconfig to delta (--no-delta-config flag).
+var NoDeltaConfig bool
+
 var activeHighlighter Highlighter
-var termWidth = 120
 
 func init() {
-	activeHighlighter = detectHighlighter()
-	if w := terminalWidth(); w > 0 {
-		termWidth = w
+	if os.Getenv("ASTRA_HIGHLIGHTER") == "delta" {
+		UseDelta = true
 	}
+	activeHighlighter = detectHighlighter()
 }
 
 func detectHighlighter() Highlighter {
-	if _, err := exec.LookPath("delta"); err == nil {
-		return HighlightDelta
+	if !NoDelta {
+		if _, err := exec.LookPath("delta"); err == nil {
+			return HighlightDelta
+		}
 	}
 	if _, err := exec.LookPath("bat"); err == nil {
 		return HighlightBat
@@ -37,7 +50,7 @@ func detectHighlighter() Highlighter {
 }
 
 func terminalWidth() int {
-	// Quick read from stty; ignore errors (best-effort).
+	// Quick read from stty; used by callers that need explicit width.
 	cmd := exec.Command("stty", "size")
 	cmd.Stdin = os.Stdin
 	out, err := cmd.Output()
@@ -51,21 +64,20 @@ func terminalWidth() int {
 
 // highlightLines applies syntax highlighting to a snippet's diff lines.
 //
-// filePath is used to help delta/bat detect the language.
+// filePath is used to help bat detect the language.
 // Returns replacement lines (may include ANSI codes); never errors — falls
 // back to the next tier if the external tool fails.
+//
+// Note: delta is NOT handled here — it writes directly to stdout via
+// printDiffLines to preserve TTY semantics.
 func highlightLines(filePath string, diffLines []string) []string {
 	switch activeHighlighter {
-	case HighlightDelta:
-		if out := runDelta(filePath, diffLines); out != nil {
-			return out
-		}
-		fallthrough
-	case HighlightBat:
+	case HighlightBat, HighlightDelta:
+		// bat is used for line-by-line capture; delta uses direct-write (see printDiffLines)
 		if out := runBat(filePath, diffLines); out != nil {
 			return out
 		}
-		fallthrough
+		return builtinHighlight(diffLines)
 	default:
 		return builtinHighlight(diffLines)
 	}
@@ -75,43 +87,35 @@ func highlightLines(filePath string, diffLines []string) []string {
 // delta backend
 // ---------------------------------------------------------------------------
 
-// NoDeltaConfig, when true, passes --no-gitconfig to delta and uses the
-// built-in theme. Set via the --no-delta-config CLI flag.
-var NoDeltaConfig bool
-
-func runDelta(filePath string, diffLines []string) []string {
-	// Construct a minimal git unified diff header so delta detects the language.
+// runDeltaDirect pipes diff lines through delta writing directly to w (usually
+// os.Stdout).  Because delta has a real TTY on its stdout it auto-detects
+// terminal width, honours the user's ~/.gitconfig theme, and emits correctly
+// scoped \033[K / background-fill sequences — the same output as screenshot 2.
+// Capturing delta via cmd.Output() (a pipe) breaks all of that.
+func runDeltaDirect(w io.Writer, filePath string, diffLines []string) error {
 	header := fmt.Sprintf("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n",
 		filePath, filePath, filePath, filePath)
 	input := header + strings.Join(diffLines, "\n") + "\n"
 
-	// --true-color=always forces ANSI output even when our stdout is a pipe
-	// (cmd.Output() uses a pipe, not a TTY; delta's default 'auto' strips colors).
 	args := []string{
 		"--paging=never",
 		"--file-style=omit",
 		"--hunk-header-style=omit",
-		"--true-color=always",
-		fmt.Sprintf("--width=%d", termWidth),
 	}
 
 	if NoDeltaConfig {
-		// Ignore the user's ~/.gitconfig delta section and use a safe default theme.
 		theme := os.Getenv("ASTRA_DELTA_THEME")
 		if theme == "" {
-			theme = "Monokai Extended"
+			theme = "GitHub"
 		}
-		args = append([]string{"--no-gitconfig", "--dark", "--syntax-theme=" + theme}, args...)
+		args = append([]string{"--no-gitconfig", "--light", "--syntax-theme=" + theme}, args...)
 	}
 
 	cmd := exec.Command("delta", args...)
 	cmd.Stdin = strings.NewReader(input)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	return lines
+	cmd.Stdout = w  // direct write — delta sees the real TTY
+	cmd.Stderr = io.Discard
+	return cmd.Run()
 }
 
 // ---------------------------------------------------------------------------

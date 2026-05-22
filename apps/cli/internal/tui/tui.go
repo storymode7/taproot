@@ -60,6 +60,14 @@ func printSnippetHeader(idx, total int, s *engine.Snippet, status string) {
 }
 
 func printDiffLines(filePath string, lines []string) {
+	// Delta must write directly to os.Stdout so it sees the real TTY — auto-detecting
+	// terminal width, the user's theme, and emitting correct background fills / \033[K.
+	if activeHighlighter == HighlightDelta {
+		if err := runDeltaDirect(os.Stdout, filePath, lines); err == nil {
+			return
+		}
+		// fall through to bat/builtin if delta fails
+	}
 	for _, line := range highlightLines(filePath, lines) {
 		fmt.Println(line)
 	}

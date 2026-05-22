@@ -33,10 +33,10 @@ OPTIONS
                          bottom-up  Leaves first, entry-point last
                          clusters   Group by connected component
   --no-tty             Print diff to stdout without interactive UI
-  --no-delta-config    Ignore ~/.gitconfig delta settings (useful if your
-                       delta config uses side-by-side or other modes that
-                       interfere with captured output). Uses Monokai Extended
-                       theme; override with ASTRA_DELTA_THEME env var.
+  --no-delta           Skip delta; use bat or built-in highlighting instead.
+                       Delta is used automatically when installed.
+  --no-delta-config    Ignore ~/.gitconfig delta settings; use a built-in
+                       light theme. Override theme with ASTRA_DELTA_THEME.
   --help               Show this help
 
 KEYBOARD SHORTCUTS (interactive mode)
@@ -80,6 +80,10 @@ func run(args []string) error {
 			presetName = args[i]
 		case "--no-tty":
 			noTTY = true
+		case "--no-delta":
+			tui.NoDelta = true
+		case "--use-delta":
+			// no-op: delta is now the default when installed
 		case "--no-delta-config":
 			tui.NoDeltaConfig = true
 		case "diff":
