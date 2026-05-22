@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "description": "Reorders GitHub PR diffs by call-graph depth. Runs entirely locally — no backend, no OAuth, no telemetry.",
 
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+
   "host_permissions": [
     "https://github.com/*"
   ],

@@ -81,6 +81,15 @@
   });
   document.body.appendChild(toggle);
 
+  // Handle close from inside the panel iframe.
+  window.addEventListener("message", (e) => {
+    if (e.data?.type === "astra-close") {
+      panelOpen = false;
+      container.style.display = "none";
+      toggle.style.right = "0";
+    }
+  });
+
   // ---------------------------------------------------------------------------
   // Fetch PR diff via GitHub's own REST API (same-origin, user's session)
   // ---------------------------------------------------------------------------
