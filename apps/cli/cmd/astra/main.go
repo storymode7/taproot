@@ -32,6 +32,11 @@ OPTIONS
                          top-down   Entry-point first, deps after
                          bottom-up  Leaves first, entry-point last
                          clusters   Group by connected component
+  --no-auto-advance    Stay on the current snippet after accept/reject/reviewed
+                       (default: auto-advance to next snippet, like git add -p)
+  --apply              Stage accepted hunks to the git index on quit (git add -p style).
+                       Accepted snippets → git apply --cached. Rejected → skipped (left
+                       in working tree). Cannot be combined with --ref.
   --no-tty             Print diff to stdout without interactive UI
   --no-delta           Skip delta; use bat or built-in highlighting instead.
                        Delta is used automatically when installed.
@@ -40,10 +45,13 @@ OPTIONS
   --help               Show this help
 
 KEYBOARD SHORTCUTS (interactive mode)
-  j / ↓   Next snippet      a   Accept       1   top-down preset
-  k / ↑   Prev snippet      x   Reject       2   bottom-up preset
-  r       Mark reviewed     q   Quit         3   clusters preset
-  ?       Help
+  j / ↓   Next snippet      y / a   Accept       1   top-down preset
+  k / ↑   Prev snippet      n / x   Reject       2   bottom-up preset
+  r       Mark reviewed     tab     Toggle auto   3   clusters preset
+  q       Quit              ?       Help
+
+  Accept/reject records state locally in .git/astra/state.json.
+  It does not stage or apply changes to your working tree.
 
 STATE
   Review state is saved to .git/astra/state.json (gitignored).
@@ -60,6 +68,8 @@ func run(args []string) error {
 	var ref string
 	var presetName = "top-down"
 	var noTTY bool
+	var noAutoAdvance bool
+	var applyMode bool
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -80,6 +90,10 @@ func run(args []string) error {
 			presetName = args[i]
 		case "--no-tty":
 			noTTY = true
+		case "--no-auto-advance":
+			noAutoAdvance = true
+		case "--apply":
+			applyMode = true
 		case "--no-delta":
 			tui.NoDelta = true
 		case "--use-delta":
@@ -98,6 +112,10 @@ func run(args []string) error {
 	preset, err := parsePreset(presetName)
 	if err != nil {
 		return err
+	}
+
+	if applyMode && ref != "" {
+		return fmt.Errorf("--apply cannot be combined with --ref: staging hunks from a committed diff is not supported")
 	}
 
 	// Find git repo root.
@@ -141,7 +159,29 @@ func run(args []string) error {
 		return nil
 	}
 
-	runner := tui.NewRunner(ordered, store, preset)
+	var onQuit func() error
+	if applyMode {
+		onQuit = func() error {
+			var accepted []*engine.Snippet
+			for _, s := range ordered {
+				if st := store.Get(s.ID); st.Status == "accepted" {
+					accepted = append(accepted, s)
+				}
+			}
+			patch := buildAcceptedPatch(accepted)
+			if patch == "" {
+				fmt.Println("No accepted hunks — nothing staged.")
+				return nil
+			}
+			if err := adapter.ApplyCached(patch); err != nil {
+				return err
+			}
+			fmt.Printf("Staged %d hunk(s) via git apply --cached.\n", len(accepted))
+			return nil
+		}
+	}
+
+	runner := tui.NewRunner(ordered, store, preset, !noAutoAdvance, applyMode, onQuit)
 	return runner.Run()
 }
 

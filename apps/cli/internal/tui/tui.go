@@ -92,15 +92,21 @@ func statusBadge(status string) string {
 
 // Runner holds interactive session state.
 type Runner struct {
-	snippets []*engine.Snippet
-	store    *state.Store
-	preset   engine.Preset
-	index    int // current snippet index
+	snippets    []*engine.Snippet
+	store       *state.Store
+	preset      engine.Preset
+	index       int  // current snippet index
+	autoAdvance bool // automatically move to next snippet after accept/reject/reviewed
+	applyMode   bool // stage accepted hunks on quit (--apply mode)
+	onQuit      func() error // called on quit when applyMode is true
 }
 
 // NewRunner creates a Runner for interactive review.
-func NewRunner(snippets []*engine.Snippet, store *state.Store, preset engine.Preset) *Runner {
-	return &Runner{snippets: snippets, store: store, preset: preset}
+// autoAdvance controls whether the cursor moves to the next snippet automatically
+// after the user accepts, rejects, or marks a snippet as reviewed.
+// applyMode enables git-staging on quit; onQuit is the staging callback (may be nil).
+func NewRunner(snippets []*engine.Snippet, store *state.Store, preset engine.Preset, autoAdvance bool, applyMode bool, onQuit func() error) *Runner {
+	return &Runner{snippets: snippets, store: store, preset: preset, autoAdvance: autoAdvance, applyMode: applyMode, onQuit: onQuit}
 }
 
 // Run starts the interactive loop. Returns when the user quits (q) or
@@ -127,6 +133,11 @@ func (r *Runner) Run() error {
 		switch key {
 		case "q", "Q":
 			fmt.Print("\033[?25h") // show cursor
+			if r.applyMode && r.onQuit != nil {
+				if err := r.onQuit(); err != nil {
+					fmt.Fprintf(os.Stderr, "\nastra: apply failed: %v\n", err)
+				}
+			}
 			return nil
 		case "j", "\033[B": // j or down arrow
 			if r.index < len(r.snippets)-1 {
@@ -138,12 +149,15 @@ func (r *Runner) Run() error {
 				r.index--
 				r.render()
 			}
-		case "a", "A":
+		case "y", "Y", "a", "A": // y/a = accept (y mirrors git add -p)
 			r.setStatus("accepted")
-		case "x", "X":
+		case "n", "N", "x", "X": // n/x = reject (n mirrors git add -p)
 			r.setStatus("rejected")
 		case "r", "R":
 			r.setStatus("reviewed")
+		case "\t": // Tab toggles auto-advance
+			r.autoAdvance = !r.autoAdvance
+			r.render()
 		case "1":
 			r.preset = engine.PresetTopDown
 			r.reorder()
@@ -164,6 +178,9 @@ func (r *Runner) setStatus(status string) {
 	s := r.snippets[r.index]
 	st := r.store.Get(s.ID)
 	_ = r.store.Set(s.ID, status, st.Comment)
+	if r.autoAdvance && r.index < len(r.snippets)-1 {
+		r.index++
+	}
 	r.render()
 }
 
@@ -182,9 +199,17 @@ func (r *Runner) render() {
 
 	// Header bar
 	presetName := [...]string{"top-down", "bottom-up", "clusters"}[r.preset]
-	fmt.Printf("%s Astra  %s[%d/%d]%s  preset:%s  %s q=quit j/k=nav a=accept x=reject r=reviewed ?=help%s\n",
+	autoLabel := "auto:on"
+	if !r.autoAdvance {
+		autoLabel = "auto:off"
+	}
+	applyLabel := ""
+	if r.applyMode {
+		applyLabel = "  " + yellow + "[apply mode]" + reset + dim
+	}
+	fmt.Printf("%s Astra  %s[%d/%d]%s  preset:%s  %s%s%s  q=quit j/k=nav y/n=accept/reject r=reviewed tab=toggle-auto ?=help%s\n",
 		bold+blue+"⭐", yellow, r.index+1, len(r.snippets), reset,
-		presetName, dim, reset)
+		presetName, dim, autoLabel, applyLabel, reset)
 	fmt.Println(strings.Repeat("─", 80))
 
 	printSnippetHeader(r.index+1, len(r.snippets), s, st.Status)
@@ -210,14 +235,19 @@ func (r *Runner) renderHelp() {
 	fmt.Println()
 	fmt.Println("  j / ↓       Next snippet")
 	fmt.Println("  k / ↑       Previous snippet")
-	fmt.Println("  a           Accept snippet")
-	fmt.Println("  x           Reject snippet")
+	fmt.Println("  y / a       Accept snippet")
+	fmt.Println("  n / x       Reject snippet")
 	fmt.Println("  r           Mark as reviewed (no judgement)")
+	fmt.Println("  tab         Toggle auto-advance (move to next after accept/reject/reviewed)")
 	fmt.Println("  1           Switch to top-down preset")
 	fmt.Println("  2           Switch to bottom-up preset")
 	fmt.Println("  3           Switch to feature-clusters preset")
 	fmt.Println("  q           Quit")
 	fmt.Println("  ? / h       Show this help")
+	fmt.Println()
+	fmt.Println(dim + "Note: accept/reject records state locally in .git/astra/state.json." + reset)
+	fmt.Println(dim + "      This does not stage or apply any changes to your working tree." + reset)
+	fmt.Println(dim + "      Use --apply (working tree mode only) to stage accepted hunks on quit." + reset)
 	fmt.Println()
 	fmt.Println("Press any key to continue…")
 	buf := make([]byte, 1)

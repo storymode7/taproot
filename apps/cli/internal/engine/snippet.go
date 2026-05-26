@@ -18,8 +18,14 @@ type Snippet struct {
 	// ID is a stable hash: sha256(filePath + "::" + symbolPath + "::" + startLine).
 	ID string
 
-	// FilePath is the relative path of the changed file.
+	// FilePath is the relative path of the changed file (new path on renames).
 	FilePath string
+
+	// OldPath is set on renames; equals FilePath otherwise.
+	OldPath string
+
+	// IsNew is true when the file was added in this diff.
+	IsNew bool
 
 	// Language is the detected language ("go", "typescript", etc.)
 	Language string
@@ -120,6 +126,8 @@ func heuristicSnippets(f *diff.FileDiff) []*Snippet {
 	for _, h := range f.Hunks {
 		s := &Snippet{
 			FilePath:   f.Path,
+			OldPath:    f.OldPath,
+			IsNew:      f.IsNew,
 			Language:   f.Language,
 			SymbolPath: "",
 			NodeType:   "hunk",

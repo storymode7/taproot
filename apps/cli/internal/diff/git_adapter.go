@@ -91,6 +91,22 @@ func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
 	return []byte(out), nil
 }
 
+// ApplyCached applies the given unified-diff patch to the git index.
+// Equivalent to: echo "$patch" | git apply --cached
+func (a *GitDiffAdapter) ApplyCached(patch string) error {
+	cmd := exec.Command("git", "apply", "--cached")
+	if a.RepoRoot != "" {
+		cmd.Dir = a.RepoRoot
+	}
+	cmd.Stdin = strings.NewReader(patch)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git apply --cached: %w: %s", err, stderr.String())
+	}
+	return nil
+}
+
 // PostReviewComment is not supported for local diffs.
 func (a *GitDiffAdapter) PostReviewComment(_ ReviewComment) (int64, error) {
 	return 0, ErrReadOnly
