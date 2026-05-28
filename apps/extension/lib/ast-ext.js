@@ -8,6 +8,8 @@
  * Chrome extensions cannot import files from outside their own directory tree.
  */
 
+import { Parser, Language } from "../vendor/web-tree-sitter.js";
+
 // Resolve vendored WASM paths through the extension's own resource space.
 function vendorUrl(filename) {
   return chrome.runtime.getURL(`vendor/${filename}`);
@@ -22,34 +24,21 @@ const LANG_WASM = {
   rust:       "tree-sitter-rust.wasm",
 };
 
-let TreeSitter = null;
+let tsInitialized = false;
 const grammarCache = new Map();
 
 export async function loadTreeSitter() {
-  if (TreeSitter) return TreeSitter;
-  await loadScript(vendorUrl("web-tree-sitter.js"));
-  await window.TreeSitter.init({ locateFile: () => vendorUrl("tree-sitter.wasm") });
-  TreeSitter = window.TreeSitter;
-  return TreeSitter;
-}
-
-async function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(s);
-  });
+  if (tsInitialized) return;
+  await Parser.init({ locateFile: () => vendorUrl("tree-sitter.wasm") });
+  tsInitialized = true;
 }
 
 async function getGrammar(lang) {
   if (grammarCache.has(lang)) return grammarCache.get(lang);
-  const ts = await loadTreeSitter();
+  await loadTreeSitter();
   const wasm = LANG_WASM[lang];
   if (!wasm) return null;
-  const grammar = await ts.Language.load(vendorUrl(wasm));
+  const grammar = await Language.load(vendorUrl(wasm));
   grammarCache.set(lang, grammar);
   return grammar;
 }
@@ -74,8 +63,8 @@ export async function buildSnippets(files) {
 }
 
 async function snippetsWithAST(file, lang, grammar) {
-  const ts = await loadTreeSitter();
-  const parser = new ts.Parser();
+  await loadTreeSitter();
+  const parser = new Parser();
   parser.setLanguage(grammar);
   const source = patchToPostImage(file.patch ?? "");
   const tree = parser.parse(source);
@@ -164,14 +153,29 @@ function hunksFromPatch(patch) {
 }
 
 function patchToPostImage(patch) {
-  const lines = [];
+  // We must preserve real line numbers so that AST node positions
+  // (row numbers) match the newStart/newEnd values from hunksFromPatch.
+  // Strategy: pad with blank lines before each hunk so that the first
+  // content line of hunk N lands on the correct 1-based row.
+  const output = [""]; // index 0 unused; output[i] = line i (1-based)
+  let cursor = 1; // next line number we intend to write
+
   for (const line of patch.split("\n")) {
-    if (line.startsWith("+")) lines.push(line.slice(1));
-    else if (!line.startsWith("-") && !line.startsWith("\\")) {
-      lines.push(line.startsWith(" ") ? line.slice(1) : line);
+    const m = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (m) {
+      const hunkStart = Number(m[1]);
+      // Pad gap between last written line and this hunk with blanks
+      while (cursor < hunkStart) { output.push(""); cursor++; }
+    } else if (line.startsWith("+")) {
+      output.push(line.slice(1));
+      cursor++;
+    } else if (!line.startsWith("-") && !line.startsWith("\\")) {
+      output.push(line.startsWith(" ") ? line.slice(1) : line);
+      cursor++;
     }
+    // deleted lines (-) don't appear in the post-image
   }
-  return lines.join("\n");
+  return output.join("\n");
 }
 
 const EXT_LANG = {

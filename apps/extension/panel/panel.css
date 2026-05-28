@@ -48,12 +48,12 @@ body { margin: 0; min-height: 100vh; }
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); font-size: 14px;
 }
-#pr-form button, button {
+#pr-form button, .panel-header button, .snippet-actions button, #btn-submit, #btn-close {
   padding: 8px 16px; background: var(--accent); color: #0d1117;
   border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
   font-size: 14px;
 }
-button:hover { opacity: 0.85; }
+#pr-form button:hover, .panel-header button:hover, .snippet-actions button:hover, #btn-submit:hover, #btn-close:hover { opacity: 0.85; }
 .error { color: var(--red); font-size: 13px; margin-top: 8px; }
 .loading-msg { color: var(--text-dim); }
 
@@ -150,3 +150,23 @@ button:hover { opacity: 0.85; }
   .snippet-header { flex-direction: column; align-items: flex-start; }
   #review-header { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------- highlight.js token colours (github-dark palette) ---------- */
+/* Token colours inherit into .diff-add / .diff-del / .diff-ctx spans.   */
+/* Sigil characters (+/-/ ) keep the diff row colour; tokens are neutral. */
+.hljs { color: var(--text); }
+.hljs-comment, .hljs-meta { color: #8b949e; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-name,
+.hljs-tag { color: #ff7b72; }
+.hljs-string, .hljs-attr, .hljs-variable.language_ { color: #a5d6ff; }
+.hljs-number, .hljs-literal { color: #79c0ff; }
+.hljs-type, .hljs-class .hljs-title, .hljs-title.class_ { color: #ffa657; }
+.hljs-function .hljs-title, .hljs-title.function_ { color: #d2a8ff; }
+.hljs-params { color: var(--text); }
+.hljs-operator, .hljs-punctuation { color: var(--text-dim); }
+.hljs-property { color: #79c0ff; }
+.hljs-regexp { color: #a5d6ff; }
+.hljs-symbol { color: #79c0ff; }
+/* Keep diff row background; only token foreground changes */
+.diff-add .hljs-keyword  { color: #85e89d; }
+.diff-del .hljs-keyword  { color: #f97583; }

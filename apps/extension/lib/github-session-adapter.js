@@ -108,7 +108,7 @@ export class GitHubSessionAdapter {
       headers: {
         "Accept": "application/vnd.github+json",
         "Content-Type": "application/json",
-        ...(options.headers ?? {}),
+        ...(options.headers || {}),
       },
     });
   }

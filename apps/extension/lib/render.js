@@ -5,6 +5,8 @@
  * Desktop: vertical list. Mobile (≤768px): swipe-card stack.
  */
 
+import hljs from "../vendor/highlight.min.js";
+
 /**
  * @param {HTMLElement} container
  * @param {import('./ast.js').Snippet[]} snippets
@@ -31,7 +33,7 @@ function renderDesktopList(container, snippets, store) {
   }
 }
 
-function makeDesktopCard(snippet, store) {
+function makeDesktopCard(snippet, store, advance) {
   const state = store.get(snippet.id);
   const card = document.createElement("article");
   card.className = `snippet-card status-${state.status}`;
@@ -48,7 +50,7 @@ function makeDesktopCard(snippet, store) {
         <span class="snippet-depth" title="Call-graph depth">depth ${snippet.depth}</span>
       </span>
     </header>
-    <pre class="snippet-diff"><code>${renderDiffLines(snippet.diffLines)}</code></pre>
+    <pre class="snippet-diff"><code class="hljs">${renderDiffLines(snippet.diffLines, snippet.language)}</code></pre>
     <footer class="snippet-actions">
       <button class="btn-accept"  data-action="accepted">✓ Accept</button>
       <button class="btn-reject"  data-action="rejected">✗ Reject</button>
@@ -64,6 +66,8 @@ function makeDesktopCard(snippet, store) {
     store.set(snippet.id, { ...state, status: action });
     card.className = `snippet-card status-${action}`;
     card.querySelector(".snippet-status-label").textContent = statusLabel(action);
+    // In swipe mode, auto-advance to next card after a brief moment
+    if (advance) setTimeout(() => advance(null), 350);
   });
 
   return card;
@@ -98,10 +102,11 @@ function renderSwipeStack(container, snippets, store) {
     stack.innerHTML = "";
     if (index >= snippets.length) {
       stack.innerHTML = "<p class='swipe-done'>All snippets reviewed! ✓</p>";
+      keyHandler && document.removeEventListener("keydown", keyHandler);
       return;
     }
     const snippet = snippets[index];
-    const card = makeDesktopCard(snippet, store);
+    const card = makeDesktopCard(snippet, store, advance);
     card.classList.add("swipe-card");
     stack.appendChild(card);
 
@@ -115,7 +120,7 @@ function renderSwipeStack(container, snippets, store) {
         if (dx > 60)  advance("accepted");
         if (dx < -60) advance("rejected");
       } else {
-        if (dy < -60) advance("reviewed"); // swipe up = needs-comment / reviewed
+        if (dy < -60) advance("reviewed"); // swipe up = reviewed
         if (dy > 60)  advance(null);       // swipe down = skip
       }
     });
@@ -128,20 +133,52 @@ function renderSwipeStack(container, snippets, store) {
     showCard();
   }
 
+  // Keyboard shortcuts
+  let keyHandler = null;
+  keyHandler = (e) => {
+    if (index >= snippets.length) return;
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+    switch (e.key) {
+      case "ArrowRight": e.preventDefault(); advance("accepted"); break;
+      case "ArrowLeft":  e.preventDefault(); advance("rejected"); break;
+      case "ArrowUp":    e.preventDefault(); advance("reviewed"); break;
+      case "ArrowDown":  e.preventDefault(); advance(null);       break;
+    }
+  };
+  document.addEventListener("keydown", keyHandler);
+
   showCard();
 }
 
 // ---------------------------------------------------------------------------
-// Diff line rendering
+// Diff line rendering — with syntax highlighting via highlight.js
 // ---------------------------------------------------------------------------
-function renderDiffLines(lines) {
+function renderDiffLines(lines, language) {
   return lines
     .map((line) => {
       const cls = line.startsWith("+") ? "diff-add"
                 : line.startsWith("-") ? "diff-del"
                 : line.startsWith("@") ? "diff-hunk"
                 : "diff-ctx";
-      return `<span class="${cls}">${escHtml(line)}</span>`;
+
+      if (cls === "diff-hunk") {
+        return `<span class="${cls}">${escHtml(line)}</span>`;
+      }
+
+      // Strip the leading sigil (+/-/ ) before highlighting, restore after.
+      const sigil = line[0] === "+" || line[0] === "-" ? line[0] : " ";
+      const code = line.length > 1 ? line.slice(1) : "";
+
+      let highlighted;
+      try {
+        highlighted = language && hljs.getLanguage(language)
+          ? hljs.highlight(code, { language, ignoreIllegals: true }).value
+          : escHtml(code);
+      } catch {
+        highlighted = escHtml(code);
+      }
+
+      return `<span class="${cls}">${escHtml(sigil)}${highlighted}</span>`;
     })
     .join("\n");
 }

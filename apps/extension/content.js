@@ -1,5 +1,5 @@
 /**
- * content.js — injected into github.com/*/pull/*/files pages
+ * content.js — injected into github.com/.../pull/.../files pages
  *
  * Responsibilities:
  *   1. Detect that we're on a PR files page.
@@ -17,7 +17,7 @@
   "use strict";
 
   // Only activate on the PR files tab.
-  if (!location.pathname.match(/\/pull\/\d+\/files/)) return;
+  if (!location.pathname.match(/\/pull\/\d+\/changes/)) return;
 
   // Avoid double-injection on turbo/pushstate navigations.
   if (document.getElementById("astra-panel-root")) return;
@@ -91,32 +91,98 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Fetch PR diff via GitHub's own REST API (same-origin, user's session)
+  // Fetch PR diff from GitHub's same-origin page_data endpoints.
+  // These are the exact endpoints GitHub's own UI uses to lazy-load diffs.
+  // No CORS issues, no API tokens needed — the user's session cookie is
+  // automatically included because these are same-origin requests.
   // ---------------------------------------------------------------------------
   let sent = false;
 
   async function fetchAndSend() {
     if (sent) return;
 
-    // GitHub's compare API: returns unified diff as JSON with per-file hunks.
-    // This is the same endpoint the native PR files page uses.
-    const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`;
-    const resp = await fetch(url, {
-      headers: { Accept: "application/vnd.github+json" },
-      credentials: "include",   // use the user's existing github.com session
-    });
+    try {
+      const files = await fetchAllDiffContents();
+      postToPanel({ type: "files", owner, repo, prNumber: Number(prNumber), files });
+      sent = true;
+    } catch (err) {
+      postToPanel({ type: "error", message: err.message });
+    }
+  }
 
-    if (!resp.ok) {
-      postToPanel({ type: "error", message: `GitHub API ${resp.status}: ${resp.statusText}` });
-      return;
+  // Extract diff data already embedded in the page, then fetch any remaining
+  // files that GitHub lazy-loads via page_data/diff_entries.
+  async function fetchAllDiffContents() {
+    const script = Array.from(document.querySelectorAll('script[type="application/json"]'))
+      .find(s => s.textContent.includes("pullRequestsChangesRoute"));
+    if (!script) throw new Error("Could not find PR data in page. Try reloading.");
+
+    const route = JSON.parse(script.textContent).payload.pullRequestsChangesRoute;
+    const summaries = route.diffSummaries || [];
+    const loadedContents = route.diffContents || [];
+    const commitOid = loadedContents[0]?.newCommitOid || "";
+
+    // Index already-loaded contents by path.
+    const contentsByPath = new Map(loadedContents.map(d => [d.path, d]));
+
+    // Find paths not yet loaded.
+    const missingPaths = summaries
+      .map(s => s.path)
+      .filter(p => !contentsByPath.has(p));
+
+    // Fetch missing paths in batches (GitHub uses ~4 per request).
+    const BATCH = 4;
+    for (let i = 0; i < missingPaths.length; i += BATCH) {
+      const batch = missingPaths.slice(i, i + BATCH);
+      const encodedPaths = batch.map(p => encodeURIComponent(encodeURIComponent(p))).join(",");
+      const url = `/${owner}/${repo}/pull/${prNumber}/page_data/diff_entries?paths=${encodedPaths}&ctx=%3A%3A&w=0&range=${commitOid}`;
+      const resp = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "github-verified-fetch": "true",
+          "github-is-react": "true",
+        },
+        credentials: "same-origin",
+      });
+      if (!resp.ok) throw new Error(`Failed to load diff entries: ${resp.status}`);
+      const entries = await resp.json();
+      for (const entry of entries) {
+        contentsByPath.set(entry.path, entry);
+      }
     }
 
-    const files = await resp.json();
-    postToPanel({ type: "files", owner, repo, prNumber: Number(prNumber), files });
-    sent = true;
+    // Convert GitHub's internal format to the shape Astra's panel expects
+    // (mirrors the GitHub REST API response for /pulls/:number/files).
+    return summaries.map(summary => {
+      const content = contentsByPath.get(summary.path);
+      const patch = content
+        ? diffLinesToPatch(content.diffLines || [])
+        : "";
+      return {
+        filename: summary.path,
+        status: summary.changeType?.toLowerCase() ?? "modified",
+        additions: summary.linesAdded ?? 0,
+        deletions: summary.linesDeleted ?? 0,
+        changes: summary.linesChanged ?? 0,
+        patch,
+      };
+    });
+  }
+
+  // Convert GitHub's diffLines array into a unified diff patch string,
+  // matching the format the GitHub REST API returns in the `patch` field.
+  function diffLinesToPatch(diffLines) {
+    return diffLines.map(line => {
+      if (line.type === "ADDITION") return `+${line.text.slice(1)}`;
+      if (line.type === "DELETION") return `-${line.text.slice(1)}`;
+      if (line.type === "HUNK")     return line.text;
+      // CONTEXT lines have a leading space in line.text already
+      return line.text;
+    }).join("\n");
   }
 
   function postToPanel(msg) {
-    iframe.contentWindow?.postMessage(msg, chrome.runtime.getURL(""));
+    iframe.contentWindow?.postMessage(msg, "*");
   }
 })();

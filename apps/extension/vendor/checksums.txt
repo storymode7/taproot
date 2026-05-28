@@ -1,0 +1,27 @@
+# SHA256 checksums for all vendored files in apps/extension/vendor/
+# Regenerate with: sha256sum vendor/* > vendor/checksums.txt
+#
+# highlight.min.js
+#   Source:   highlight.js v11.11.1 (https://github.com/highlightjs/highlight.js)
+#   Built:    npx esbuild hljs-entry.js --bundle --format=esm --minify
+#             where hljs-entry.js imports core + python, javascript, typescript,
+#             go, java, rust language packs from the npm package.
+#   License:  BSD 3-Clause (https://github.com/highlightjs/highlight.js/blob/main/LICENSE)
+#   Maintainer: highlightjs org (active, >10k stars, last release 2024-11)
+#   Why needed: syntax highlighting in the snippet diff view; zero runtime npm,
+#               bundled once and committed.
+#
+f8008e601946da53ddc4c230b1e426458a3e98844600af0cf1831e3dc5bdb66b  highlight.min.js
+
+# web-tree-sitter.js + WASM grammars
+#   Source: https://github.com/tree-sitter/tree-sitter (web-tree-sitter npm package)
+#   Grammars: tree-sitter-{language} GitHub releases
+#
+0c868236a47296b4ff3c1570f20e0899e4a784ff6e5cd7bfc9c3a55225463e4a  web-tree-sitter.js
+1ed02fe75a60642bea084670e33267795aab26c19012805b9fb513ab458680ee  tree-sitter.wasm
+9504573f352b20be7f2f1911754d710622aedc15afff16d5ed8fb5645681aee7  tree-sitter-go.wasm
+5fb488d0cabb4775a594bab85682de5ad6ce83c0d6ac997a9f82dd084d571240  tree-sitter-javascript.wasm
+4fdeac4ca6ca089f06c6f7e562abcac1733cd465728cc7031ebb73c2019122c4  tree-sitter-java.wasm
+16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47  tree-sitter-python.wasm
+24c89bd9252255e4aebbcbd7d2d308bd92c86dd95a130fdc80efa49577b8d738  tree-sitter-rust.wasm
+778025db5a8be0e70f8ccc3671e486dfeddd048c25d9e8a70c26de2e1bf6f97d  tree-sitter-typescript.wasm
