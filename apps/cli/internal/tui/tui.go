@@ -35,26 +35,29 @@ const (
 func View(snippets []*engine.Snippet, store *state.Store) {
 	for i, s := range snippets {
 		st := store.Get(s.ID)
-		printSnippetHeader(i+1, len(snippets), s, st.Status)
+		// Indent by call-tree depth so the drill-down structure survives
+		// in plain output.
+		printSnippetHeader(i+1, len(snippets), s, st.Status, strings.Repeat("  ", s.Depth))
 		printDiffLines(s.FilePath, s.DiffLines)
 		fmt.Println()
 	}
 }
 
-func printSnippetHeader(idx, total int, s *engine.Snippet, status string) {
+func printSnippetHeader(idx, total int, s *engine.Snippet, status, indent string) {
 	statusBadge := statusBadge(status)
 	depth := fmt.Sprintf("depth:%d", s.Depth)
 
-	fmt.Printf("\n%s─── %d/%d%s  %s%s%s  %s%s%s  %s%s%s\n",
+	fmt.Printf("\n%s%s─── %d/%d%s  %s%s%s  %s%s%s  %s%s%s\n",
+		indent,
 		dim, idx, total, reset,
 		bold+cyan, s.FilePath, reset,
 		dim, depth, reset,
 		dim, s.Language, reset,
 	)
-	fmt.Printf("    %s%s\n", statusBadge, reset)
+	fmt.Printf("%s    %s%s\n", indent, statusBadge, reset)
 
 	if s.SymbolPath != "" {
-		fmt.Printf("%s  ∷ %s%s\n", dim, s.SymbolPath, reset)
+		fmt.Printf("%s%s  ∷ %s%s\n", indent, dim, s.SymbolPath, reset)
 	}
 	fmt.Println(strings.Repeat("─", 72))
 }
@@ -212,7 +215,7 @@ func (r *Runner) render() {
 		presetName, dim, autoLabel, applyLabel, reset)
 	fmt.Println(strings.Repeat("─", 80))
 
-	printSnippetHeader(r.index+1, len(r.snippets), s, st.Status)
+	printSnippetHeader(r.index+1, len(r.snippets), s, st.Status, "")
 	printDiffLines(s.FilePath, s.DiffLines)
 
 	// Progress bar

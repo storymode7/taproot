@@ -94,7 +94,9 @@ func TestOrderSnippets_DepthAssignment(t *testing.T) {
 }
 
 func TestOrderSnippets_Cycles(t *testing.T) {
-	// A ↔ B: both have in-degree > 0, so BFS never starts — both get depth maxDepth+1
+	// A ↔ B: a pure cycle still gets a deterministic order — the entry
+	// point (degree tie broken by file path) comes first, the rest follow
+	// as its callees.
 	snippets := []*Snippet{
 		{ID: "A", FilePath: "a.go"},
 		{ID: "B", FilePath: "b.go"},
@@ -104,12 +106,11 @@ func TestOrderSnippets_Cycles(t *testing.T) {
 	if len(result) != 2 {
 		t.Fatalf("expected 2 snippets, got %d", len(result))
 	}
-	// Both snippets should have equal depth and be sorted by FilePath.
-	if result[0].Depth != result[1].Depth {
-		t.Errorf("cycle: expected equal depths, got %d and %d", result[0].Depth, result[1].Depth)
+	if result[0].ID != "A" || result[1].ID != "B" {
+		t.Errorf("cycle: expected entry A then B, got %v", snippetIDs(result))
 	}
-	if result[0].FilePath > result[1].FilePath {
-		t.Errorf("cycle: expected file-path sort, got %s before %s", result[0].FilePath, result[1].FilePath)
+	if result[0].Depth != 0 || result[1].Depth != 1 {
+		t.Errorf("cycle: expected depths 0,1 got %d,%d", result[0].Depth, result[1].Depth)
 	}
 }
 
