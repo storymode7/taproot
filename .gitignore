@@ -1,5 +1,6 @@
 # Build outputs
 /dist/
+/astra
 apps/cli/astra
 apps/cli/astra.exe
 
