@@ -14,8 +14,7 @@
  */
 
 import { parsePRUrl, fetchPRFiles } from "./lib/github.js";
-import { loadTreeSitter, buildSnippets } from "./lib/ast.js";
-import { buildSymbolGraph, orderSnippets } from "./lib/ordering.js";
+import { buildReview, reorderReview } from "./lib/ast.js";
 import { renderSnippetList } from "./lib/render.js";
 import { StateStore } from "./lib/state.js";
 
@@ -77,6 +76,12 @@ document.getElementById("pr-form").addEventListener("submit", async (e) => {
 // ---------------------------------------------------------------------------
 // Core review flow
 // ---------------------------------------------------------------------------
+// The core orders top-down (tree pre-order) or bottom-up (post-order);
+// clustering is inherent in the tree, so the clusters preset maps to pre.
+function presetToOrder(preset) {
+  return preset === "bottom-up" ? "post" : "pre";
+}
+
 async function loadReview({ owner, repo, prNumber }) {
   const { meta, files } = await fetchPRFiles(owner, repo, prNumber);
   currentMeta = meta;
@@ -84,13 +89,10 @@ async function loadReview({ owner, repo, prNumber }) {
   document.getElementById("review-title").textContent =
     `${owner}/${repo} #${prNumber}`;
 
-  // Load tree-sitter and build snippets for each file
-  const snippets = await buildSnippets(files);
-
-  // Build cross-file symbol graph and order by current preset
-  const graph = buildSymbolGraph(snippets);
+  // The Go core (WASM) builds snippets, call edges, and the review tree.
   const preset = document.getElementById("preset-select").value;
-  currentSnippets = orderSnippets(snippets, graph, preset);
+  const review = await buildReview(files, presetToOrder(preset));
+  currentSnippets = review.snippets ?? [];
 
   renderSnippetList(
     document.getElementById("snippet-list"),
@@ -104,14 +106,13 @@ async function loadReview({ owner, repo, prNumber }) {
 // ---------------------------------------------------------------------------
 // Preset change → re-order without re-fetching
 // ---------------------------------------------------------------------------
-document.getElementById("preset-select").addEventListener("change", (e) => {
+document.getElementById("preset-select").addEventListener("change", async (e) => {
   if (!currentSnippets.length) return;
-  // Re-order in place; snippets array already has graph metadata attached
-  const graph = buildSymbolGraph(currentSnippets);
-  const ordered = orderSnippets(currentSnippets, graph, e.target.value);
+  const review = await reorderReview(presetToOrder(e.target.value));
+  currentSnippets = review.snippets ?? [];
   renderSnippetList(
     document.getElementById("snippet-list"),
-    ordered,
+    currentSnippets,
     store,
   );
 });

@@ -8,8 +8,7 @@
  * web-tree-sitter can locate them in the extension's resource space.
  */
 
-import { buildSnippets } from "../lib/ast-ext.js";
-import { buildSymbolGraph, orderSnippets } from "../lib/ordering.js";
+import { buildReview, reorderReview } from "../lib/ast-ext.js";
 import { renderSnippetList } from "../lib/render.js";
 import { StateStore } from "../lib/state.js";
 import { syncFileViewed, submitReview } from "../lib/github-sync.js";
@@ -30,16 +29,22 @@ window.addEventListener("message", async (e) => {
   }
 });
 
+// The core orders top-down (tree pre-order) or bottom-up (post-order);
+// clustering is inherent in the tree, so the clusters preset maps to pre.
+function presetToOrder(preset) {
+  return preset === "bottom-up" ? "post" : "pre";
+}
+
 async function handleFiles({ owner, repo, prNumber, files }) {
   adapter = new GitHubSessionAdapter(owner, repo, prNumber);
   setStatus("Parsing AST & ordering…");
   try {
-    const snippets = await buildSnippets(files);
-    const graph = buildSymbolGraph(snippets);
     const preset = document.getElementById("preset-select").value;
-    currentSnippets = orderSnippets(snippets, graph, preset);
+    // The Go core (WASM) builds snippets, call edges, and the review tree.
+    const review = await buildReview(files, presetToOrder(preset));
+    currentSnippets = review.snippets ?? [];
     await store.warmCache(currentSnippets.map((s) => s.id));
-    render();
+    render(currentSnippets);
     setStatus("");
   } catch (err) {
     setStatus(`Parse error: ${err.message}`);
@@ -47,11 +52,8 @@ async function handleFiles({ owner, repo, prNumber, files }) {
   }
 }
 
-function render() {
-  const preset = document.getElementById("preset-select").value;
-  const graph = buildSymbolGraph(currentSnippets);
-  const ordered = orderSnippets(currentSnippets, graph, preset);
-  renderSnippetList(document.getElementById("snippet-list"), ordered, store, onSnippetStateChange);
+function render(snippets) {
+  renderSnippetList(document.getElementById("snippet-list"), snippets, store, onSnippetStateChange);
 }
 
 /** Called by renderSnippetList when a snippet's state changes. */
@@ -60,8 +62,11 @@ async function onSnippetStateChange(snippet) {
   await syncFileViewed(adapter, currentSnippets, store, snippet.filePath);
 }
 
-document.getElementById("preset-select").addEventListener("change", () => {
-  if (currentSnippets.length) render();
+document.getElementById("preset-select").addEventListener("change", async (e) => {
+  if (!currentSnippets.length) return;
+  const review = await reorderReview(presetToOrder(e.target.value));
+  currentSnippets = review.snippets ?? [];
+  render(currentSnippets);
 });
 
 document.getElementById("btn-close").addEventListener("click", () => {

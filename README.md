@@ -50,14 +50,24 @@ Fallback: unsupported languages show as a single whole-file snippet.
 
 ```
 # CLI
-cd apps/cli && go build ./cmd/astra
+make cli            # or: go build -o astra ./apps/cli/cmd/astra
 
 # Vendor grammar WASM files (fetch once, pin SHA256)
 bash vendor/fetch-grammars.sh
 
-# Extension / PWA — no build step, vanilla JS
-# Open apps/extension/ or apps/pwa/ directly
+# Extension / PWA — vanilla JS, no npm. The review engine is the Go core
+# compiled to WASM; the built artifact is committed, so no build is needed
+# unless you change /core:
+make core-wasm                       # rebuild vendor/core/astra-core.wasm
+sh scripts/sync-extension-lib.sh     # sync /shared/lib + core into both surfaces
+make parity                          # assert Go and WASM produce identical output
 ```
+
+The engine lives once in `/core` (pure Go, no I/O). The CLI links it
+natively; the extension and PWA call the same code through
+`vendor/core/astra-core.wasm`. Browser-side glue lives in `/shared/lib`
+and is copied into each surface by the sync script — never edit the
+copies.
 
 ## Directory structure
 
