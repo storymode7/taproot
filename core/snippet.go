@@ -158,21 +158,24 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	}
 
 	for i := range f.Hunks {
-		h := f.Hunks[i]
-		hStart := h.NewStart
-		hEnd := h.NewStart + h.NewLines - 1
-		if hEnd < hStart {
-			hEnd = hStart
-		}
+		// Split hunks that straddle entity boundaries (context overlap,
+		// whole-new-file hunks) so each piece maps to exactly one entity.
+		for _, h := range splitHunkAtEntities(f.Hunks[i], entities) {
+			hStart := h.NewStart
+			hEnd := h.NewStart + h.NewLines - 1
+			if hEnd < hStart {
+				hEnd = hStart
+			}
 
-		best := findEnclosingEntity(entities, hStart, hEnd)
-		if best != nil {
-			key := best.Kind + "::" + best.Name
-			addHunk(key, best, h)
-		} else {
-			// Preamble: lines not inside any named entity.
-			// Group all such hunks under a single preamble snippet.
-			addHunk("__preamble__", nil, h)
+			best := findEnclosingEntity(entities, hStart, hEnd)
+			if best != nil {
+				key := best.Kind + "::" + best.Name
+				addHunk(key, best, h)
+			} else {
+				// Preamble: lines not inside any named entity.
+				// Group all such hunks under a single preamble snippet.
+				addHunk("__preamble__", nil, h)
+			}
 		}
 	}
 

@@ -31,13 +31,25 @@
       "endLine": 5,
       "depth": 1,
       "diffLines": [
-        "@@ -0,0 +1,7 @@",
-        "+package api",
-        "+",
+        "@@ -0,0 +3,3 @@",
         "+func handle(cfg int) {",
         "+\tparse(cfg)",
-        "+}",
-        "+",
+        "+}"
+      ]
+    },
+    {
+      "id": "1121ac6db7aba507",
+      "filePath": "api/handler.go",
+      "oldPath": "api/handler.go",
+      "language": "go",
+      "symbolPath": "parse",
+      "nodeType": "function",
+      "isNew": true,
+      "startLine": 7,
+      "endLine": 7,
+      "depth": 2,
+      "diffLines": [
+        "@@ -0,0 +7,1 @@",
         "+func parse(cfg int) {}"
       ]
     },
@@ -59,9 +71,34 @@
         "   return 1;",
         " }"
       ]
+    },
+    {
+      "id": "4689c43ac1e86442",
+      "filePath": "api/handler.go",
+      "oldPath": "api/handler.go",
+      "language": "go",
+      "symbolPath": "",
+      "nodeType": "hunk",
+      "isNew": true,
+      "startLine": 1,
+      "endLine": 2,
+      "depth": 0,
+      "diffLines": [
+        "@@ -0,0 +1,2 @@",
+        "+package api",
+        "+",
+        "@@ -0,0 +6,1 @@",
+        "+"
+      ]
     }
   ],
   "edges": [
+    {
+      "from": "061854a2fbda336c",
+      "to": "1121ac6db7aba507",
+      "kind": "call",
+      "callLine": 4
+    },
     {
       "from": "b0884ecbea957095",
       "to": "061854a2fbda336c",
@@ -75,18 +112,28 @@
         "id": "b0884ecbea957095",
         "children": [
           {
-            "id": "061854a2fbda336c"
+            "id": "061854a2fbda336c",
+            "children": [
+              {
+                "id": "1121ac6db7aba507"
+              }
+            ]
           }
         ]
       },
       {
         "id": "4c84fd1eea4b9e23"
+      },
+      {
+        "id": "4689c43ac1e86442"
       }
     ]
   },
   "flatOrder": [
     "b0884ecbea957095",
     "061854a2fbda336c",
-    "4c84fd1eea4b9e23"
+    "1121ac6db7aba507",
+    "4c84fd1eea4b9e23",
+    "4689c43ac1e86442"
   ]
 }
