@@ -23,22 +23,22 @@ const (
 	PresetClusters
 )
 
-// SymbolEdge represents a directed import/call dependency from one snippet to another.
-type SymbolEdge struct {
-	From string // snippet ID
-	To   string // snippet ID
-}
-
 // OrderSnippets reorders snippets according to the selected preset.
 // It assigns Snippet.Depth for each snippet and returns a new ordered slice.
 // The input slice is not modified.
+//
+// Depth (and thus top-down/bottom-up order) is computed from call edges
+// only; import edges are file-granularity and would draw an edge to every
+// snippet of the imported file. Import edges still contribute to the
+// clusters preset, which groups by connected component.
 func OrderSnippets(snippets []*Snippet, edges []SymbolEdge, preset Preset) []*Snippet {
 	if len(snippets) == 0 {
 		return snippets
 	}
 
-	// Build adjacency map and in-degree count.
-	adj := make(map[string][]string, len(snippets))      // id → []id (forward edges)
+	// Build adjacency maps and in-degree count.
+	adj := make(map[string][]string, len(snippets))    // call edges: id → []id
+	adjAll := make(map[string][]string, len(snippets)) // all edges, for clustering
 	inDegree := make(map[string]int, len(snippets))
 
 	for _, s := range snippets {
@@ -48,6 +48,10 @@ func OrderSnippets(snippets []*Snippet, edges []SymbolEdge, preset Preset) []*Sn
 		}
 	}
 	for _, e := range edges {
+		adjAll[e.From] = append(adjAll[e.From], e.To)
+		if e.Kind != EdgeCall {
+			continue
+		}
 		adj[e.From] = append(adj[e.From], e.To)
 		inDegree[e.To]++
 	}
@@ -112,7 +116,7 @@ func OrderSnippets(snippets []*Snippet, edges []SymbolEdge, preset Preset) []*Sn
 		})
 
 	case PresetClusters:
-		out = clusterOrder(out, adj)
+		out = clusterOrder(out, adjAll)
 	}
 
 	return out

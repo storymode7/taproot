@@ -31,7 +31,7 @@ func BuildEdgesFromDiff(snippets []*Snippet) []SymbolEdge {
 				}
 				for _, t := range targets {
 					if t.ID != s.ID {
-						edges = append(edges, SymbolEdge{From: s.ID, To: t.ID})
+						edges = append(edges, SymbolEdge{From: s.ID, To: t.ID, Kind: EdgeImport})
 					}
 				}
 			}

@@ -150,8 +150,9 @@ func run(args []string) error {
 		return nil
 	}
 
-	// Build symbol graph (heuristic from diff lines; full wazero AST later).
-	edges := engine.BuildEdgesFromDiff(snippets)
+	// Build symbol graph: call edges between changed entities drive review
+	// order; import edges only group snippets into clusters.
+	edges := append(engine.BuildCallEdges(snippets), engine.BuildEdgesFromDiff(snippets)...)
 
 	// Order snippets.
 	ordered := engine.OrderSnippets(snippets, edges, preset)

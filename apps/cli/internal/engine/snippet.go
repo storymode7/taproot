@@ -60,6 +60,11 @@ type Snippet struct {
 	// DiffLines are the raw unified-diff lines for this snippet.
 	DiffLines []string
 
+	// Body is the full post-image source of the entity ([StartLine, EndLine]),
+	// without diff sigils. Set only for entity snippets; used by the call
+	// scanner to find references to other changed entities.
+	Body []string
+
 	// Depth is set by the ordering engine (call-graph distance from root).
 	Depth int
 
@@ -199,9 +204,14 @@ func entitySnippets(f *diff.FileDiff, entities []Entity, src []byte) []*Snippet 
 		// If the entity is large we could trim, but for now keep it whole.
 		diffLines := trimRedundantHunkHeaders(g.hunkLines)
 
-		// If this is a new file and the entity covers the whole source,
-		// keep the diff lines as-is without attaching entity context.
-		_ = sourceLines // reserved for future context-expansion
+		var body []string
+		if g.entity != nil && startLine >= 1 && startLine <= len(sourceLines) {
+			end := endLine
+			if end > len(sourceLines) {
+				end = len(sourceLines)
+			}
+			body = sourceLines[startLine-1 : end]
+		}
 
 		s := &Snippet{
 			FilePath:   f.Path,
@@ -213,6 +223,7 @@ func entitySnippets(f *diff.FileDiff, entities []Entity, src []byte) []*Snippet 
 			StartLine:  startLine,
 			EndLine:    endLine,
 			DiffLines:  diffLines,
+			Body:       body,
 			Status:     StatusPending,
 		}
 		s.ID = snippetID(f.Path, s.SymbolPath, s.StartLine)
