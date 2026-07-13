@@ -1,4 +1,4 @@
-package engine
+package core
 
 // EdgeKind distinguishes edge provenance in the symbol graph.
 type EdgeKind int

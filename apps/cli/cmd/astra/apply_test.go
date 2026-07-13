@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/astra-review/astra/apps/cli/internal/engine"
+	"github.com/astra-review/astra/core"
 )
 
-func snippet(filePath, oldPath string, isNew bool, startLine int, diffLines ...string) *engine.Snippet {
-	return &engine.Snippet{
+func snippet(filePath, oldPath string, isNew bool, startLine int, diffLines ...string) *core.Snippet {
+	return &core.Snippet{
 		FilePath:  filePath,
 		OldPath:   oldPath,
 		IsNew:     isNew,
@@ -21,13 +21,13 @@ func TestBuildAcceptedPatch_Empty(t *testing.T) {
 	if patch := buildAcceptedPatch(nil); patch != "" {
 		t.Errorf("expected empty patch, got %q", patch)
 	}
-	if patch := buildAcceptedPatch([]*engine.Snippet{}); patch != "" {
+	if patch := buildAcceptedPatch([]*core.Snippet{}); patch != "" {
 		t.Errorf("expected empty patch for empty slice, got %q", patch)
 	}
 }
 
 func TestBuildAcceptedPatch_SingleHunk(t *testing.T) {
-	snippets := []*engine.Snippet{
+	snippets := []*core.Snippet{
 		snippet("foo.go", "foo.go", false, 5,
 			"@@ -5,3 +5,4 @@", " ctx", "+// added", " line2", " line3"),
 	}
@@ -48,7 +48,7 @@ func TestBuildAcceptedPatch_SingleHunk(t *testing.T) {
 
 func TestBuildAcceptedPatch_MultiHunkSameFile_SortedByStartLine(t *testing.T) {
 	// Provide hunks in reverse order — result must sort them by start line.
-	snippets := []*engine.Snippet{
+	snippets := []*core.Snippet{
 		snippet("foo.go", "foo.go", false, 20, "@@ -20,2 +20,2 @@", "-old2", "+new2"),
 		snippet("foo.go", "foo.go", false, 5, "@@ -5,2 +5,2 @@", "-old1", "+new1"),
 	}
@@ -70,7 +70,7 @@ func TestBuildAcceptedPatch_MultiHunkSameFile_SortedByStartLine(t *testing.T) {
 }
 
 func TestBuildAcceptedPatch_MultiFile(t *testing.T) {
-	snippets := []*engine.Snippet{
+	snippets := []*core.Snippet{
 		snippet("a.go", "a.go", false, 1, "@@ -1,1 +1,1 @@", "-x", "+y"),
 		snippet("b.go", "b.go", false, 1, "@@ -1,1 +1,1 @@", "-p", "+q"),
 	}
@@ -90,7 +90,7 @@ func TestBuildAcceptedPatch_MultiFile(t *testing.T) {
 }
 
 func TestBuildAcceptedPatch_Rename(t *testing.T) {
-	snippets := []*engine.Snippet{
+	snippets := []*core.Snippet{
 		snippet("new_name.go", "old_name.go", false, 1, "@@ -1,1 +1,1 @@", "-old", "+new"),
 	}
 	patch := buildAcceptedPatch(snippets)
@@ -104,7 +104,7 @@ func TestBuildAcceptedPatch_Rename(t *testing.T) {
 
 func TestBuildAcceptedPatch_NewFile_UsesDevNull(t *testing.T) {
 	// New files: IsNew=true, OldPath matches FilePath (from git diff header).
-	snippets := []*engine.Snippet{
+	snippets := []*core.Snippet{
 		snippet("brand_new.go", "brand_new.go", true, 1,
 			"@@ -0,0 +1,3 @@", "+package main", "+", "+func init() {}"),
 	}
@@ -119,7 +119,7 @@ func TestBuildAcceptedPatch_NewFile_UsesDevNull(t *testing.T) {
 
 func TestBuildAcceptedPatch_OldPathEmpty_FallsBackToFilePath(t *testing.T) {
 	// If OldPath is empty for some reason, FilePath is used.
-	snippets := []*engine.Snippet{
+	snippets := []*core.Snippet{
 		{FilePath: "foo.go", OldPath: "", IsNew: false, StartLine: 1,
 			DiffLines: []string{"@@ -1,1 +1,1 @@", "-a", "+b"}},
 	}

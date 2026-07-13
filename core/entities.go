@@ -12,7 +12,7 @@
 //
 // Accuracy priority: never merge two distinct named entities into one snippet.
 // If a boundary is ambiguous, split conservatively (produce more snippets).
-package engine
+package core
 
 import (
 	"regexp"

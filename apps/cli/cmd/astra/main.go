@@ -15,9 +15,9 @@ import (
 	"strings"
 
 	"github.com/astra-review/astra/apps/cli/internal/diff"
-	"github.com/astra-review/astra/apps/cli/internal/engine"
 	"github.com/astra-review/astra/apps/cli/internal/state"
 	"github.com/astra-review/astra/apps/cli/internal/tui"
+	"github.com/astra-review/astra/core"
 )
 
 const usage = `astra — AST-aware PR diff reviewer
@@ -144,10 +144,19 @@ func run(args []string) error {
 		return nil
 	}
 
+	// Fill in post-image source so the core can extract entity boundaries
+	// and call sites (the core is pure — all I/O happens here).
+	for _, f := range files {
+		if f.Language == "" || f.IsDeleted || f.IsBinary {
+			continue
+		}
+		if src, err := adapter.FileBlob(diff.BlobRequest{Path: f.Path}); err == nil {
+			f.Source = src
+		}
+	}
+
 	// Build snippets using entity-aware splitting.
-	// The adapter implements BlobFetcher so we can fetch full file source
-	// to extract function/class/type boundaries from the post-image.
-	snippets := engine.BuildSnippets(files, adapter)
+	snippets := core.BuildSnippets(files)
 	if len(snippets) == 0 {
 		fmt.Println("No reviewable snippets found.")
 		return nil
@@ -155,13 +164,13 @@ func run(args []string) error {
 
 	// Build symbol graph: call edges between changed entities drive review
 	// order; import edges only group snippets into clusters.
-	edges := append(engine.BuildCallEdges(snippets), engine.BuildEdgesFromDiff(snippets)...)
+	edges := append(core.BuildCallEdges(snippets), core.BuildEdgesFromDiff(snippets)...)
 
 	// Build the review forest and its flattened reading order.
-	forest := engine.BuildForest(snippets, edges)
-	order := engine.OrderPre
-	if preset == engine.PresetBottomUp {
-		order = engine.OrderPost
+	forest := core.BuildForest(snippets, edges)
+	order := core.OrderPre
+	if preset == core.PresetBottomUp {
+		order = core.OrderPost
 	}
 	ordered := forest.Flatten(order)
 
@@ -173,7 +182,7 @@ func run(args []string) error {
 	var onQuit func() error
 	if applyMode {
 		onQuit = func() error {
-			var accepted []*engine.Snippet
+			var accepted []*core.Snippet
 			for _, s := range ordered {
 				if st := store.Get(s.ID); st.Status == "accepted" {
 					accepted = append(accepted, s)
@@ -196,14 +205,14 @@ func run(args []string) error {
 	return runner.Run()
 }
 
-func parsePreset(name string) (engine.Preset, error) {
+func parsePreset(name string) (core.Preset, error) {
 	switch name {
 	case "top-down":
-		return engine.PresetTopDown, nil
+		return core.PresetTopDown, nil
 	case "bottom-up":
-		return engine.PresetBottomUp, nil
+		return core.PresetBottomUp, nil
 	case "clusters":
-		return engine.PresetClusters, nil
+		return core.PresetClusters, nil
 	default:
 		return 0, fmt.Errorf("unknown preset %q (want: top-down, bottom-up, clusters)", name)
 	}

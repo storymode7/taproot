@@ -14,7 +14,7 @@
 //
 // Bare type references (var c Config) are deliberately not matched — calls
 // and constructions are the edges that define reading order.
-package engine
+package core
 
 import (
 	"sort"

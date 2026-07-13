@@ -10,7 +10,7 @@
 // extra callers get a Ref leaf pointing at the canonical node, and the
 // canonical node records them in AlsoCalledBy — review state stays
 // unambiguous, one node per snippet.
-package engine
+package core
 
 import "sort"
 

@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/astra-review/astra/apps/cli/internal/engine"
 	"github.com/astra-review/astra/apps/cli/internal/state"
+	"github.com/astra-review/astra/core"
 )
 
 // Colors (ANSI escape codes, reset-safe)
@@ -32,7 +32,7 @@ const (
 // View renders the full list of snippets to stdout.
 // This is the non-interactive "print and exit" mode used when stdout is
 // not a TTY (e.g. piped to `less`).
-func View(snippets []*engine.Snippet, store *state.Store) {
+func View(snippets []*core.Snippet, store *state.Store) {
 	for i, s := range snippets {
 		st := store.Get(s.ID)
 		// Indent by call-tree depth so the drill-down structure survives
@@ -43,7 +43,7 @@ func View(snippets []*engine.Snippet, store *state.Store) {
 	}
 }
 
-func printSnippetHeader(idx, total int, s *engine.Snippet, status, indent string) {
+func printSnippetHeader(idx, total int, s *core.Snippet, status, indent string) {
 	statusBadge := statusBadge(status)
 	depth := fmt.Sprintf("depth:%d", s.Depth)
 
@@ -95,8 +95,8 @@ func statusBadge(status string) string {
 
 // Runner holds interactive session state.
 type Runner struct {
-	forest      *engine.ReviewForest
-	flat        []*engine.Snippet // pre-order canonical snippets (]/[ nav, progress)
+	forest      *core.ReviewForest
+	flat        []*core.Snippet // pre-order canonical snippets (]/[ nav, progress)
 	store       *state.Store
 	autoAdvance bool // jump to the next pending snippet after accept/reject/reviewed
 	applyMode   bool // stage accepted hunks on quit (--apply mode)
@@ -113,10 +113,10 @@ type Runner struct {
 // autoAdvance controls whether the cursor jumps to the next pending snippet
 // after the user accepts, rejects, or marks a snippet as reviewed.
 // applyMode enables git-staging on quit; onQuit is the staging callback (may be nil).
-func NewRunner(forest *engine.ReviewForest, store *state.Store, autoAdvance, applyMode bool, onQuit func() error) *Runner {
+func NewRunner(forest *core.ReviewForest, store *state.Store, autoAdvance, applyMode bool, onQuit func() error) *Runner {
 	return &Runner{
 		forest:      forest,
-		flat:        forest.Flatten(engine.OrderPre),
+		flat:        forest.Flatten(core.OrderPre),
 		store:       store,
 		autoAdvance: autoAdvance,
 		applyMode:   applyMode,
@@ -212,7 +212,7 @@ func readKey() string {
 	return "\033" + string(seq[:n])
 }
 
-func (r *Runner) currentNode() *engine.ReviewNode {
+func (r *Runner) currentNode() *core.ReviewNode {
 	if len(r.tree.visible) == 0 {
 		return nil
 	}
@@ -358,7 +358,7 @@ func (r *Runner) gotoPending(dir int) {
 }
 
 // renderedDiff returns (and caches) the highlighted diff lines for a snippet.
-func (r *Runner) renderedDiff(s *engine.Snippet, width int) []string {
+func (r *Runner) renderedDiff(s *core.Snippet, width int) []string {
 	if lines, ok := r.diffCache[s.ID]; ok {
 		return lines
 	}

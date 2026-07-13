@@ -2,34 +2,15 @@
 // adapters (local git, GitHub session, GitHub public API) must produce.
 package diff
 
-// FileDiff is a single changed file within a PR or working-tree diff.
-type FileDiff struct {
-	// Path is the file path relative to repo root (new path on renames).
-	Path string
-	// OldPath is set on renames; equals Path otherwise.
-	OldPath string
-	// Language is the detected language identifier (e.g. "typescript", "go").
-	// Empty string means the language is unsupported / unknown.
-	Language string
-	// Hunks contains all diff hunks for this file.
-	Hunks []Hunk
-	// IsBinary is true for binary files (no hunk content).
-	IsBinary bool
-	// IsNew is true when the file was added in this diff.
-	IsNew bool
-	// IsDeleted is true when the file was removed in this diff.
-	IsDeleted bool
-}
+import "github.com/astra-review/astra/core"
 
-// Hunk is a contiguous block of changes within a file.
-type Hunk struct {
-	// OldStart and OldLines describe the range in the pre-image.
-	OldStart, OldLines int
-	// NewStart and NewLines describe the range in the post-image.
-	NewStart, NewLines int
-	// Lines holds the raw unified-diff lines (each prefixed with ' ', '+', or '-').
-	Lines []string
-}
+// FileDiff and Hunk are defined in the pure core package (which the WASM
+// build for the browser surfaces also uses); aliased here so adapters keep
+// their existing API.
+type (
+	FileDiff = core.FileDiff
+	Hunk     = core.Hunk
+)
 
 // PRMeta holds top-level metadata about a pull request.
 type PRMeta struct {
@@ -51,9 +32,9 @@ type BlobRequest struct {
 
 // ReviewComment is a comment to post on a specific line of a file.
 type ReviewComment struct {
-	Path    string
-	Line    int // line number in the post-image
-	Body    string
+	Path string
+	Line int // line number in the post-image
+	Body string
 	// ReplyToID is set when the comment is a reply; 0 for top-level.
 	ReplyToID int64
 }

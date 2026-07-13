@@ -1,5 +1,5 @@
 // Package engine provides the snippet ordering engine.
-package engine
+package core
 
 // Preset controls the snippet ordering algorithm.
 type Preset int

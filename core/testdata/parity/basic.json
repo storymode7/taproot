@@ -1,0 +1,78 @@
+{
+  "files": [
+    {
+      "path": "cmd/main.go",
+      "oldPath": "cmd/main.go",
+      "language": "go",
+      "hunks": [
+        {
+          "oldStart": 3,
+          "oldLines": 4,
+          "newStart": 3,
+          "newLines": 5,
+          "lines": [
+            "@@ -3,4 +3,5 @@",
+            " func main() {",
+            " \tcfg := load()",
+            "+\thandle(cfg)",
+            " }"
+          ]
+        }
+      ],
+      "source": "package main\n\nfunc main() {\n\tcfg := load()\n\thandle(cfg)\n}\n\nfunc load() int {\n\treturn 1\n}\n",
+      "entities": []
+    },
+    {
+      "path": "api/handler.go",
+      "oldPath": "api/handler.go",
+      "language": "go",
+      "isNew": true,
+      "hunks": [
+        {
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 7,
+          "lines": [
+            "@@ -0,0 +1,7 @@",
+            "+package api",
+            "+",
+            "+func handle(cfg int) {",
+            "+\tparse(cfg)",
+            "+}",
+            "+",
+            "+func parse(cfg int) {}"
+          ]
+        }
+      ],
+      "source": "package api\n\nfunc handle(cfg int) {\n\tparse(cfg)\n}\n\nfunc parse(cfg int) {}\n",
+      "entities": []
+    },
+    {
+      "path": "web/app.ts",
+      "oldPath": "web/app.ts",
+      "language": "typescript",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 3,
+          "newStart": 1,
+          "newLines": 4,
+          "lines": [
+            "@@ -1,3 +1,4 @@",
+            " export function boot() {",
+            "+  render();",
+            "   return 1;",
+            " }"
+          ]
+        }
+      ],
+      "source": "export function boot() {\n  render();\n  return 1;\n}\n\nfunction render() {}\n",
+      "entities": [
+        { "name": "boot", "kind": "function", "startLine": 1, "endLine": 4 },
+        { "name": "render", "kind": "function", "startLine": 6, "endLine": 6 }
+      ]
+    }
+  ],
+  "options": { "order": "pre" }
+}

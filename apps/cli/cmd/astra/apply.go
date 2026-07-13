@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/astra-review/astra/apps/cli/internal/engine"
+	"github.com/astra-review/astra/core"
 )
 
 // buildAcceptedPatch constructs a unified diff patch from the given accepted snippets.
@@ -13,7 +13,7 @@ import (
 // Snippets are grouped by file path and sorted by StartLine within each file so
 // that git apply receives hunks in order. Returns an empty string when the input
 // slice is empty.
-func buildAcceptedPatch(accepted []*engine.Snippet) string {
+func buildAcceptedPatch(accepted []*core.Snippet) string {
 	if len(accepted) == 0 {
 		return ""
 	}
@@ -23,7 +23,7 @@ func buildAcceptedPatch(accepted []*engine.Snippet) string {
 		oldPath  string
 		filePath string
 		isNew    bool
-		snippets []*engine.Snippet
+		snippets []*core.Snippet
 	}
 
 	groups := make(map[string]*fileGroup)

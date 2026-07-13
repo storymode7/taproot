@@ -120,7 +120,7 @@ func deltaInput(filePath string, diffLines []string) string {
 func runDeltaDirect(w io.Writer, filePath string, diffLines []string) error {
 	cmd := exec.Command("delta", deltaArgs()...)
 	cmd.Stdin = strings.NewReader(deltaInput(filePath, diffLines))
-	cmd.Stdout = w  // direct write — delta sees the real TTY
+	cmd.Stdout = w // direct write — delta sees the real TTY
 	cmd.Stderr = io.Discard
 	return cmd.Run()
 }

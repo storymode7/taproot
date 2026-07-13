@@ -1,26 +1,28 @@
-// Package engine builds Snippets from FileDiffs.
+// Package core is Astra's pure diff-review engine: snippets, entities, call
+// edges, and the review forest. It does no I/O — adapters on each surface
+// (CLI git, extension, PWA) feed it FileDiffs with post-image Source and it
+// returns structure. That purity is what lets one implementation serve the
+// CLI natively and the browser surfaces via a WASM build.
 //
 // The core idea: each Snippet is the smallest named entity (function, method,
 // class, type declaration, const/var block) that encloses one or more changed
 // hunks. Multiple hunks that fall inside the same entity are merged into a
 // single Snippet so the reviewer sees the whole function at once.
 //
-// When full file source is available (via the BlobFetcher), we extract entity
-// boundaries using language-aware heuristics and map every hunk to its
-// enclosing entity. Hunks that fall outside any named entity (e.g. top-level
-// package declarations, bare imports) are grouped into an "imports" or
-// "preamble" snippet.
+// When FileDiff.Source is set, we extract entity boundaries using
+// language-aware heuristics and map every hunk to its enclosing entity.
+// Hunks that fall outside any named entity (e.g. top-level package
+// declarations, bare imports) are grouped into an "imports" or "preamble"
+// snippet.
 //
 // When no source is available the fallback is one snippet per raw hunk —
-// identical to the old behaviour, used only for unsupported languages.
-package engine
+// used only for unsupported languages or sourceless adapters.
+package core
 
 import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
-
-	"github.com/astra-review/astra/apps/cli/internal/diff"
 )
 
 // Snippet is a reviewable unit: the smallest named AST entity that encloses
@@ -86,43 +88,35 @@ func (s SnippetStatus) String() string {
 	return [...]string{"pending", "reviewed", "accepted", "rejected"}[s]
 }
 
-// BlobFetcher retrieves the full source content of a file at HEAD (post-image).
-// GitDiffAdapter implements this; pass nil to use fallback hunk-only mode.
-type BlobFetcher interface {
-	FileBlob(req diff.BlobRequest) ([]byte, error)
-}
-
 // BuildSnippets converts FileDiffs into Snippets.
 //
-// For each file, the full post-image source is fetched via fetcher so that
-// entity boundaries (functions, classes, etc.) can be extracted. Each diff
-// hunk is then mapped to its enclosing entity; hunks sharing an entity are
-// merged into a single Snippet.
+// For each file with post-image Source, entity boundaries (functions,
+// classes, etc.) are extracted and each diff hunk mapped to its enclosing
+// entity; hunks sharing an entity merge into a single Snippet.
 //
-// Pass fetcher=nil to run in fallback mode: one Snippet per raw hunk with no
-// entity grouping. This is used for unsupported languages or when the adapter
-// cannot provide file blobs.
-func BuildSnippets(files []*diff.FileDiff, fetcher BlobFetcher) []*Snippet {
+// Files without Source (or with an unsupported language) fall back to one
+// Snippet per raw hunk with no entity grouping.
+func BuildSnippets(files []*FileDiff) []*Snippet {
 	var snippets []*Snippet
 	for _, f := range files {
 		if f.IsDeleted || f.IsBinary || len(f.Hunks) == 0 {
 			continue
 		}
-		snippets = append(snippets, fileSnippets(f, fetcher)...)
+		snippets = append(snippets, fileSnippets(f)...)
 	}
 	return snippets
 }
 
 // fileSnippets builds snippets for one changed file.
-func fileSnippets(f *diff.FileDiff, fetcher BlobFetcher) []*Snippet {
-	// Attempt entity-based splitting when we have a fetcher and a known language.
-	if fetcher != nil && f.Language != "" {
-		src, err := fetcher.FileBlob(diff.BlobRequest{Path: f.Path})
-		if err == nil && len(src) > 0 {
-			entities := ExtractEntities(src, f.Language)
-			if len(entities) > 0 {
-				return entitySnippets(f, entities, src)
-			}
+func fileSnippets(f *FileDiff) []*Snippet {
+	// Attempt entity-based splitting when we have source and a known language.
+	if len(f.Source) > 0 && f.Language != "" {
+		entities := f.Entities
+		if len(entities) == 0 {
+			entities = ExtractEntities(f.Source, f.Language)
+		}
+		if len(entities) > 0 {
+			return entitySnippets(f, entities, f.Source)
 		}
 	}
 	return heuristicSnippets(f)
@@ -139,7 +133,7 @@ func fileSnippets(f *diff.FileDiff, fetcher BlobFetcher) []*Snippet {
 //     (keyed on the file path so all uncovered hunks collapse together).
 //  3. Group hunks by entity, then build one Snippet per group from the merged
 //     diff lines in hunk order.
-func entitySnippets(f *diff.FileDiff, entities []Entity, src []byte) []*Snippet {
+func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	type group struct {
 		entity    *Entity // nil == preamble
 		hunkLines []string
@@ -151,7 +145,7 @@ func entitySnippets(f *diff.FileDiff, entities []Entity, src []byte) []*Snippet 
 	var order []string
 	groups := make(map[string]*group)
 
-	addHunk := func(key string, ent *Entity, h diff.Hunk) {
+	addHunk := func(key string, ent *Entity, h Hunk) {
 		if _, ok := groups[key]; !ok {
 			order = append(order, key)
 			sl, el := h.NewStart, h.NewStart+h.NewLines-1
@@ -298,7 +292,7 @@ func trimRedundantHunkHeaders(lines []string) []string {
 
 // heuristicSnippets creates one snippet per hunk (no entity grouping).
 // Used as a fallback for unsupported languages or when no file blob is available.
-func heuristicSnippets(f *diff.FileDiff) []*Snippet {
+func heuristicSnippets(f *FileDiff) []*Snippet {
 	snippets := make([]*Snippet, 0, len(f.Hunks))
 	for _, h := range f.Hunks {
 		s := &Snippet{

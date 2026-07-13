@@ -1,20 +1,9 @@
-package engine
+package core
 
 import (
 	"strings"
 	"testing"
-
-	"github.com/astra-review/astra/apps/cli/internal/diff"
 )
-
-// mockFetcher satisfies BlobFetcher with fixed source bytes keyed by path.
-type mockFetcher struct {
-	blobs map[string][]byte
-}
-
-func (m *mockFetcher) FileBlob(req diff.BlobRequest) ([]byte, error) {
-	return m.blobs[req.Path], nil
-}
 
 // ---------------------------------------------------------------------------
 // Entity splitting: two distinct functions → two snippets
@@ -32,12 +21,12 @@ func Beta() {
 }
 `)
 
-	files := []*diff.FileDiff{
+	files := []*FileDiff{
 		{
 			Path:     "foo.go",
 			OldPath:  "foo.go",
 			Language: "go",
-			Hunks: []diff.Hunk{
+			Hunks: []Hunk{
 				{
 					OldStart: 3, OldLines: 3, NewStart: 3, NewLines: 3,
 					Lines: []string{"@@ -3,3 +3,3 @@", " func Alpha() {", "-\tdoSomething()", "+\tdoSomethingNew()"},
@@ -50,8 +39,8 @@ func Beta() {
 		},
 	}
 
-	fetcher := &mockFetcher{blobs: map[string][]byte{"foo.go": src}}
-	snippets := BuildSnippets(files, fetcher)
+	files[0].Source = src
+	snippets := BuildSnippets(files)
 
 	if len(snippets) != 2 {
 		t.Fatalf("expected 2 snippets (one per function), got %d", len(snippets))
@@ -84,12 +73,12 @@ func Process(items []string) []string {
 }
 `)
 
-	files := []*diff.FileDiff{
+	files := []*FileDiff{
 		{
 			Path:     "proc.go",
 			OldPath:  "proc.go",
 			Language: "go",
-			Hunks: []diff.Hunk{
+			Hunks: []Hunk{
 				{
 					OldStart: 4, OldLines: 1, NewStart: 4, NewLines: 1,
 					Lines: []string{"@@ -4,1 +4,1 @@", "-\tvar out []string", "+\tout := make([]string, 0, len(items))"},
@@ -102,8 +91,8 @@ func Process(items []string) []string {
 		},
 	}
 
-	fetcher := &mockFetcher{blobs: map[string][]byte{"proc.go": src}}
-	snippets := BuildSnippets(files, fetcher)
+	files[0].Source = src
+	snippets := BuildSnippets(files)
 
 	if len(snippets) != 1 {
 		t.Fatalf("expected 1 merged snippet for Process, got %d: %v", len(snippets), symbolPaths(snippets))
@@ -121,16 +110,16 @@ func Process(items []string) []string {
 }
 
 // ---------------------------------------------------------------------------
-// Fallback (no fetcher): one snippet per hunk, NodeType = "hunk"
+// Fallback (no source): one snippet per hunk, NodeType = "hunk"
 // ---------------------------------------------------------------------------
 
 func TestBuildSnippets_FallbackWithNoFetcher(t *testing.T) {
-	files := []*diff.FileDiff{
+	files := []*FileDiff{
 		{
 			Path:     "foo.go",
 			OldPath:  "foo.go",
 			Language: "go",
-			Hunks: []diff.Hunk{
+			Hunks: []Hunk{
 				{
 					OldStart: 1, OldLines: 3, NewStart: 1, NewLines: 4,
 					Lines: []string{"@@ -1,3 +1,4 @@", "+// new", " existing"},
@@ -142,7 +131,7 @@ func TestBuildSnippets_FallbackWithNoFetcher(t *testing.T) {
 			},
 		},
 	}
-	snippets := BuildSnippets(files, nil)
+	snippets := BuildSnippets(files)
 	if len(snippets) != 2 {
 		t.Fatalf("fallback: expected 2 snippets (one per hunk), got %d", len(snippets))
 	}
@@ -163,12 +152,12 @@ func TestBuildSnippets_PreambleGrouping(t *testing.T) {
 func Foo() {}
 `)
 
-	files := []*diff.FileDiff{
+	files := []*FileDiff{
 		{
 			Path:     "p.go",
 			OldPath:  "p.go",
 			Language: "go",
-			Hunks: []diff.Hunk{
+			Hunks: []Hunk{
 				{
 					OldStart: 1, OldLines: 1, NewStart: 1, NewLines: 1,
 					Lines: []string{"@@ -1,1 +1,1 @@", "-package bar", "+package foo"},
@@ -177,8 +166,8 @@ func Foo() {}
 		},
 	}
 
-	fetcher := &mockFetcher{blobs: map[string][]byte{"p.go": src}}
-	snippets := BuildSnippets(files, fetcher)
+	files[0].Source = src
+	snippets := BuildSnippets(files)
 
 	if len(snippets) != 1 {
 		t.Fatalf("expected 1 preamble snippet, got %d", len(snippets))

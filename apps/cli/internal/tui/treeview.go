@@ -6,20 +6,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/astra-review/astra/apps/cli/internal/engine"
 	"github.com/astra-review/astra/apps/cli/internal/state"
+	"github.com/astra-review/astra/core"
 )
 
 // visRow is one visible row of the tree pane.
 type visRow struct {
-	node  *engine.ReviewNode
+	node  *core.ReviewNode
 	depth int
 }
 
 // treeState tracks which canonical nodes are expanded and which rows that
 // makes visible.
 type treeState struct {
-	forest   *engine.ReviewForest
+	forest   *core.ReviewForest
 	expanded map[string]bool
 	visible  []visRow
 	top      int // first tree row currently on screen
@@ -29,7 +29,7 @@ type treeState struct {
 // larger ones start with roots only.
 const autoExpandLimit = 30
 
-func newTreeState(forest *engine.ReviewForest) *treeState {
+func newTreeState(forest *core.ReviewForest) *treeState {
 	t := &treeState{forest: forest, expanded: make(map[string]bool)}
 	if len(forest.ByID) <= autoExpandLimit {
 		t.expandAllNodes()
@@ -40,8 +40,8 @@ func newTreeState(forest *engine.ReviewForest) *treeState {
 
 func (t *treeState) recompute() {
 	t.visible = t.visible[:0]
-	var walk func(n *engine.ReviewNode, depth int)
-	walk = func(n *engine.ReviewNode, depth int) {
+	var walk func(n *core.ReviewNode, depth int)
+	walk = func(n *core.ReviewNode, depth int) {
 		t.visible = append(t.visible, visRow{node: n, depth: depth})
 		if n.Ref || !t.expanded[n.Snippet.ID] {
 			return
