@@ -142,7 +142,7 @@ func (a *GitDiffAdapter) git(args ...string) (string, error) {
 // ---------------------------------------------------------------------------
 
 var (
-	reDiffHeader = regexp.MustCompile(`^diff --git \S+/(.+) \S+/(.+)$`)
+	reDiffHeader = regexp.MustCompile(`^diff --git [^/]+/(.+) [^/]+/(.+)$`)
 	reHunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 )
 

@@ -141,8 +141,10 @@ func run(args []string) error {
 		return nil
 	}
 
-	// Build snippets (heuristic; AST wiring via wazero comes next).
-	snippets := engine.BuildSnippets(files, nil)
+	// Build snippets using entity-aware splitting.
+	// The adapter implements BlobFetcher so we can fetch full file source
+	// to extract function/class/type boundaries from the post-image.
+	snippets := engine.BuildSnippets(files, adapter)
 	if len(snippets) == 0 {
 		fmt.Println("No reviewable snippets found.")
 		return nil

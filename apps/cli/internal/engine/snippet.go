@@ -1,18 +1,33 @@
-// Package engine builds Snippets from FileDiffs and a WASM-based tree-sitter parser.
+// Package engine builds Snippets from FileDiffs.
+//
+// The core idea: each Snippet is the smallest named entity (function, method,
+// class, type declaration, const/var block) that encloses one or more changed
+// hunks. Multiple hunks that fall inside the same entity are merged into a
+// single Snippet so the reviewer sees the whole function at once.
+//
+// When full file source is available (via the BlobFetcher), we extract entity
+// boundaries using language-aware heuristics and map every hunk to its
+// enclosing entity. Hunks that fall outside any named entity (e.g. top-level
+// package declarations, bare imports) are grouped into an "imports" or
+// "preamble" snippet.
+//
+// When no source is available the fallback is one snippet per raw hunk —
+// identical to the old behaviour, used only for unsupported languages.
 package engine
 
 import (
 	"crypto/sha256"
 	"fmt"
+	"strings"
 
 	"github.com/astra-review/astra/apps/cli/internal/diff"
 )
 
-// Snippet is a reviewable unit: the smallest named AST node that encloses
+// Snippet is a reviewable unit: the smallest named AST entity that encloses
 // one or more diff hunks from a single file.
 //
 // A single file may produce multiple Snippets — one per distinct enclosing
-// AST node. This allows the ordering engine to place, e.g., utils.go::formatDate
+// entity. This allows the ordering engine to place, e.g., utils.go::formatDate
 // earlier in the review than utils.go::parseCSV, if the call graph demands it.
 type Snippet struct {
 	// ID is a stable hash: sha256(filePath + "::" + symbolPath + "::" + startLine).
@@ -30,11 +45,12 @@ type Snippet struct {
 	// Language is the detected language ("go", "typescript", etc.)
 	Language string
 
-	// SymbolPath is the dotted name of the enclosing AST node,
+	// SymbolPath is the dotted name of the enclosing entity,
 	// e.g. "MyClass.myMethod". Empty for top-level / unsupported languages.
 	SymbolPath string
 
-	// NodeType is the tree-sitter node type ("function_declaration", "class_body", etc.)
+	// NodeType is the kind of entity ("function", "class", "type", "var",
+	// "const", "imports", "hunk"). "hunk" is used only in fallback mode.
 	NodeType string
 
 	// StartLine and EndLine are 1-indexed line numbers in the post-image.
@@ -65,62 +81,212 @@ func (s SnippetStatus) String() string {
 	return [...]string{"pending", "reviewed", "accepted", "rejected"}[s]
 }
 
+// BlobFetcher retrieves the full source content of a file at HEAD (post-image).
+// GitDiffAdapter implements this; pass nil to use fallback hunk-only mode.
+type BlobFetcher interface {
+	FileBlob(req diff.BlobRequest) ([]byte, error)
+}
+
 // BuildSnippets converts FileDiffs into Snippets.
 //
-// When a tree-sitter parser is available for the file's language, each hunk
-// is mapped to the smallest enclosing named AST node. Multiple hunks in the
-// same AST node are merged into a single Snippet.
+// For each file, the full post-image source is fetched via fetcher so that
+// entity boundaries (functions, classes, etc.) can be extracted. Each diff
+// hunk is then mapped to its enclosing entity; hunks sharing an entity are
+// merged into a single Snippet.
 //
-// For unsupported languages (or when parsing fails), the entire file's
-// hunks are collapsed into one Snippet with an empty SymbolPath.
-//
-// parser is optional; pass nil to use heuristic-only mode (one snippet
-// per hunk, no AST node grouping). A real WASM parser will be wired in
-// once wazero integration is complete.
-func BuildSnippets(files []*diff.FileDiff, parser ASTParser) []*Snippet {
+// Pass fetcher=nil to run in fallback mode: one Snippet per raw hunk with no
+// entity grouping. This is used for unsupported languages or when the adapter
+// cannot provide file blobs.
+func BuildSnippets(files []*diff.FileDiff, fetcher BlobFetcher) []*Snippet {
 	var snippets []*Snippet
 	for _, f := range files {
 		if f.IsDeleted || f.IsBinary || len(f.Hunks) == 0 {
 			continue
 		}
-		snippets = append(snippets, fileSnippets(f, parser)...)
+		snippets = append(snippets, fileSnippets(f, fetcher)...)
 	}
 	return snippets
 }
 
-// ASTParser is the interface for tree-sitter WASM integration.
-// The nil-safe heuristic path is used until wazero wiring is complete.
-type ASTParser interface {
-	// SmallestEnclosingNode returns the symbol path and node type of the
-	// smallest named AST node that contains lines [startLine, endLine]
-	// in the given source bytes.
-	SmallestEnclosingNode(src []byte, lang string, startLine, endLine int) (symbolPath, nodeType string, err error)
-}
-
 // fileSnippets builds snippets for one changed file.
-func fileSnippets(f *diff.FileDiff, parser ASTParser) []*Snippet {
-	if parser == nil || f.Language == "" {
-		return heuristicSnippets(f)
+func fileSnippets(f *diff.FileDiff, fetcher BlobFetcher) []*Snippet {
+	// Attempt entity-based splitting when we have a fetcher and a known language.
+	if fetcher != nil && f.Language != "" {
+		src, err := fetcher.FileBlob(diff.BlobRequest{Path: f.Path})
+		if err == nil && len(src) > 0 {
+			entities := ExtractEntities(src, f.Language)
+			if len(entities) > 0 {
+				return entitySnippets(f, entities, src)
+			}
+		}
 	}
-
-	// For each hunk, ask the parser for its enclosing AST node.
-	// Merge adjacent hunks that share the same enclosing node.
-	type nodeKey struct{ symbolPath, nodeType string }
-	type nodeGroup struct {
-		nodeKey
-		startLine, endLine int
-		diffLines          []string
-	}
-
-	// We'd need the full file source to parse properly; for now fall back
-	// to heuristic until wazero is wired. This is the correct structure to fill.
-	// TODO: fetch file blob via Source.FileBlob() and parse with wazero.
-	_ = parser
 	return heuristicSnippets(f)
 }
 
-// heuristicSnippets creates one snippet per hunk (no AST grouping).
-// Used as a fallback for unsupported languages or before wazero is wired.
+// entitySnippets maps each hunk to its enclosing entity and merges hunks that
+// share an entity into a single Snippet.
+//
+// Algorithm:
+//  1. For every hunk, find the entity whose [StartLine, EndLine] contains the
+//     hunk's [NewStart, NewStart+NewLines-1]. If multiple entities overlap
+//     (shouldn't happen with well-formed source), pick the smallest span.
+//  2. Hunks that don't fall inside any entity go into a "preamble" bucket
+//     (keyed on the file path so all uncovered hunks collapse together).
+//  3. Group hunks by entity, then build one Snippet per group from the merged
+//     diff lines in hunk order.
+func entitySnippets(f *diff.FileDiff, entities []Entity, src []byte) []*Snippet {
+	type group struct {
+		entity    *Entity // nil == preamble
+		hunkLines []string
+		startLine int
+		endLine   int
+	}
+
+	// ordered list of groups, keyed by entity name for deduplication.
+	var order []string
+	groups := make(map[string]*group)
+
+	addHunk := func(key string, ent *Entity, h diff.Hunk) {
+		if _, ok := groups[key]; !ok {
+			order = append(order, key)
+			sl, el := h.NewStart, h.NewStart+h.NewLines-1
+			if ent != nil {
+				sl, el = ent.StartLine, ent.EndLine
+			}
+			groups[key] = &group{entity: ent, startLine: sl, endLine: el}
+		}
+		groups[key].hunkLines = append(groups[key].hunkLines, h.Lines...)
+	}
+
+	for i := range f.Hunks {
+		h := f.Hunks[i]
+		hStart := h.NewStart
+		hEnd := h.NewStart + h.NewLines - 1
+		if hEnd < hStart {
+			hEnd = hStart
+		}
+
+		best := findEnclosingEntity(entities, hStart, hEnd)
+		if best != nil {
+			key := best.Kind + "::" + best.Name
+			addHunk(key, best, h)
+		} else {
+			// Preamble: lines not inside any named entity.
+			// Group all such hunks under a single preamble snippet.
+			addHunk("__preamble__", nil, h)
+		}
+	}
+
+	sourceLines := splitLines(src)
+	snippets := make([]*Snippet, 0, len(order))
+	for _, key := range order {
+		g := groups[key]
+
+		symbolPath := ""
+		nodeType := "hunk"
+		startLine := g.startLine
+		endLine := g.endLine
+
+		if g.entity != nil {
+			symbolPath = g.entity.Name
+			nodeType = g.entity.Kind
+			startLine = g.entity.StartLine
+			endLine = g.entity.EndLine
+		}
+
+		// For display, use the full entity source as context plus the diff
+		// lines. We embed the diff lines as-is (they already carry +/- sigils).
+		// If the entity is large we could trim, but for now keep it whole.
+		diffLines := trimRedundantHunkHeaders(g.hunkLines)
+
+		// If this is a new file and the entity covers the whole source,
+		// keep the diff lines as-is without attaching entity context.
+		_ = sourceLines // reserved for future context-expansion
+
+		s := &Snippet{
+			FilePath:   f.Path,
+			OldPath:    f.OldPath,
+			IsNew:      f.IsNew,
+			Language:   f.Language,
+			SymbolPath: symbolPath,
+			NodeType:   nodeType,
+			StartLine:  startLine,
+			EndLine:    endLine,
+			DiffLines:  diffLines,
+			Status:     StatusPending,
+		}
+		s.ID = snippetID(f.Path, s.SymbolPath, s.StartLine)
+		snippets = append(snippets, s)
+	}
+	return snippets
+}
+
+// findEnclosingEntity returns the entity that best matches the line range
+// [hStart, hEnd]. It prefers the smallest entity that fully contains the
+// range; if none fully contains it, it falls back to the entity with the
+// greatest line overlap (e.g. when a diff adds lines that push past the
+// current entity boundary, or when a hunk straddles two entities).
+func findEnclosingEntity(entities []Entity, hStart, hEnd int) *Entity {
+	// First pass: exact containment — smallest entity that fully wraps the hunk.
+	var best *Entity
+	for i := range entities {
+		e := &entities[i]
+		if e.StartLine <= hStart && e.EndLine >= hEnd {
+			if best == nil || (e.EndLine-e.StartLine) < (best.EndLine-best.StartLine) {
+				best = e
+			}
+		}
+	}
+	if best != nil {
+		return best
+	}
+
+	// Second pass: maximum overlap — for hunks that extend past entity
+	// boundaries (e.g. new lines added at end of a function).
+	bestOverlap := 0
+	for i := range entities {
+		e := &entities[i]
+		// Overlap = intersection length
+		overlapStart := hStart
+		if e.StartLine > overlapStart {
+			overlapStart = e.StartLine
+		}
+		overlapEnd := hEnd
+		if e.EndLine < overlapEnd {
+			overlapEnd = e.EndLine
+		}
+		overlap := overlapEnd - overlapStart + 1
+		if overlap > bestOverlap {
+			bestOverlap = overlap
+			best = e
+		}
+	}
+	return best
+}
+
+// trimRedundantHunkHeaders removes duplicate @@ headers when multiple hunks
+// are merged into a single snippet, keeping one header per logical hunk block.
+func trimRedundantHunkHeaders(lines []string) []string {
+	if len(lines) == 0 {
+		return lines
+	}
+	out := make([]string, 0, len(lines))
+	lastWasHeader := false
+	for _, l := range lines {
+		isHeader := strings.HasPrefix(l, "@@")
+		if isHeader && lastWasHeader {
+			// Replace the previous redundant header.
+			out[len(out)-1] = l
+			continue
+		}
+		out = append(out, l)
+		lastWasHeader = isHeader
+	}
+	return out
+}
+
+// heuristicSnippets creates one snippet per hunk (no entity grouping).
+// Used as a fallback for unsupported languages or when no file blob is available.
 func heuristicSnippets(f *diff.FileDiff) []*Snippet {
 	snippets := make([]*Snippet, 0, len(f.Hunks))
 	for _, h := range f.Hunks {
