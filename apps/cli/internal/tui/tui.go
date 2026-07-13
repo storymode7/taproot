@@ -90,35 +90,48 @@ func statusBadge(status string) string {
 }
 
 // ---------------------------------------------------------------------------
-// Interactive mode (raw terminal)
+// Interactive mode (raw terminal) — call-tree drill-down view
 // ---------------------------------------------------------------------------
 
 // Runner holds interactive session state.
 type Runner struct {
-	snippets    []*engine.Snippet
+	forest      *engine.ReviewForest
+	flat        []*engine.Snippet // pre-order canonical snippets (]/[ nav, progress)
 	store       *state.Store
-	preset      engine.Preset
-	index       int  // current snippet index
-	autoAdvance bool // automatically move to next snippet after accept/reject/reviewed
+	autoAdvance bool // jump to the next pending snippet after accept/reject/reviewed
 	applyMode   bool // stage accepted hunks on quit (--apply mode)
-	onQuit      func() error // called on quit when applyMode is true
+	onQuit      func() error
+
+	tree       *treeState
+	cursor     int // index into tree.visible
+	diffScroll int
+	diffCache  map[string][]string // rendered diff lines per snippet ID
+	cacheCols  int                 // width the cache was rendered at
 }
 
-// NewRunner creates a Runner for interactive review.
-// autoAdvance controls whether the cursor moves to the next snippet automatically
+// NewRunner creates a Runner for interactive tree review.
+// autoAdvance controls whether the cursor jumps to the next pending snippet
 // after the user accepts, rejects, or marks a snippet as reviewed.
 // applyMode enables git-staging on quit; onQuit is the staging callback (may be nil).
-func NewRunner(snippets []*engine.Snippet, store *state.Store, preset engine.Preset, autoAdvance bool, applyMode bool, onQuit func() error) *Runner {
-	return &Runner{snippets: snippets, store: store, preset: preset, autoAdvance: autoAdvance, applyMode: applyMode, onQuit: onQuit}
+func NewRunner(forest *engine.ReviewForest, store *state.Store, autoAdvance, applyMode bool, onQuit func() error) *Runner {
+	return &Runner{
+		forest:      forest,
+		flat:        forest.Flatten(engine.OrderPre),
+		store:       store,
+		autoAdvance: autoAdvance,
+		applyMode:   applyMode,
+		onQuit:      onQuit,
+		tree:        newTreeState(forest),
+		diffCache:   make(map[string][]string),
+	}
 }
 
-// Run starts the interactive loop. Returns when the user quits (q) or
-// reaches the last snippet.
+// Run starts the interactive loop. Returns when the user quits (q).
 func (r *Runner) Run() error {
 	raw, err := enableRawMode()
 	if err != nil {
 		// Fall back to non-interactive view if we can't get raw mode.
-		View(r.snippets, r.store)
+		View(r.flat, r.store)
 		return nil
 	}
 	defer raw.restore()
@@ -126,12 +139,10 @@ func (r *Runner) Run() error {
 	r.render()
 
 	for {
-		b := make([]byte, 3)
-		n, err := os.Stdin.Read(b)
-		if err != nil || n == 0 {
+		key := readKey()
+		if key == "" {
 			break
 		}
-		key := string(b[:n])
 
 		switch key {
 		case "q", "Q":
@@ -142,114 +153,359 @@ func (r *Runner) Run() error {
 				}
 			}
 			return nil
-		case "j", "\033[B": // j or down arrow
-			if r.index < len(r.snippets)-1 {
-				r.index++
-				r.render()
-			}
-		case "k", "\033[A": // k or up arrow
-			if r.index > 0 {
-				r.index--
-				r.render()
-			}
+		case "j", "\033[B":
+			r.moveCursor(1)
+		case "k", "\033[A":
+			r.moveCursor(-1)
+		case "l", "\033[C", "\r": // expand / drill in / follow ref
+			r.drillIn()
+		case "h", "\033[D": // collapse / jump to parent
+			r.drillOut()
 		case "y", "Y", "a", "A": // y/a = accept (y mirrors git add -p)
 			r.setStatus("accepted")
 		case "n", "N", "x", "X": // n/x = reject (n mirrors git add -p)
 			r.setStatus("rejected")
 		case "r", "R":
 			r.setStatus("reviewed")
+		case "]":
+			r.gotoPending(1)
+		case "[":
+			r.gotoPending(-1)
+		case "J":
+			r.diffScroll += 5
+			r.render()
+		case "K":
+			r.diffScroll -= 5
+			if r.diffScroll < 0 {
+				r.diffScroll = 0
+			}
+			r.render()
+		case "E":
+			r.tree.expandAllNodes()
+			r.refocus()
+		case "C":
+			r.collapseAll()
 		case "\t": // Tab toggles auto-advance
 			r.autoAdvance = !r.autoAdvance
 			r.render()
-		case "1":
-			r.preset = engine.PresetTopDown
-			r.reorder()
-		case "2":
-			r.preset = engine.PresetBottomUp
-			r.reorder()
-		case "3":
-			r.preset = engine.PresetClusters
-			r.reorder()
-		case "?", "h":
+		case "?":
 			r.renderHelp()
 		}
 	}
 	return nil
 }
 
-func (r *Runner) setStatus(status string) {
-	s := r.snippets[r.index]
-	st := r.store.Get(s.ID)
-	_ = r.store.Set(s.ID, status, st.Comment)
-	if r.autoAdvance && r.index < len(r.snippets)-1 {
-		r.index++
+// readKey reads one keypress. Reading byte-by-byte (instead of a 3-byte
+// buffer) keeps rapid keystrokes from batching into one unrecognized chunk;
+// an ESC byte pulls the rest of its arrow-key sequence.
+func readKey() string {
+	var b [1]byte
+	n, err := os.Stdin.Read(b[:])
+	if err != nil || n == 0 {
+		return ""
+	}
+	if b[0] != 0x1b {
+		return string(b[:1])
+	}
+	var seq [2]byte
+	n, _ = os.Stdin.Read(seq[:])
+	return "\033" + string(seq[:n])
+}
+
+func (r *Runner) currentNode() *engine.ReviewNode {
+	if len(r.tree.visible) == 0 {
+		return nil
+	}
+	if r.cursor >= len(r.tree.visible) {
+		r.cursor = len(r.tree.visible) - 1
+	}
+	return r.tree.visible[r.cursor].node
+}
+
+func (r *Runner) moveCursor(delta int) {
+	next := r.cursor + delta
+	if next < 0 || next >= len(r.tree.visible) {
+		return
+	}
+	r.cursor = next
+	r.diffScroll = 0
+	r.render()
+}
+
+// drillIn expands the current node, or moves to its first child when already
+// expanded, or jumps to the canonical node when on a reference leaf.
+func (r *Runner) drillIn() {
+	n := r.currentNode()
+	if n == nil {
+		return
+	}
+	if n.Ref {
+		r.focusNode(n.Snippet.ID)
+		r.render()
+		return
+	}
+	if len(n.Children) == 0 {
+		return
+	}
+	if !r.tree.expanded[n.Snippet.ID] {
+		r.tree.expanded[n.Snippet.ID] = true
+		r.tree.recompute()
+	} else {
+		// First child is the next visible row.
+		r.moveCursor(1)
+		return
 	}
 	r.render()
 }
 
-func (r *Runner) reorder() {
-	// Re-order is handled upstream in the CLI command by re-calling OrderSnippets.
-	// For now, just re-render with updated preset label.
+// drillOut collapses the current node, or jumps to its parent when already
+// collapsed (or a leaf).
+func (r *Runner) drillOut() {
+	n := r.currentNode()
+	if n == nil {
+		return
+	}
+	if !n.Ref && len(n.Children) > 0 && r.tree.expanded[n.Snippet.ID] {
+		delete(r.tree.expanded, n.Snippet.ID)
+		r.tree.recompute()
+		r.render()
+		return
+	}
+	if n.Parent != nil {
+		r.focusNode(n.Parent.Snippet.ID)
+		r.render()
+	}
+}
+
+// focusNode moves the cursor to the canonical node for id, expanding
+// ancestors as needed.
+func (r *Runner) focusNode(id string) {
+	r.tree.expandAncestors(id)
+	r.tree.recompute()
+	if idx := r.tree.indexOf(id); idx >= 0 {
+		r.cursor = idx
+	}
+	r.diffScroll = 0
+}
+
+func (r *Runner) collapseAll() {
+	// Keep focus on the current node's root ancestor.
+	n := r.currentNode()
+	r.tree.collapseAllNodes()
+	r.tree.recompute()
+	if n != nil {
+		root := n
+		for root.Parent != nil {
+			root = root.Parent
+		}
+		if idx := r.tree.indexOf(root.Snippet.ID); idx >= 0 {
+			r.cursor = idx
+		}
+	}
+	r.diffScroll = 0
 	r.render()
 }
 
+// refocus keeps the cursor on the same snippet after a structural change.
+func (r *Runner) refocus() {
+	n := r.currentNode()
+	r.tree.recompute()
+	if n != nil {
+		if idx := r.tree.indexOf(n.Snippet.ID); idx >= 0 {
+			r.cursor = idx
+		}
+	}
+	r.render()
+}
+
+func (r *Runner) setStatus(status string) {
+	n := r.currentNode()
+	if n == nil {
+		return
+	}
+	st := r.store.Get(n.Snippet.ID)
+	_ = r.store.Set(n.Snippet.ID, status, st.Comment)
+	if r.autoAdvance {
+		r.gotoPending(1)
+		return
+	}
+	r.render()
+}
+
+// gotoPending moves to the next (dir > 0) or previous (dir < 0) pending
+// snippet in pre-order, wrapping around.
+func (r *Runner) gotoPending(dir int) {
+	n := r.currentNode()
+	if n == nil || len(r.flat) == 0 {
+		return
+	}
+	cur := 0
+	for i, s := range r.flat {
+		if s.ID == n.Snippet.ID {
+			cur = i
+			break
+		}
+	}
+	for i := 1; i <= len(r.flat); i++ {
+		idx := (cur + dir*i%len(r.flat) + len(r.flat)) % len(r.flat)
+		s := r.flat[idx]
+		if s.ID != n.Snippet.ID && r.store.Get(s.ID).Status == "pending" {
+			r.focusNode(s.ID)
+			break
+		}
+	}
+	r.render()
+}
+
+// renderedDiff returns (and caches) the highlighted diff lines for a snippet.
+func (r *Runner) renderedDiff(s *engine.Snippet, width int) []string {
+	if lines, ok := r.diffCache[s.ID]; ok {
+		return lines
+	}
+	var lines []string
+	if activeHighlighter == HighlightDelta {
+		if out, err := runDeltaCapture(s.FilePath, s.DiffLines, width); err == nil {
+			lines = out
+		}
+	}
+	if lines == nil {
+		lines = highlightLines(s.FilePath, s.DiffLines)
+	}
+	r.diffCache[s.ID] = lines
+	return lines
+}
+
 func (r *Runner) render() {
+	rows, cols := terminalSize()
+	if rows <= 0 {
+		rows = 40
+	}
+	if cols <= 0 {
+		cols = 80
+	}
+	// Rendered diff lines are wrapped at the terminal width — a resize
+	// invalidates them.
+	if cols != r.cacheCols {
+		r.diffCache = make(map[string][]string)
+		r.cacheCols = cols
+	}
+
+	// Layout: header(1) + rule(1) + tree(treeH) + focus rule(1) + diff + hints(1).
+	treeH := rows / 3
+	if treeH < 8 {
+		treeH = 8
+	}
+	if len(r.tree.visible) < treeH {
+		treeH = len(r.tree.visible)
+	}
+	if max := rows - 10; treeH > max && max >= 3 {
+		treeH = max
+	}
+	// Budget: header(1) + rule(1) + tree + focus rule(1) + diff +
+	// more-indicator(1) + hint(1, no trailing newline).
+	diffH := rows - treeH - 5
+	if diffH < 3 {
+		diffH = 3
+	}
+
 	// Hide cursor during redraw, clear screen, move to top.
 	fmt.Print("\033[?25l\033[2J\033[H")
 
-	s := r.snippets[r.index]
-	st := r.store.Get(s.ID)
-
-	// Header bar
-	presetName := [...]string{"top-down", "bottom-up", "clusters"}[r.preset]
+	// Header: progress + toggles.
+	done := 0
+	for _, s := range r.flat {
+		if r.store.Get(s.ID).Status != "pending" {
+			done++
+		}
+	}
+	total := len(r.flat)
+	pct := 0
+	if total > 0 {
+		pct = done * 100 / total
+	}
+	filled := pct * 20 / 100
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
 	autoLabel := "auto:on"
 	if !r.autoAdvance {
 		autoLabel = "auto:off"
 	}
 	applyLabel := ""
 	if r.applyMode {
-		applyLabel = "  " + yellow + "[apply mode]" + reset + dim
+		applyLabel = "  " + yellow + "[apply mode]" + reset
 	}
-	fmt.Printf("%s Astra  %s[%d/%d]%s  preset:%s  %s%s%s  q=quit j/k=nav y/n=accept/reject r=reviewed tab=toggle-auto ?=help%s\n",
-		bold+blue+"⭐", yellow, r.index+1, len(r.snippets), reset,
-		presetName, dim, autoLabel, applyLabel, reset)
-	fmt.Println(strings.Repeat("─", 80))
+	fmt.Printf("%s Astra%s  %d/%d reviewed %s%s%s %d%%  %s%s%s%s\n",
+		bold+blue+"⭐", reset, done, total, dim, bar, reset, pct,
+		dim, autoLabel, reset, applyLabel)
+	fmt.Println(dim + strings.Repeat("─", cols) + reset)
 
-	printSnippetHeader(r.index+1, len(r.snippets), s, st.Status, "")
-	printDiffLines(s.FilePath, s.DiffLines)
+	// Tree pane.
+	r.tree.scrollTo(r.cursor, treeH)
+	for i := r.tree.top; i < r.tree.top+treeH && i < len(r.tree.visible); i++ {
+		fmt.Println(r.tree.renderTreeRow(r.tree.visible[i], r.store, i == r.cursor, cols))
+	}
 
-	// Progress bar
-	done := 0
-	for _, sn := range r.snippets {
-		if st2 := r.store.Get(sn.ID); st2.Status != "pending" {
-			done++
+	// Focus rule + diff pane.
+	n := r.currentNode()
+	if n != nil {
+		s := n.Snippet
+		focus := fmt.Sprintf("── %s", s.FilePath)
+		if s.SymbolPath != "" {
+			focus += " ∷ " + s.SymbolPath
+		}
+		focus += " · " + r.store.Get(s.ID).Status + " "
+		if pad := cols - len([]rune(focus)); pad > 0 {
+			focus += strings.Repeat("─", pad)
+		}
+		fmt.Println(dim + focus + reset)
+
+		lines := r.renderedDiff(s, cols)
+		if r.diffScroll > len(lines)-1 {
+			r.diffScroll = len(lines) - 1
+		}
+		if r.diffScroll < 0 {
+			r.diffScroll = 0
+		}
+		end := r.diffScroll + diffH
+		if end > len(lines) {
+			end = len(lines)
+		}
+		for _, l := range lines[r.diffScroll:end] {
+			fmt.Println(ansiTruncate(l, cols))
+		}
+		if end < len(lines) {
+			fmt.Printf("%s… %d more lines (J/K to scroll)%s\n", dim, len(lines)-end, reset)
 		}
 	}
-	pct := done * 100 / len(r.snippets)
-	filled := pct * 40 / 100
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", 40-filled)
-	fmt.Printf("\n%s[%s]%s %d%% (%d/%d reviewed)%s\n",
-		dim, bar, reset, pct, done, len(r.snippets), reset)
+
+	// Hint line (truncated so it can never wrap and push the header off).
+	hints := "j/k move · l/h drill in/out · y/n/r judge · ]/[ pending · J/K scroll · E/C fold · tab auto · ? help · q quit"
+	fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
 }
 
 func (r *Runner) renderHelp() {
 	fmt.Print("\033[2J\033[H")
 	fmt.Println(bold + "⭐ Astra keyboard shortcuts" + reset)
 	fmt.Println()
-	fmt.Println("  j / ↓       Next snippet")
-	fmt.Println("  k / ↑       Previous snippet")
+	fmt.Println("  j / ↓       Move down the tree")
+	fmt.Println("  k / ↑       Move up the tree")
+	fmt.Println("  l / → / ⏎   Expand node; if expanded, move to first callee;")
+	fmt.Println("              on a → reference, jump to where it's shown")
+	fmt.Println("  h / ←       Collapse node; if collapsed, jump to caller")
 	fmt.Println("  y / a       Accept snippet")
 	fmt.Println("  n / x       Reject snippet")
 	fmt.Println("  r           Mark as reviewed (no judgement)")
-	fmt.Println("  tab         Toggle auto-advance (move to next after accept/reject/reviewed)")
-	fmt.Println("  1           Switch to top-down preset")
-	fmt.Println("  2           Switch to bottom-up preset")
-	fmt.Println("  3           Switch to feature-clusters preset")
+	fmt.Println("  ] / [       Next / previous pending snippet")
+	fmt.Println("  J / K       Scroll the diff pane")
+	fmt.Println("  E / C       Expand / collapse the whole tree")
+	fmt.Println("  tab         Toggle auto-advance (jump to next pending after judging)")
 	fmt.Println("  q           Quit")
-	fmt.Println("  ? / h       Show this help")
+	fmt.Println("  ?           Show this help")
+	fmt.Println()
+	fmt.Println(dim + "The tree is the call graph of changed code: children are the" + reset)
+	fmt.Println(dim + "functions/types the focused snippet calls. Roots are entry points" + reset)
+	fmt.Println(dim + "nothing else in the diff calls." + reset)
 	fmt.Println()
 	fmt.Println(dim + "Note: accept/reject records state locally in .git/astra/state.json." + reset)
-	fmt.Println(dim + "      This does not stage or apply any changes to your working tree." + reset)
 	fmt.Println(dim + "      Use --apply (working tree mode only) to stage accepted hunks on quit." + reset)
 	fmt.Println()
 	fmt.Println("Press any key to continue…")

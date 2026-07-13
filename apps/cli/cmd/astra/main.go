@@ -28,10 +28,10 @@ USAGE
 OPTIONS
   --ref <ref>          Diff against this git ref (default: working tree)
                        Examples: origin/main  HEAD~1  v1.2.3
-  --preset <name>      Ordering preset (default: top-down)
-                         top-down   Entry-point first, deps after
-                         bottom-up  Leaves first, entry-point last
-                         clusters   Group by connected component
+  --preset <name>      Reading order for --no-tty output (default: top-down)
+                         top-down   Entry-point first, callees after (tree pre-order)
+                         bottom-up  Leaves first, entry-point last (tree post-order)
+                         clusters   Same as top-down (clustering is built in)
   --no-auto-advance    Stay on the current snippet after accept/reject/reviewed
                        (default: auto-advance to next snippet, like git add -p)
   --apply              Stage accepted hunks to the git index on quit (git add -p style).
@@ -45,10 +45,13 @@ OPTIONS
   --help               Show this help
 
 KEYBOARD SHORTCUTS (interactive mode)
-  j / ↓   Next snippet      y / a   Accept       1   top-down preset
-  k / ↑   Prev snippet      n / x   Reject       2   bottom-up preset
-  r       Mark reviewed     tab     Toggle auto   3   clusters preset
-  q       Quit              ?       Help
+  The main view is a call tree of the changed code: children are the
+  functions/types the focused snippet calls; roots are entry points.
+
+  j / ↓   Move down          y / a   Accept        ] / [  Next/prev pending
+  k / ↑   Move up            n / x   Reject        J / K  Scroll diff
+  l / →   Expand / drill in  r       Mark reviewed E / C  Expand/collapse all
+  h / ←   Collapse / caller  tab     Toggle auto   q  ?   Quit, help
 
   Accept/reject records state locally in .git/astra/state.json.
   It does not stage or apply changes to your working tree.
@@ -154,8 +157,13 @@ func run(args []string) error {
 	// order; import edges only group snippets into clusters.
 	edges := append(engine.BuildCallEdges(snippets), engine.BuildEdgesFromDiff(snippets)...)
 
-	// Order snippets.
-	ordered := engine.OrderSnippets(snippets, edges, preset)
+	// Build the review forest and its flattened reading order.
+	forest := engine.BuildForest(snippets, edges)
+	order := engine.OrderPre
+	if preset == engine.PresetBottomUp {
+		order = engine.OrderPost
+	}
+	ordered := forest.Flatten(order)
 
 	if noTTY || !isTTY() {
 		tui.View(ordered, store)
@@ -184,7 +192,7 @@ func run(args []string) error {
 		}
 	}
 
-	runner := tui.NewRunner(ordered, store, preset, !noAutoAdvance, applyMode, onQuit)
+	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, onQuit)
 	return runner.Run()
 }
 

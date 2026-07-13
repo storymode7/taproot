@@ -49,16 +49,20 @@ func detectHighlighter() Highlighter {
 	return HighlightBuiltin
 }
 
-func terminalWidth() int {
-	// Quick read from stty; used by callers that need explicit width.
+func terminalSize() (rows, cols int) {
+	// Quick read from stty; used by callers that need explicit dimensions.
 	cmd := exec.Command("stty", "size")
 	cmd.Stdin = os.Stdin
 	out, err := cmd.Output()
 	if err != nil {
-		return 0
+		return 0, 0
 	}
-	var rows, cols int
 	fmt.Sscanf(strings.TrimSpace(string(out)), "%d %d", &rows, &cols)
+	return rows, cols
+}
+
+func terminalWidth() int {
+	_, cols := terminalSize()
 	return cols
 }
 
@@ -87,22 +91,12 @@ func highlightLines(filePath string, diffLines []string) []string {
 // delta backend
 // ---------------------------------------------------------------------------
 
-// runDeltaDirect pipes diff lines through delta writing directly to w (usually
-// os.Stdout).  Because delta has a real TTY on its stdout it auto-detects
-// terminal width, honours the user's ~/.gitconfig theme, and emits correctly
-// scoped \033[K / background-fill sequences — the same output as screenshot 2.
-// Capturing delta via cmd.Output() (a pipe) breaks all of that.
-func runDeltaDirect(w io.Writer, filePath string, diffLines []string) error {
-	header := fmt.Sprintf("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n",
-		filePath, filePath, filePath, filePath)
-	input := header + strings.Join(diffLines, "\n") + "\n"
-
+func deltaArgs() []string {
 	args := []string{
 		"--paging=never",
 		"--file-style=omit",
 		"--hunk-header-style=omit",
 	}
-
 	if NoDeltaConfig {
 		theme := os.Getenv("ASTRA_DELTA_THEME")
 		if theme == "" {
@@ -110,12 +104,41 @@ func runDeltaDirect(w io.Writer, filePath string, diffLines []string) error {
 		}
 		args = append([]string{"--no-gitconfig", "--light", "--syntax-theme=" + theme}, args...)
 	}
+	return args
+}
 
-	cmd := exec.Command("delta", args...)
-	cmd.Stdin = strings.NewReader(input)
+func deltaInput(filePath string, diffLines []string) string {
+	header := fmt.Sprintf("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n",
+		filePath, filePath, filePath, filePath)
+	return header + strings.Join(diffLines, "\n") + "\n"
+}
+
+// runDeltaDirect pipes diff lines through delta writing directly to w (usually
+// os.Stdout).  Because delta has a real TTY on its stdout it auto-detects
+// terminal width, honours the user's ~/.gitconfig theme, and emits correctly
+// scoped \033[K / background-fill sequences — the same output as screenshot 2.
+func runDeltaDirect(w io.Writer, filePath string, diffLines []string) error {
+	cmd := exec.Command("delta", deltaArgs()...)
+	cmd.Stdin = strings.NewReader(deltaInput(filePath, diffLines))
 	cmd.Stdout = w  // direct write — delta sees the real TTY
 	cmd.Stderr = io.Discard
 	return cmd.Run()
+}
+
+// runDeltaCapture runs delta with an explicit --width and captures the output
+// line by line so the caller can window/scroll it (the tree view needs this).
+// The explicit width replaces the TTY auto-detection that direct-write relies
+// on; colors and background fills survive capture (delta always emits ANSI).
+func runDeltaCapture(filePath string, diffLines []string, width int) ([]string, error) {
+	args := append(deltaArgs(), fmt.Sprintf("--width=%d", width))
+	cmd := exec.Command("delta", args...)
+	cmd.Stdin = strings.NewReader(deltaInput(filePath, diffLines))
+	cmd.Stderr = io.Discard
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(strings.TrimRight(string(out), "\n"), "\n"), nil
 }
 
 // ---------------------------------------------------------------------------

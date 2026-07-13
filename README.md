@@ -19,11 +19,18 @@ See [SECURITY.md](SECURITY.md) for the full trust policy.
 ## How it works
 
 1. Fetches the PR diff (via your existing GitHub session, or unauthenticated for public repos).
-2. Parses changed files with [tree-sitter](https://tree-sitter.github.io) (WASM, vendored).
-3. Maps each diff hunk to its smallest enclosing named AST node → **snippet**.
-4. Builds a cross-file import/call graph from tree-sitter queries (`.scm` files in `queries/`).
-5. Orders snippets by graph depth (3 presets: top-down, bottom-up, feature-clusters).
-6. A single file can appear in multiple positions — `utils.ts::formatDate` early, `utils.ts::parseCSV` late.
+2. Fetches the full post-image source of each changed file and extracts entity
+   boundaries (functions, classes, types) — via [tree-sitter](https://tree-sitter.github.io)
+   (WASM, vendored) in the browser surfaces, language-aware heuristics in the CLI.
+3. Maps each diff hunk to its enclosing entity → **snippet** (a whole changed
+   function/class, not a bare hunk).
+4. Scans entity bodies for call sites naming other changed entities → a call
+   graph over the diff.
+5. Builds a **review tree**: roots are entry points nothing else in the diff
+   calls; children are callees, in call order. The CLI TUI is a drill-down over
+   this tree — read the top, unfold one level at a time.
+6. A single file can appear in multiple positions — `utils.ts::formatDate`
+   under one caller, `utils.ts::parseCSV` under another.
 
 ## Surfaces
 
