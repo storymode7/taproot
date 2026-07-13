@@ -59,11 +59,13 @@ func ExtractEntities(src []byte, lang string) []Entity {
 // ---------------------------------------------------------------------------
 
 var (
-	reGoFunc      = regexp.MustCompile(`^func\s`)
-	reGoType      = regexp.MustCompile(`^type\s+\w`)
-	reGoVarConst  = regexp.MustCompile(`^(?:var|const)\s`)
-	reGoImport    = regexp.MustCompile(`^import\s`)
-	reGoBlockOpen = regexp.MustCompile(`\{`)
+	reGoFunc          = regexp.MustCompile(`^func\s`)
+	reGoType          = regexp.MustCompile(`^type\s+\w`)
+	reGoVarConst      = regexp.MustCompile(`^(?:var|const)\s`)
+	reGoImport        = regexp.MustCompile(`^import\s`)
+	reGoBlockOpen     = regexp.MustCompile(`\{`)
+	reGoImportGroup   = regexp.MustCompile(`^import\s*\($`)
+	reGoVarConstGroup = regexp.MustCompile(`^(?:var|const)\s*\($`)
 )
 
 func extractGo(lines []string) []Entity {
@@ -79,7 +81,7 @@ func extractGo(lines []string) []Entity {
 		case reGoImport.MatchString(stripped):
 			// import "x" or import ( ... )
 			start := i + 1
-			if strings.Contains(line, "(") {
+			if reGoImportGroup.MatchString(stripped) {
 				// multi-line import block
 				for i < n && !strings.HasPrefix(strings.TrimSpace(lines[i]), ")") {
 					i++
@@ -114,7 +116,7 @@ func extractGo(lines []string) []Entity {
 			}
 			name := goVarConstName(stripped)
 			start := i + 1
-			if strings.Contains(line, "(") {
+			if reGoVarConstGroup.MatchString(stripped) {
 				// block: var ( ... )
 				for i < n && !strings.HasPrefix(strings.TrimSpace(lines[i]), ")") {
 					i++

@@ -309,7 +309,15 @@ func heuristicSnippets(f *diff.FileDiff) []*Snippet {
 }
 
 // snippetID computes a stable ID for a snippet.
+//
+// Named entities are keyed by (file, symbol) only, so review state survives
+// when lines shift above the entity. Nameless snippets (preamble, fallback
+// hunks) have no symbol to key on and fall back to the start line.
 func snippetID(filePath, symbolPath string, startLine int) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s::%s::%d", filePath, symbolPath, startLine)))
+	key := fmt.Sprintf("%s::%s", filePath, symbolPath)
+	if symbolPath == "" {
+		key = fmt.Sprintf("%s::%d", key, startLine)
+	}
+	h := sha256.Sum256([]byte(key))
 	return fmt.Sprintf("%x", h[:8])
 }

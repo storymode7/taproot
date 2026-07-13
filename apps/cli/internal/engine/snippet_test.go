@@ -138,11 +138,24 @@ func TestSnippetID_DifferentInputs(t *testing.T) {
 	}{
 		{"different file", snippetID("bar.go", "MyFunc", 10)},
 		{"different symbol", snippetID("foo.go", "OtherFunc", 10)},
-		{"different line", snippetID("foo.go", "MyFunc", 11)},
 	}
 	for _, tc := range cases {
 		if tc.id == base {
 			t.Errorf("%s: expected different ID but got same as base %q", tc.name, base)
 		}
+	}
+}
+
+func TestSnippetID_NamedEntitySurvivesLineShift(t *testing.T) {
+	// Review state must survive lines shifting above a named entity.
+	if snippetID("foo.go", "MyFunc", 10) != snippetID("foo.go", "MyFunc", 42) {
+		t.Error("named entity ID changed when start line shifted")
+	}
+}
+
+func TestSnippetID_NamelessKeyedByLine(t *testing.T) {
+	// Preamble/fallback-hunk snippets have no symbol; line keeps them distinct.
+	if snippetID("foo.go", "", 10) == snippetID("foo.go", "", 42) {
+		t.Error("nameless snippets at different lines must get different IDs")
 	}
 }

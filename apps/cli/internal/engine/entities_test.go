@@ -67,6 +67,38 @@ func TestExtractEntities_Go(t *testing.T) {
 	}
 }
 
+func TestExtractEntities_Go_SingleLineVarWithParens(t *testing.T) {
+	// A single-line var whose initializer contains parens must NOT be
+	// treated as a `var ( ... )` block — that would swallow every
+	// declaration until the next `)` line (regression: interface guard
+	// `var _ Source = (*GitDiffAdapter)(nil)` absorbed the functions
+	// below it).
+	src := `package foo
+
+var _ Iface = (*Impl)(nil)
+
+func After() int {
+	return 1
+}
+`
+	entities := ExtractEntities([]byte(src), "go")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	guard, ok := byName["_"]
+	if !ok {
+		t.Fatalf("interface-guard var not found (got: %v)", entityNames(entities))
+	}
+	if guard.StartLine != guard.EndLine {
+		t.Errorf("single-line var spans [%d, %d], want single line", guard.StartLine, guard.EndLine)
+	}
+	if _, ok := byName["After"]; !ok {
+		t.Errorf("function after single-line var not extracted (got: %v)", entityNames(entities))
+	}
+}
+
 func TestExtractEntities_Go_OrderPreserved(t *testing.T) {
 	entities := ExtractEntities([]byte(goSrc), "go")
 	idx := make(map[string]int)

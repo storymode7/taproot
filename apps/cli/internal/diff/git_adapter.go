@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -70,17 +71,21 @@ func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 }
 
 // FileBlob returns the full contents of a file at a given commit SHA.
+// With an empty SHA the post-image is the working tree (both plain
+// `git diff` and `git diff <ref>` diff against it), so the working-tree
+// file is read first; HEAD is only a fallback for missing files.
 func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
 	if req.SHA == "" {
-		// Fall back to working tree.
 		path := req.Path
 		if a.RepoRoot != "" {
 			path = filepath.Join(a.RepoRoot, req.Path)
 		}
+		if out, err := os.ReadFile(path); err == nil {
+			return out, nil
+		}
 		out, err := a.git("show", fmt.Sprintf("HEAD:%s", req.Path))
 		if err != nil {
-			// Try working tree file directly.
-			return exec.Command("cat", path).Output()
+			return nil, fmt.Errorf("read %s: %w", req.Path, err)
 		}
 		return []byte(out), nil
 	}
