@@ -157,6 +157,9 @@ func (t *treeState) renderTreeRow(row visRow, store *state.Store, cursor bool, w
 			annotation = " (also called by " + strings.Join(names, ", ") + ")"
 		}
 	}
+	if n.Parent == nil && !n.Ref && len(s.UnchangedCallers) > 0 {
+		annotation += " (called by unchanged " + strings.Join(s.UnchangedCallers, ", ") + ")"
+	}
 
 	status := store.Get(s.ID).Status
 

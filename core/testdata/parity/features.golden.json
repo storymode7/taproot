@@ -1,0 +1,172 @@
+{
+  "snippets": [
+    {
+      "id": "c41ed21dbfdd62cf",
+      "filePath": "spider.py",
+      "oldPath": "spider.py",
+      "language": "python",
+      "symbolPath": "ProductSpider.parse",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 6,
+      "endLine": 9,
+      "depth": 0,
+      "diffLines": [
+        "@@ -8,1 +8,1 @@",
+        "-            self.parse_item(response)",
+        "+            self.extract(response)"
+      ],
+      "unchangedCallers": [
+        "spider.py::runner"
+      ]
+    },
+    {
+      "id": "b3b5ee5e8fa2b2a0",
+      "filePath": "spider.py",
+      "oldPath": "spider.py",
+      "language": "python",
+      "symbolPath": "MAX_DEPTH",
+      "nodeType": "const",
+      "isNew": false,
+      "startLine": 3,
+      "endLine": 3,
+      "depth": 1,
+      "diffLines": [
+        "@@ -3,1 +3,1 @@",
+        "-MAX_DEPTH = 2",
+        "+MAX_DEPTH = 3"
+      ]
+    },
+    {
+      "id": "fb1d1c05d27b2d27",
+      "filePath": "spider.py",
+      "oldPath": "spider.py",
+      "language": "python",
+      "symbolPath": "ProductSpider.extract",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 10,
+      "endLine": 12,
+      "depth": 1,
+      "diffLines": [
+        "@@ -11,1 +11,1 @@",
+        "-        return response",
+        "+        return json.loads(response)"
+      ]
+    },
+    {
+      "id": "e68621440a381495",
+      "filePath": "web/app.ts",
+      "oldPath": "web/app.ts",
+      "language": "typescript",
+      "symbolPath": "render",
+      "nodeType": "function",
+      "isNew": true,
+      "startLine": 6,
+      "endLine": 8,
+      "depth": 0,
+      "diffLines": [
+        "@@ -0,0 +6,3 @@",
+        "+export function render(v: number) {",
+        "+  return clamp(v)",
+        "+}"
+      ]
+    },
+    {
+      "id": "9c39c1216dae337e",
+      "filePath": "web/app.ts",
+      "oldPath": "web/app.ts",
+      "language": "typescript",
+      "symbolPath": "clamp",
+      "nodeType": "function",
+      "isNew": true,
+      "startLine": 1,
+      "endLine": 3,
+      "depth": 1,
+      "diffLines": [
+        "@@ -0,0 +1,3 @@",
+        "+const clamp = (x: number) =\u003e",
+        "+  Math.min(x, LIMIT)",
+        "+"
+      ]
+    },
+    {
+      "id": "9bb34d7b1f9750c0",
+      "filePath": "web/app.ts",
+      "oldPath": "web/app.ts",
+      "language": "typescript",
+      "symbolPath": "LIMIT",
+      "nodeType": "var",
+      "isNew": true,
+      "startLine": 4,
+      "endLine": 4,
+      "depth": 2,
+      "diffLines": [
+        "@@ -0,0 +4,1 @@",
+        "+const LIMIT = 100"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "9c39c1216dae337e",
+      "to": "9bb34d7b1f9750c0",
+      "kind": "call",
+      "callLine": 2
+    },
+    {
+      "from": "c41ed21dbfdd62cf",
+      "to": "b3b5ee5e8fa2b2a0",
+      "kind": "call",
+      "callLine": 7
+    },
+    {
+      "from": "c41ed21dbfdd62cf",
+      "to": "fb1d1c05d27b2d27",
+      "kind": "call",
+      "callLine": 8
+    },
+    {
+      "from": "e68621440a381495",
+      "to": "9c39c1216dae337e",
+      "kind": "call",
+      "callLine": 7
+    }
+  ],
+  "tree": {
+    "roots": [
+      {
+        "id": "c41ed21dbfdd62cf",
+        "children": [
+          {
+            "id": "b3b5ee5e8fa2b2a0"
+          },
+          {
+            "id": "fb1d1c05d27b2d27"
+          }
+        ]
+      },
+      {
+        "id": "e68621440a381495",
+        "children": [
+          {
+            "id": "9c39c1216dae337e",
+            "children": [
+              {
+                "id": "9bb34d7b1f9750c0"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "flatOrder": [
+    "c41ed21dbfdd62cf",
+    "b3b5ee5e8fa2b2a0",
+    "fb1d1c05d27b2d27",
+    "e68621440a381495",
+    "9c39c1216dae337e",
+    "9bb34d7b1f9750c0"
+  ]
+}

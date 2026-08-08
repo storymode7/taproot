@@ -13,7 +13,14 @@
 //   - preceded by "new":          new Foo   (JS/TS/Java)
 //
 // Bare type references (var c Config) are deliberately not matched — calls
-// and constructions are the edges that define reading order.
+// and constructions are the edges that define reading order. Changed
+// var/const entities are the exception: they have no call syntax, so any
+// bare identifier token naming one creates a reference edge (references
+// define reading order exactly like calls). To keep that from matching
+// noise, tokens shorter than three characters or in a keyword/builtin
+// stopword set never resolve to a variable, tokens already matched as call
+// sites don't double as references, and bare references only resolve to
+// declarations in the referencer's own file or directory (same language).
 package core
 
 import (
@@ -22,43 +29,72 @@ import (
 )
 
 // BuildCallEdges scans each snippet's entity body for call sites that name
-// another changed entity and returns EdgeCall edges (caller → callee).
+// another changed entity — and for bare identifier references to changed
+// var/const entities — and returns EdgeCall edges (caller → callee).
 // Edges are deduplicated per (From, To), keeping the earliest call line.
+//
+// Body lines that fall inside a nested same-file snippet (e.g. a method
+// inside a class-container snippet) are skipped, so the container does not
+// duplicate every edge its nested snippets create.
 func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
-	// Symbol table: entity name → snippets declaring it.
-	table := make(map[string][]*Snippet)
+	// Symbol tables: last dotted segment of the entity name → snippets
+	// declaring it. Keying on the last segment lets method call sites like
+	// self.parse( or obj.parse( resolve "ProductSpider.parse".
+	table := make(map[string][]*Snippet)    // call-site targets
+	varTable := make(map[string][]*Snippet) // bare-reference targets
 	for _, s := range snippets {
-		if s.SymbolPath == "" || len(s.SymbolPath) < 2 {
+		name := lastSegment(s.SymbolPath)
+		if len(name) < 2 {
 			continue
 		}
 		switch s.NodeType {
 		case "function", "class", "type":
-			table[s.SymbolPath] = append(table[s.SymbolPath], s)
+			table[name] = append(table[name], s)
+		case "var", "const":
+			varTable[name] = append(varTable[name], s)
 		}
 	}
-	if len(table) == 0 {
+	if len(table) == 0 && len(varTable) == 0 {
 		return nil
 	}
 
 	type edgeKey struct{ from, to string }
 	best := make(map[edgeKey]int) // (from, to) → earliest call line
 
+	addEdges := func(from *Snippet, targets []*Snippet, callLine int) {
+		for _, t := range resolveTargets(from, targets) {
+			if t.ID == from.ID {
+				continue
+			}
+			k := edgeKey{from.ID, t.ID}
+			if prev, seen := best[k]; !seen || callLine < prev {
+				best[k] = callLine
+			}
+		}
+	}
+
 	for _, s := range snippets {
+		nested := nestedSpans(s, snippets)
 		for i, line := range s.Body {
-			for _, name := range callSites(line, s.Language) {
-				targets, ok := table[name]
-				if !ok {
+			callLine := s.StartLine + i
+			if inSpans(callLine, nested) {
+				continue
+			}
+			sites := callSites(line, s.Language)
+			for _, name := range sites {
+				if targets, ok := table[name]; ok {
+					addEdges(s, targets, callLine)
+				}
+			}
+			if len(varTable) == 0 {
+				continue
+			}
+			for _, tok := range identTokens(line, s.Language) {
+				if len(tok) < 3 || refStopwords[tok] || contains(sites, tok) {
 					continue
 				}
-				callLine := s.StartLine + i
-				for _, t := range resolveTargets(s, targets) {
-					if t.ID == s.ID {
-						continue
-					}
-					k := edgeKey{s.ID, t.ID}
-					if prev, seen := best[k]; !seen || callLine < prev {
-						best[k] = callLine
-					}
+				if targets, ok := varTable[tok]; ok {
+					addEdges(s, varRefTargets(s, targets), callLine)
 				}
 			}
 		}
@@ -101,11 +137,93 @@ func resolveTargets(from *Snippet, candidates []*Snippet) []*Snippet {
 	return candidates
 }
 
+// varRefTargets scopes bare-reference resolution. Unlike a call site, a bare
+// identifier has no syntax tying it to the declaration, so only var/const
+// declarations in the referencer's own file or directory (same language) are
+// credible targets — a lone same-named local in another package must not
+// merge unrelated components.
+func varRefTargets(from *Snippet, candidates []*Snippet) []*Snippet {
+	var out []*Snippet
+	fromDir := pathDir(from.FilePath)
+	for _, c := range candidates {
+		if c.Language != from.Language {
+			continue
+		}
+		if c.FilePath == from.FilePath || pathDir(c.FilePath) == fromDir {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 func pathDir(p string) string {
 	if idx := strings.LastIndex(p, "/"); idx >= 0 {
 		return p[:idx]
 	}
 	return ""
+}
+
+// lastSegment returns the final dotted component of a symbol path
+// ("ProductSpider.parse" → "parse").
+func lastSegment(path string) string {
+	if idx := strings.LastIndex(path, "."); idx >= 0 {
+		return path[idx+1:]
+	}
+	return path
+}
+
+// nestedSpans returns the line spans of other same-file snippets strictly
+// nested inside s's span (e.g. method snippets inside a class-container
+// snippet, whose Body covers the whole class).
+func nestedSpans(s *Snippet, snippets []*Snippet) [][2]int {
+	var spans [][2]int
+	for _, t := range snippets {
+		if t.ID == s.ID || t.FilePath != s.FilePath {
+			continue
+		}
+		if t.StartLine >= s.StartLine && t.EndLine <= s.EndLine &&
+			(t.EndLine-t.StartLine) < (s.EndLine-s.StartLine) {
+			spans = append(spans, [2]int{t.StartLine, t.EndLine})
+		}
+	}
+	return spans
+}
+
+func inSpans(line int, spans [][2]int) bool {
+	for _, sp := range spans {
+		if line >= sp[0] && line <= sp[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// refStopwords are identifier tokens that never resolve as a bare reference
+// to a var/const snippet: keywords and ubiquitous builtins whose collision
+// with a changed variable name is far more likely noise than a reference.
+var refStopwords = map[string]bool{
+	"var": true, "const": true, "let": true, "func": true, "fn": true,
+	"def": true, "class": true, "type": true, "struct": true, "enum": true,
+	"trait": true, "impl": true, "interface": true, "return": true,
+	"if": true, "else": true, "elif": true, "for": true, "while": true,
+	"range": true, "switch": true, "case": true, "break": true,
+	"continue": true, "new": true, "pub": true, "use": true, "mod": true,
+	"import": true, "from": true, "package": true, "static": true,
+	"final": true, "void": true, "self": true, "this": true, "super": true,
+	"true": true, "false": true, "nil": true, "None": true, "null": true,
+	"async": true, "await": true, "yield": true, "try": true,
+	"except": true, "catch": true, "finally": true, "raise": true,
+	"throw": true, "defer": true, "chan": true, "select": true,
+	"map": true, "print": true, "len": true,
 }
 
 // callSites returns the identifiers used as call/construction sites on one
@@ -153,6 +271,30 @@ func callSites(line, lang string) []string {
 			names = append(names, word)
 		}
 		prevWord = word
+	}
+	return names
+}
+
+// identTokens returns every identifier token on one source line (comments
+// stripped, same tokenizer as callSites). Used for bare-reference edges to
+// var/const snippets; the caller applies the length/stopword guard.
+func identTokens(line, lang string) []string {
+	line = stripLineComment(line, lang)
+
+	var names []string
+	runes := []rune(line)
+	n := len(runes)
+	i := 0
+	for i < n {
+		if !isIdentStart(runes[i]) {
+			i++
+			continue
+		}
+		start := i
+		for i < n && isIdentPart(runes[i]) {
+			i++
+		}
+		names = append(names, string(runes[start:i]))
 	}
 	return names
 }

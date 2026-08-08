@@ -54,17 +54,18 @@ type WireEntity struct {
 
 // WireSnippet is a Snippet on the wire.
 type WireSnippet struct {
-	ID         string   `json:"id"`
-	FilePath   string   `json:"filePath"`
-	OldPath    string   `json:"oldPath"`
-	Language   string   `json:"language"`
-	SymbolPath string   `json:"symbolPath"`
-	NodeType   string   `json:"nodeType"`
-	IsNew      bool     `json:"isNew"`
-	StartLine  int      `json:"startLine"`
-	EndLine    int      `json:"endLine"`
-	Depth      int      `json:"depth"`
-	DiffLines  []string `json:"diffLines"`
+	ID               string   `json:"id"`
+	FilePath         string   `json:"filePath"`
+	OldPath          string   `json:"oldPath"`
+	Language         string   `json:"language"`
+	SymbolPath       string   `json:"symbolPath"`
+	NodeType         string   `json:"nodeType"`
+	IsNew            bool     `json:"isNew"`
+	StartLine        int      `json:"startLine"`
+	EndLine          int      `json:"endLine"`
+	Depth            int      `json:"depth"`
+	DiffLines        []string `json:"diffLines"`
+	UnchangedCallers []string `json:"unchangedCallers,omitempty"`
 }
 
 // WireEdge is a SymbolEdge on the wire.
@@ -126,6 +127,7 @@ func Process(req ProcessRequest) ProcessResponse {
 	}
 
 	snippets := BuildSnippets(files)
+	AnnotateUnchangedCallers(files, snippets)
 	edges := append(BuildCallEdges(snippets), BuildEdgesFromDiff(snippets)...)
 	forest := BuildForest(snippets, edges)
 
@@ -142,7 +144,7 @@ func Process(req ProcessRequest) ProcessResponse {
 			Language: s.Language, SymbolPath: s.SymbolPath,
 			NodeType: s.NodeType, IsNew: s.IsNew,
 			StartLine: s.StartLine, EndLine: s.EndLine, Depth: s.Depth,
-			DiffLines: s.DiffLines,
+			DiffLines: s.DiffLines, UnchangedCallers: s.UnchangedCallers,
 		})
 		resp.FlatOrder = append(resp.FlatOrder, s.ID)
 	}

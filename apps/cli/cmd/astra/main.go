@@ -162,6 +162,10 @@ func run(args []string) error {
 		return nil
 	}
 
+	// Annotate snippets whose callers live in unchanged regions of changed
+	// files, so context-free roots can say who calls them.
+	core.AnnotateUnchangedCallers(files, snippets)
+
 	// Build symbol graph: call edges between changed entities drive review
 	// order; import edges only group snippets into clusters.
 	edges := append(core.BuildCallEdges(snippets), core.BuildEdgesFromDiff(snippets)...)

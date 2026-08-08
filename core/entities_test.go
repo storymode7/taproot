@@ -152,6 +152,108 @@ func TestExtractEntities_JS(t *testing.T) {
 	}
 }
 
+func TestExtractEntities_TS_ArrowConsts(t *testing.T) {
+	src := `const handler = async (req, res) => {
+  return res.send(ok(req));
+};
+
+export const ok = (x) => x;
+
+const double = x => x * 2;
+
+const fn = function (a) {
+  return a;
+};
+
+const TIMEOUT = 5000;
+`
+	entities := ExtractEntities([]byte(src), "typescript")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	cases := []struct{ name, kind string }{
+		{"handler", "function"},
+		{"ok", "function"},
+		{"double", "function"},
+		{"fn", "function"},
+		{"TIMEOUT", "var"},
+	}
+	for _, tc := range cases {
+		e, ok := byName[tc.name]
+		if !ok {
+			t.Errorf("entity %q not found (got %v)", tc.name, entityNames(entities))
+			continue
+		}
+		if e.Kind != tc.kind {
+			t.Errorf("entity %q: kind = %q, want %q", tc.name, e.Kind, tc.kind)
+		}
+	}
+	if e := byName["handler"]; e.EndLine != 3 {
+		t.Errorf("handler span = [%d, %d], want end 3", e.StartLine, e.EndLine)
+	}
+	if e := byName["ok"]; e.StartLine != e.EndLine {
+		t.Errorf("single-line arrow ok spans [%d, %d], want single line", e.StartLine, e.EndLine)
+	}
+}
+
+func TestExtractEntities_TS_ClassMethods(t *testing.T) {
+	src := `export class Store<T> {
+  private items: T[] = [];
+
+  constructor(initial: T[]) {
+    this.items = initial;
+  }
+
+  static create<T>(): Store<T> {
+    return new Store([]);
+  }
+
+  async put(item: T) {
+    this.items.push(item);
+  }
+
+  get size() {
+    return this.items.length;
+  }
+
+  onClear = (e) => {
+    this.items = [];
+  };
+
+  #reset() {
+    this.items = [];
+  }
+}
+`
+	entities := ExtractEntities([]byte(src), "typescript")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	if e, ok := byName["Store"]; !ok || e.Kind != "class" {
+		t.Fatalf("Store class missing or wrong kind (got %v)", entityNames(entities))
+	}
+	for _, name := range []string{"Store.constructor", "Store.create", "Store.put", "Store.size", "Store.onClear", "Store.#reset"} {
+		e, ok := byName[name]
+		if !ok {
+			t.Errorf("method %q not found (got %v)", name, entityNames(entities))
+			continue
+		}
+		if e.Kind != "function" {
+			t.Errorf("method %q: kind = %q, want function", name, e.Kind)
+		}
+	}
+	// this.items.push(...) inside put must not become a method
+	for _, e := range entities {
+		if e.Name == "Store.this" || e.Name == "Store.push" {
+			t.Errorf("body line extracted as method: %v", e)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Python entity extraction
 // ---------------------------------------------------------------------------
@@ -193,6 +295,537 @@ func TestExtractEntities_Python(t *testing.T) {
 		if e.Kind != tc.kind {
 			t.Errorf("entity %q: kind = %q, want %q", tc.name, e.Kind, tc.kind)
 		}
+	}
+}
+
+func TestExtractEntities_Python_ClassMethodsAndModuleVars(t *testing.T) {
+	src := `import os
+
+MAX_RETRIES = 3
+
+config: dict = {
+    "a": 1,
+}
+
+class Parser:
+    version = 1
+
+    def __init__(self, path):
+        self.path = path
+
+    async def parse(self):
+        def helper():
+            pass
+        return helper()
+
+count = MAX_RETRIES == 3
+`
+	entities := ExtractEntities([]byte(src), "python")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	cases := []struct{ name, kind string }{
+		{"MAX_RETRIES", "const"},
+		{"config", "var"},
+		{"Parser", "class"},
+		{"Parser.__init__", "function"},
+		{"Parser.parse", "function"},
+		{"count", "var"},
+	}
+	for _, tc := range cases {
+		e, ok := byName[tc.name]
+		if !ok {
+			t.Errorf("entity %q not found (got %v)", tc.name, entityNames(entities))
+			continue
+		}
+		if e.Kind != tc.kind {
+			t.Errorf("entity %q: kind = %q, want %q", tc.name, e.Kind, tc.kind)
+		}
+	}
+	// multi-line dict value spans to its closing brace
+	if e := byName["config"]; e.EndLine != 7 {
+		t.Errorf("config span = [%d, %d], want end 7", e.StartLine, e.EndLine)
+	}
+	// nested def helper must not be a method
+	if _, ok := byName["Parser.helper"]; ok {
+		t.Error("nested def extracted as method")
+	}
+	// class attribute assignment must not become a module var
+	if e, ok := byName["version"]; ok {
+		t.Errorf("class attribute extracted as module var: %v", e)
+	}
+}
+
+func TestExtractEntities_Java_ClassMethods(t *testing.T) {
+	src := `import java.util.List;
+
+public class Cache {
+    private List<String> items;
+
+    public void put(String item) {
+        items.add(item);
+    }
+
+    private static int size() {
+        return 0;
+    }
+}
+`
+	entities := ExtractEntities([]byte(src), "java")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	if e, ok := byName["Cache"]; !ok || e.Kind != "class" {
+		t.Fatalf("Cache class missing or wrong kind (got %v)", entityNames(entities))
+	}
+	for _, name := range []string{"Cache.put", "Cache.size"} {
+		e, ok := byName[name]
+		if !ok {
+			t.Errorf("method %q not found (got %v)", name, entityNames(entities))
+			continue
+		}
+		if e.Kind != "function" {
+			t.Errorf("method %q: kind = %q, want function", name, e.Kind)
+		}
+	}
+}
+
+func TestExtractEntities_Rust_ImplMethods(t *testing.T) {
+	src := `use std::fmt;
+
+struct Point {
+    x: i32,
+}
+
+impl Point {
+    pub fn new(x: i32) -> Self {
+        Point { x }
+    }
+
+    fn norm(&self) -> i32 {
+        self.x
+    }
+}
+
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.x)
+    }
+}
+`
+	entities := ExtractEntities([]byte(src), "rust")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	cases := []struct{ name, kind string }{
+		{"Point", "type"},
+		{"Point.new", "function"},
+		{"Point.norm", "function"},
+		{"Point.fmt", "function"},
+	}
+	for _, tc := range cases {
+		e, ok := byName[tc.name]
+		if !ok {
+			t.Errorf("entity %q not found (got %v)", tc.name, entityNames(entities))
+			continue
+		}
+		if e.Kind != tc.kind {
+			t.Errorf("entity %q: kind = %q, want %q", tc.name, e.Kind, tc.kind)
+		}
+	}
+}
+
+func TestExtractEntities_MethodSpansNestInsideClass(t *testing.T) {
+	entities := ExtractEntities([]byte(pySrc), "python")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	class, ok := byName["FileParser"]
+	if !ok {
+		t.Fatalf("FileParser class missing (got %v)", entityNames(entities))
+	}
+	method, ok := byName["FileParser.__init__"]
+	if !ok {
+		t.Fatalf("FileParser.__init__ method missing (got %v)", entityNames(entities))
+	}
+	if method.StartLine <= class.StartLine || method.EndLine > class.EndLine {
+		t.Errorf("method span [%d, %d] not strictly inside class span [%d, %d]",
+			method.StartLine, method.EndLine, class.StartLine, class.EndLine)
+	}
+}
+
+func TestExtractEntities_JS_SemicolonlessArrow(t *testing.T) {
+	// standard.js-style code: a multi-line arrow const with no semicolons
+	// must not swallow the declarations that follow it.
+	src := `const double = x =>
+  x * 2
+const NAME = 'astra'
+function after() {
+  return NAME
+}
+`
+	entities := ExtractEntities([]byte(src), "javascript")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	d, ok := byName["double"]
+	if !ok {
+		t.Fatalf("double not found (got %v)", entityNames(entities))
+	}
+	if d.EndLine > 2 {
+		t.Errorf("double span = [%d, %d], want end <= 2 (must stop before const NAME)", d.StartLine, d.EndLine)
+	}
+	if _, ok := byName["NAME"]; !ok {
+		t.Errorf("NAME swallowed by arrow body (got %v)", entityNames(entities))
+	}
+	if _, ok := byName["after"]; !ok {
+		t.Errorf("after swallowed by arrow body (got %v)", entityNames(entities))
+	}
+}
+
+func TestExtractEntities_JS_NoSemiArrowProperty(t *testing.T) {
+	// A class arrow property without a trailing semicolon (Prettier semi:false)
+	// must not extend into the following method.
+	src := `class A {
+  f = (x) => x + 1
+  g() {
+    return helper(2)
+  }
+}
+`
+	entities := ExtractEntities([]byte(src), "javascript")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	f, ok := byName["A.f"]
+	if !ok {
+		t.Fatalf("A.f not found (got %v)", entityNames(entities))
+	}
+	if f.EndLine != 2 {
+		t.Errorf("A.f span = [%d, %d], want [2, 2] (must not leak into g)", f.StartLine, f.EndLine)
+	}
+	g, ok := byName["A.g"]
+	if !ok {
+		t.Fatalf("A.g not found (got %v)", entityNames(entities))
+	}
+	if g.StartLine != 3 || g.EndLine != 5 {
+		t.Errorf("A.g span = [%d, %d], want [3, 5]", g.StartLine, g.EndLine)
+	}
+}
+
+func TestExtractEntities_JS_BraceInStringMethod(t *testing.T) {
+	// A lone brace inside a string literal must not unbalance the method span.
+	src := `class Parser {
+  isOpen(ch) {
+    return ch === "{";
+  }
+  isClose(ch) {
+    return ch === "}";
+  }
+  next() {
+    return 0;
+  }
+}
+`
+	entities := ExtractEntities([]byte(src), "javascript")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	cases := []struct {
+		name       string
+		start, end int
+	}{
+		{"Parser.isOpen", 2, 4},
+		{"Parser.isClose", 5, 7},
+		{"Parser.next", 8, 10},
+	}
+	for _, tc := range cases {
+		e, ok := byName[tc.name]
+		if !ok {
+			t.Errorf("method %q not found (got %v)", tc.name, entityNames(entities))
+			continue
+		}
+		if e.StartLine != tc.start || e.EndLine != tc.end {
+			t.Errorf("%s span = [%d, %d], want [%d, %d]", tc.name, e.StartLine, e.EndLine, tc.start, tc.end)
+		}
+	}
+}
+
+func TestExtractEntities_JS_MultiLineMethodSignature(t *testing.T) {
+	// Prettier-style multi-line parameter list: the span must cover the whole
+	// body, not stop at the first parameter line ending in ','.
+	src := `class Widget {
+  render(
+    props,
+    state,
+  ) {
+    return props;
+  }
+}
+`
+	entities := ExtractEntities([]byte(src), "javascript")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	r, ok := byName["Widget.render"]
+	if !ok {
+		t.Fatalf("Widget.render not found (got %v)", entityNames(entities))
+	}
+	if r.StartLine != 2 || r.EndLine != 7 {
+		t.Errorf("Widget.render span = [%d, %d], want [2, 7]", r.StartLine, r.EndLine)
+	}
+}
+
+func TestExtractEntities_TS_GenericMethod(t *testing.T) {
+	src := `class Repo {
+  find<T extends Base<K>>(id: string): T {
+    return null;
+  }
+}
+`
+	entities := ExtractEntities([]byte(src), "typescript")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+	if _, ok := byName["Repo.find"]; !ok {
+		t.Errorf("generic method Repo.find not found (got %v)", entityNames(entities))
+	}
+}
+
+func TestExtractEntities_Python_DocstringAssignments(t *testing.T) {
+	// Assignment-looking lines inside a module docstring must not become
+	// entities — and an unclosed bracket in a docstring example must not
+	// swallow the rest of the file.
+	src := `"""Module docs.
+
+Example configuration:
+
+DEFAULT_TIMEOUT = 30
+SERVERS = [
+    "a",
+"""
+
+REAL = 1
+
+def real_func():
+    pass
+`
+	entities := ExtractEntities([]byte(src), "python")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	if _, ok := byName["DEFAULT_TIMEOUT"]; ok {
+		t.Error("docstring text DEFAULT_TIMEOUT extracted as entity")
+	}
+	if _, ok := byName["SERVERS"]; ok {
+		t.Error("docstring text SERVERS extracted as entity")
+	}
+	if _, ok := byName["REAL"]; !ok {
+		t.Errorf("REAL not extracted (got %v)", entityNames(entities))
+	}
+	if _, ok := byName["real_func"]; !ok {
+		t.Errorf("real_func not extracted (got %v)", entityNames(entities))
+	}
+}
+
+func TestExtractEntities_Python_NestedClassBeforeMethods(t *testing.T) {
+	// A nested class with a deeper def preceding the real methods must not
+	// lock the method indent: run/stop are the outer class's methods.
+	src := `class Foo:
+    class Config:
+        def validate(self):
+            pass
+
+    def run(self):
+        pass
+
+    def stop(self):
+        pass
+`
+	entities := ExtractEntities([]byte(src), "python")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	if _, ok := byName["Foo.run"]; !ok {
+		t.Errorf("Foo.run not extracted (got %v)", entityNames(entities))
+	}
+	if _, ok := byName["Foo.stop"]; !ok {
+		t.Errorf("Foo.stop not extracted (got %v)", entityNames(entities))
+	}
+	if _, ok := byName["Foo.validate"]; ok {
+		t.Error("nested class's method misattributed as Foo.validate")
+	}
+}
+
+func TestExtractEntities_Python_OneLinerMethod(t *testing.T) {
+	// A single-line method body must not extend its span over the next method.
+	src := `class Foo:
+    def __repr__(self): return "Foo"
+
+    def compute(self):
+        a = 1
+        return a
+`
+	entities := ExtractEntities([]byte(src), "python")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	r, ok := byName["Foo.__repr__"]
+	if !ok {
+		t.Fatalf("Foo.__repr__ not found (got %v)", entityNames(entities))
+	}
+	if r.EndLine != 2 {
+		t.Errorf("Foo.__repr__ span = [%d, %d], want [2, 2]", r.StartLine, r.EndLine)
+	}
+	c, ok := byName["Foo.compute"]
+	if !ok {
+		t.Fatalf("Foo.compute not found (got %v)", entityNames(entities))
+	}
+	if r.EndLine >= c.StartLine {
+		t.Errorf("Foo.__repr__ [%d, %d] overlaps Foo.compute [%d, %d]", r.StartLine, r.EndLine, c.StartLine, c.EndLine)
+	}
+}
+
+func TestExtractEntities_Python_DecoratedMethodSpan(t *testing.T) {
+	// Decorator lines belong to the decorated method's span, so a diff
+	// touching only "@property" is attributed to the method.
+	src := `class Foo:
+    @property
+    def value(self):
+        return self._v
+`
+	entities := ExtractEntities([]byte(src), "python")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	v, ok := byName["Foo.value"]
+	if !ok {
+		t.Fatalf("Foo.value not found (got %v)", entityNames(entities))
+	}
+	if v.StartLine != 2 {
+		t.Errorf("Foo.value starts at %d, want 2 (decorator included)", v.StartLine)
+	}
+}
+
+func TestExtractEntities_Java_GenericReturnMethod(t *testing.T) {
+	src := `public class Svc {
+    public Map<String, List<Integer>> transform(Input in) {
+        return null;
+    }
+
+    public int simple() {
+        return 0;
+    }
+}
+`
+	entities := ExtractEntities([]byte(src), "java")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+	if _, ok := byName["Svc.transform"]; !ok {
+		t.Errorf("generic-return method Svc.transform not found (got %v)", entityNames(entities))
+	}
+	if _, ok := byName["Svc.simple"]; !ok {
+		t.Errorf("Svc.simple not found (got %v)", entityNames(entities))
+	}
+}
+
+func TestExtractEntities_Rust_ImplBraceInChar(t *testing.T) {
+	// A brace inside a char literal must not unbalance method spans.
+	src := `impl Parser {
+    fn is_open(c: char) -> bool {
+        c == '{'
+    }
+
+    fn next(&self) -> u8 {
+        0
+    }
+}
+`
+	entities := ExtractEntities([]byte(src), "rust")
+	byName := make(map[string]Entity)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	o, ok := byName["Parser.is_open"]
+	if !ok {
+		t.Fatalf("Parser.is_open not found (got %v)", entityNames(entities))
+	}
+	if o.StartLine != 2 || o.EndLine != 4 {
+		t.Errorf("Parser.is_open span = [%d, %d], want [2, 4]", o.StartLine, o.EndLine)
+	}
+	if _, ok := byName["Parser.next"]; !ok {
+		t.Errorf("Parser.next not found (got %v)", entityNames(entities))
+	}
+}
+
+func TestExtractEntities_Rust_ImplNamesDistinctFromStruct(t *testing.T) {
+	// impl blocks must not share (Kind, Name) with the struct — snippet
+	// grouping keys on Kind::Name and would merge them (and two impl blocks
+	// of the same type would merge with each other).
+	src := `struct Foo {
+    x: i32,
+}
+
+impl Foo {
+    const LIMIT: i32 = 10;
+}
+
+impl Display for Foo {
+    fn fmt(&self) -> i32 {
+        self.x
+    }
+}
+`
+	entities := ExtractEntities([]byte(src), "rust")
+	seen := make(map[string]int)
+	for _, e := range entities {
+		seen[e.Kind+"::"+e.Name]++
+	}
+	for key, n := range seen {
+		if n > 1 {
+			t.Errorf("duplicate entity key %q (%d times) — snippet grouping would merge them", key, n)
+		}
+	}
+	if seen["type::Foo"] != 1 {
+		t.Errorf("struct Foo missing or duplicated (got %v)", entityNames(entities))
+	}
+	// The trait impl's method still resolves under the target type's name.
+	found := false
+	for _, e := range entities {
+		if e.Name == "Foo.fmt" && e.Kind == "function" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Foo.fmt not extracted (got %v)", entityNames(entities))
 	}
 }
 

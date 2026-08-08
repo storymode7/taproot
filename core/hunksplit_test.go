@@ -122,6 +122,63 @@ func helper() {
 	}
 }
 
+func TestSplitHunk_DeletionAtBoundaryStaysWithReplacement(t *testing.T) {
+	// A '-' line following a method's trailing blank line must land in the
+	// same snippet as its '+' replacement (the class container) — otherwise
+	// accepting only the method stages a deletion the reviewer never saw.
+	src := `class Store:
+    version = 2
+
+    def put(self, x):
+        self.items.append(x)
+        self.log(x)
+
+    limit = 20
+`
+	files := []*FileDiff{{
+		Path: "store.py", OldPath: "store.py", Language: "python",
+		Source: []byte(src),
+		Hunks: []Hunk{{
+			OldStart: 1, OldLines: 7, NewStart: 1, NewLines: 8,
+			Lines: []string{
+				"@@ -1,7 +1,8 @@",
+				" class Store:",
+				"-    version = 1",
+				"+    version = 2",
+				" ",
+				"     def put(self, x):",
+				"         self.items.append(x)",
+				"+        self.log(x)",
+				" ",
+				"-    limit = 10",
+				"+    limit = 20",
+			},
+		}},
+	}}
+
+	snippets := BuildSnippets(files)
+	bySymbol := make(map[string]*Snippet)
+	for _, s := range snippets {
+		bySymbol[s.SymbolPath] = s
+	}
+
+	put, ok := bySymbol["Store.put"]
+	if !ok {
+		t.Fatalf("no snippet for Store.put (got %v)", symbolPaths(snippets))
+	}
+	class, ok := bySymbol["Store"]
+	if !ok {
+		t.Fatalf("no snippet for Store (got %v)", symbolPaths(snippets))
+	}
+	if strings.Contains(strings.Join(put.DiffLines, "\n"), "limit") {
+		t.Errorf("Store.put snippet contains the class-level limit change:\n%s", strings.Join(put.DiffLines, "\n"))
+	}
+	joined := strings.Join(class.DiffLines, "\n")
+	if !strings.Contains(joined, "-    limit = 10") || !strings.Contains(joined, "+    limit = 20") {
+		t.Errorf("Store snippet missing paired limit change:\n%s", joined)
+	}
+}
+
 func TestSplitHunk_SingleEntityUntouched(t *testing.T) {
 	// A hunk inside one entity must come back unchanged (no resplit noise).
 	h := Hunk{

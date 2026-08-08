@@ -1,0 +1,74 @@
+{
+  "files": [
+    {
+      "path": "spider.py",
+      "oldPath": "spider.py",
+      "language": "python",
+      "hunks": [
+        {
+          "oldStart": 3,
+          "oldLines": 1,
+          "newStart": 3,
+          "newLines": 1,
+          "lines": [
+            "@@ -3,1 +3,1 @@",
+            "-MAX_DEPTH = 2",
+            "+MAX_DEPTH = 3"
+          ]
+        },
+        {
+          "oldStart": 8,
+          "oldLines": 1,
+          "newStart": 8,
+          "newLines": 1,
+          "lines": [
+            "@@ -8,1 +8,1 @@",
+            "-            self.parse_item(response)",
+            "+            self.extract(response)"
+          ]
+        },
+        {
+          "oldStart": 11,
+          "oldLines": 1,
+          "newStart": 11,
+          "newLines": 1,
+          "lines": [
+            "@@ -11,1 +11,1 @@",
+            "-        return response",
+            "+        return json.loads(response)"
+          ]
+        }
+      ],
+      "source": "import json\n\nMAX_DEPTH = 3\n\nclass ProductSpider:\n    def parse(self, response):\n        for i in range(MAX_DEPTH):\n            self.extract(response)\n\n    def extract(self, response):\n        return json.loads(response)\n\ndef runner(spider):\n    spider.parse(None)\n",
+      "entities": []
+    },
+    {
+      "path": "web/app.ts",
+      "oldPath": "web/app.ts",
+      "language": "typescript",
+      "isNew": true,
+      "hunks": [
+        {
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 8,
+          "lines": [
+            "@@ -0,0 +1,8 @@",
+            "+const clamp = (x: number) =>",
+            "+  Math.min(x, LIMIT)",
+            "+",
+            "+const LIMIT = 100",
+            "+",
+            "+export function render(v: number) {",
+            "+  return clamp(v)",
+            "+}"
+          ]
+        }
+      ],
+      "source": "const clamp = (x: number) =>\n  Math.min(x, LIMIT)\n\nconst LIMIT = 100\n\nexport function render(v: number) {\n  return clamp(v)\n}\n",
+      "entities": []
+    }
+  ],
+  "options": { "order": "pre" }
+}

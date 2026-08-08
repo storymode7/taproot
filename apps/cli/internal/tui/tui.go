@@ -59,6 +59,9 @@ func printSnippetHeader(idx, total int, s *core.Snippet, status, indent string) 
 	if s.SymbolPath != "" {
 		fmt.Printf("%s%s  ∷ %s%s\n", indent, dim, s.SymbolPath, reset)
 	}
+	if len(s.UnchangedCallers) > 0 {
+		fmt.Printf("%s%s  called by unchanged %s%s\n", indent, dim, strings.Join(s.UnchangedCallers, ", "), reset)
+	}
 	fmt.Println(strings.Repeat("─", 72))
 }
 

@@ -70,6 +70,10 @@ type Snippet struct {
 	// Depth is set by the ordering engine (call-graph distance from root).
 	Depth int
 
+	// UnchangedCallers lists callers found in unchanged regions of changed
+	// files, in "path::Entity" form (set by AnnotateUnchangedCallers).
+	UnchangedCallers []string
+
 	// Status tracks review progress.
 	Status SnippetStatus
 }
@@ -131,8 +135,10 @@ func fileSnippets(f *FileDiff) []*Snippet {
 //     (shouldn't happen with well-formed source), pick the smallest span.
 //  2. Hunks that don't fall inside any entity go into a "preamble" bucket
 //     (keyed on the file path so all uncovered hunks collapse together).
+//     Preamble groups with no substantive change are dropped entirely.
 //  3. Group hunks by entity, then build one Snippet per group from the merged
-//     diff lines in hunk order.
+//     diff lines in hunk order. Entity groups whose fragments carry no +/-
+//     lines at all (pure context spill) are dropped.
 func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	type group struct {
 		entity    *Entity // nil == preamble
@@ -183,6 +189,17 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	snippets := make([]*Snippet, 0, len(order))
 	for _, key := range order {
 		g := groups[key]
+
+		// Blank-line-only fragments between entities would otherwise become
+		// empty preamble snippets — pure noise. Entity snippets are kept even
+		// when their only change is whitespace, but dropped when the fragment
+		// is pure context spill (no +/- lines at all) from a neighboring hunk.
+		if g.entity == nil && !substantiveChange(g.hunkLines) {
+			continue
+		}
+		if g.entity != nil && !hasChangedLine(g.hunkLines) {
+			continue
+		}
 
 		symbolPath := ""
 		nodeType := "hunk"
@@ -291,6 +308,36 @@ func trimRedundantHunkHeaders(lines []string) []string {
 		lastWasHeader = isHeader
 	}
 	return out
+}
+
+// substantiveChange reports whether diff lines carry a real change: at least
+// one added or removed line with non-whitespace content after the sigil.
+// Hunk headers and context lines never count.
+func substantiveChange(lines []string) bool {
+	for _, l := range lines {
+		if len(l) == 0 || strings.HasPrefix(l, "@@") {
+			continue
+		}
+		if (l[0] == '+' || l[0] == '-') && strings.TrimSpace(l[1:]) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasChangedLine reports whether any diff line is an addition or removal.
+// Fragments with none are hunk context that spilled into a neighboring
+// entity after splitting; the entity itself did not change.
+func hasChangedLine(lines []string) bool {
+	for _, l := range lines {
+		if len(l) == 0 || strings.HasPrefix(l, "@@") {
+			continue
+		}
+		if l[0] == '+' || l[0] == '-' {
+			return true
+		}
+	}
+	return false
 }
 
 // heuristicSnippets creates one snippet per hunk (no entity grouping).

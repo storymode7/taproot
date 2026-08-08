@@ -9,7 +9,10 @@ import "fmt"
 // violating "never merge two distinct named entities".
 //
 // Deleted lines carry no post-image position; they stay with the segment
-// that is open where they occur. Sub-hunk headers are regenerated with
+// that is open where they occur — except when they are immediately followed
+// by added lines that open a new segment: such a -/+ pair is a replacement
+// and must stay together, or accepting only one snippet would stage a
+// deletion the reviewer never saw. Sub-hunk headers are regenerated with
 // correct old/new starts and counts, so each sub-hunk remains a valid patch
 // fragment for git apply.
 func splitHunkAtEntities(h Hunk, entities []Entity) []Hunk {
@@ -46,10 +49,19 @@ func splitHunkAtEntities(h Hunk, entities []Entity) []Hunk {
 	var segs []*segment
 	var cur *segment
 	oldLine, newLine := h.OldStart, h.NewStart
+	var pendingDel []string
 
 	open := func(ent *Entity) {
 		cur = &segment{entity: ent, oldStart: oldLine, newStart: newLine}
 		segs = append(segs, cur)
+	}
+	flushDel := func() {
+		for _, dl := range pendingDel {
+			cur.lines = append(cur.lines, dl)
+			cur.oldCount++
+			oldLine++
+		}
+		pendingDel = nil
 	}
 
 	for _, l := range lines {
@@ -57,32 +69,42 @@ func splitHunkAtEntities(h Hunk, entities []Entity) []Hunk {
 		if len(l) > 0 {
 			prefix = l[0]
 		}
-		if prefix == '+' || prefix == ' ' {
-			// Post-image line: it belongs to the entity at newLine.
+		switch prefix {
+		case '-':
+			// Held back until the next post-image line decides which
+			// segment the deletion belongs to.
+			if cur == nil {
+				open(entityAt(newLine))
+			}
+			pendingDel = append(pendingDel, l)
+		case '+':
+			// A replacement: pending deletions move with their '+' lines.
 			ent := entityAt(newLine)
 			if cur == nil || ent != cur.entity {
 				open(ent)
 			}
-		} else if cur == nil {
-			// Leading deletion: group it with the entity of the upcoming
-			// post-image position.
-			open(entityAt(newLine))
-		}
-
-		cur.lines = append(cur.lines, l)
-		switch prefix {
-		case '+':
+			flushDel()
+			cur.lines = append(cur.lines, l)
 			cur.newCount++
 			newLine++
-		case '-':
-			cur.oldCount++
-			oldLine++
 		default:
+			// Context: pending deletions stay with the open segment.
+			if cur == nil {
+				open(entityAt(newLine))
+			}
+			flushDel()
+			if ent := entityAt(newLine); ent != cur.entity {
+				open(ent)
+			}
+			cur.lines = append(cur.lines, l)
 			cur.oldCount++
 			cur.newCount++
 			oldLine++
 			newLine++
 		}
+	}
+	if cur != nil {
+		flushDel()
 	}
 
 	if len(segs) <= 1 {

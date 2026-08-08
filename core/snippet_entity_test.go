@@ -178,6 +178,220 @@ func Foo() {}
 }
 
 // ---------------------------------------------------------------------------
+// Blank-only preambles are dropped; real preambles and entity snippets survive
+// ---------------------------------------------------------------------------
+
+func TestBuildSnippets_BlankPreambleDropped(t *testing.T) {
+	src := []byte(`package foo
+
+
+func Foo() {}
+`)
+
+	files := []*FileDiff{
+		{
+			Path:     "p.go",
+			OldPath:  "p.go",
+			Language: "go",
+			Hunks: []Hunk{
+				{
+					OldStart: 1, OldLines: 0, NewStart: 2, NewLines: 2,
+					Lines: []string{"@@ -1,0 +2,2 @@", "+", "+"},
+				},
+			},
+		},
+	}
+
+	files[0].Source = src
+	snippets := BuildSnippets(files)
+
+	if len(snippets) != 0 {
+		t.Fatalf("expected blank-only preamble to be dropped, got %d snippets: %v", len(snippets), symbolPaths(snippets))
+	}
+}
+
+func TestBuildSnippets_SubstantivePreambleSurvives(t *testing.T) {
+	src := []byte(`// Package foo does things.
+package foo
+
+func Foo() {}
+`)
+
+	files := []*FileDiff{
+		{
+			Path:     "p.go",
+			OldPath:  "p.go",
+			Language: "go",
+			Hunks: []Hunk{
+				{
+					OldStart: 0, OldLines: 0, NewStart: 1, NewLines: 1,
+					Lines: []string{"@@ -0,0 +1,1 @@", "+// Package foo does things."},
+				},
+			},
+		},
+	}
+
+	files[0].Source = src
+	snippets := BuildSnippets(files)
+
+	if len(snippets) != 1 {
+		t.Fatalf("expected 1 preamble snippet, got %d", len(snippets))
+	}
+	if snippets[0].SymbolPath != "" {
+		t.Errorf("preamble SymbolPath = %q, want empty", snippets[0].SymbolPath)
+	}
+}
+
+func TestBuildSnippets_BlankChangeInEntitySurvives(t *testing.T) {
+	src := []byte(`package foo
+
+func Foo() {
+
+	x()
+}
+`)
+
+	files := []*FileDiff{
+		{
+			Path:     "p.go",
+			OldPath:  "p.go",
+			Language: "go",
+			Hunks: []Hunk{
+				{
+					OldStart: 3, OldLines: 0, NewStart: 4, NewLines: 1,
+					Lines: []string{"@@ -3,0 +4,1 @@", "+"},
+				},
+			},
+		},
+	}
+
+	files[0].Source = src
+	snippets := BuildSnippets(files)
+
+	if len(snippets) != 1 {
+		t.Fatalf("expected entity snippet with blank-only change to survive, got %d", len(snippets))
+	}
+	if snippets[0].SymbolPath != "Foo" {
+		t.Errorf("SymbolPath = %q, want Foo", snippets[0].SymbolPath)
+	}
+}
+
+func TestBuildSnippets_ContextOnlyEntityDropped(t *testing.T) {
+	// Hunk context spilling from a change in callee into the tail of caller
+	// must not produce a caller snippet: caller itself did not change.
+	src := []byte(`package foo
+
+func caller() {
+	callee()
+}
+
+func callee() {
+	println("b")
+}
+`)
+
+	files := []*FileDiff{
+		{
+			Path:     "p.go",
+			OldPath:  "p.go",
+			Language: "go",
+			Hunks: []Hunk{
+				{
+					OldStart: 5, OldLines: 5, NewStart: 5, NewLines: 5,
+					Lines: []string{
+						"@@ -5,5 +5,5 @@",
+						" }",
+						" ",
+						" func callee() {",
+						"-\tprintln(\"a\")",
+						"+\tprintln(\"b\")",
+						" }",
+					},
+				},
+			},
+		},
+	}
+
+	files[0].Source = src
+	snippets := BuildSnippets(files)
+
+	if len(snippets) != 1 {
+		t.Fatalf("expected only the callee snippet, got %d: %v", len(snippets), symbolPaths(snippets))
+	}
+	if snippets[0].SymbolPath != "callee" {
+		t.Errorf("SymbolPath = %q, want callee", snippets[0].SymbolPath)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Rust: struct-level and impl-level hunks must not merge into one snippet
+// ---------------------------------------------------------------------------
+
+func TestBuildSnippets_RustStructAndImplDistinct(t *testing.T) {
+	src := []byte(`struct Foo {
+    x: i32,
+}
+
+impl Foo {
+    const LIMIT: i32 = 20;
+
+    fn get(&self) -> i32 {
+        self.x
+    }
+}
+`)
+
+	files := []*FileDiff{
+		{
+			Path:     "foo.rs",
+			OldPath:  "foo.rs",
+			Language: "rust",
+			Hunks: []Hunk{
+				{
+					OldStart: 2, OldLines: 1, NewStart: 2, NewLines: 1,
+					Lines: []string{"@@ -2,1 +2,1 @@", "-    x: i64,", "+    x: i32,"},
+				},
+				{
+					OldStart: 6, OldLines: 1, NewStart: 6, NewLines: 1,
+					Lines: []string{"@@ -6,1 +6,1 @@", "-    const LIMIT: i32 = 10;", "+    const LIMIT: i32 = 20;"},
+				},
+			},
+		},
+	}
+
+	files[0].Source = src
+	snippets := BuildSnippets(files)
+
+	if len(snippets) != 2 {
+		t.Fatalf("expected 2 snippets (struct + impl), got %d: %v", len(snippets), symbolPaths(snippets))
+	}
+	bySymbol := make(map[string]*Snippet)
+	for _, s := range snippets {
+		bySymbol[s.SymbolPath] = s
+	}
+	structSnip, ok := bySymbol["Foo"]
+	if !ok {
+		t.Fatalf("no snippet for struct Foo (got %v)", symbolPaths(snippets))
+	}
+	if strings.Contains(strings.Join(structSnip.DiffLines, "\n"), "LIMIT") {
+		t.Errorf("impl-level LIMIT change merged into struct snippet:\n%s", strings.Join(structSnip.DiffLines, "\n"))
+	}
+	if structSnip.EndLine >= 5 {
+		t.Errorf("struct snippet span = [%d, %d], want to end before impl", structSnip.StartLine, structSnip.EndLine)
+	}
+	// The impl-level change must live in a snippet whose span covers line 6.
+	found := false
+	for _, s := range snippets {
+		if s.StartLine <= 6 && s.EndLine >= 6 && strings.Contains(strings.Join(s.DiffLines, "\n"), "LIMIT") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no snippet covers the impl-level LIMIT change (got %v)", symbolPaths(snippets))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
