@@ -9,12 +9,14 @@
  */
 
 import { buildReview, reorderReview } from "../lib/ast-ext.js";
-import { renderSnippetList } from "../lib/render.js";
+import { renderReview } from "../lib/shared/render.js";
+import hljs from "../vendor/highlight.min.js";
 import { StateStore } from "../lib/state.js";
 import { syncFileViewed, submitReview } from "../lib/github-sync.js";
 import { GitHubSessionAdapter } from "../lib/github-session-adapter.js";
 
 const store = new StateStore("astra-ext");
+let currentReview = null;
 let currentSnippets = [];
 let adapter = null; // Initialized when we learn owner/repo/prNumber
 
@@ -41,10 +43,10 @@ async function handleFiles({ owner, repo, prNumber, files }) {
   try {
     const preset = document.getElementById("preset-select").value;
     // The Go core (WASM) builds snippets, call edges, and the review tree.
-    const review = await buildReview(files, presetToOrder(preset));
-    currentSnippets = review.snippets ?? [];
+    currentReview = await buildReview(files, presetToOrder(preset));
+    currentSnippets = currentReview.snippets ?? [];
     await store.warmCache(currentSnippets.map((s) => s.id));
-    render(currentSnippets);
+    render();
     setStatus("");
   } catch (err) {
     setStatus(`Parse error: ${err.message}`);
@@ -52,11 +54,20 @@ async function handleFiles({ owner, repo, prNumber, files }) {
   }
 }
 
-function render(snippets) {
-  renderSnippetList(document.getElementById("snippet-list"), snippets, store, onSnippetStateChange);
+function render() {
+  renderReview(document.getElementById("snippet-list"), currentReview, store, {
+    highlight,
+    onStateChange: onSnippetStateChange,
+    commentHint: "Posted to the PR when you press Submit.",
+  });
 }
 
-/** Called by renderSnippetList when a snippet's state changes. */
+function highlight(code, language) {
+  if (!language || !hljs.getLanguage(language)) return null;
+  return hljs.highlight(code, { language, ignoreIllegals: true }).value;
+}
+
+/** Called by renderReview when a snippet's review status changes. */
 async function onSnippetStateChange(snippet) {
   if (!adapter) return;
   await syncFileViewed(adapter, currentSnippets, store, snippet.filePath);
@@ -64,9 +75,9 @@ async function onSnippetStateChange(snippet) {
 
 document.getElementById("preset-select").addEventListener("change", async (e) => {
   if (!currentSnippets.length) return;
-  const review = await reorderReview(presetToOrder(e.target.value));
-  currentSnippets = review.snippets ?? [];
-  render(currentSnippets);
+  currentReview = await reorderReview(presetToOrder(e.target.value));
+  currentSnippets = currentReview.snippets ?? [];
+  render();
 });
 
 document.getElementById("btn-close").addEventListener("click", () => {

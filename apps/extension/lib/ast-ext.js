@@ -30,15 +30,10 @@ async function initParser() {
   };
 }
 
+// content.js fetches each file's source on github.com (the user's session)
+// and sends it along with the diff.
 async function fetchSource(file) {
-  if (!file.raw_url) return null;
-  try {
-    // Same-origin fetch rides the user's existing GitHub session.
-    const resp = await fetch(file.raw_url, { credentials: "include" });
-    return resp.ok ? await resp.text() : null;
-  } catch {
-    return null;
-  }
+  return file.source ?? null;
 }
 
 export const { buildReview, reorderReview } = initAstra({

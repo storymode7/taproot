@@ -103,6 +103,7 @@
 
     try {
       const files = await fetchAllDiffContents();
+      await attachSources(files);
       postToPanel({ type: "files", owner, repo, prNumber: Number(prNumber), files });
       sent = true;
     } catch (err) {
@@ -152,6 +153,8 @@
       }
     }
 
+    headOid = commitOid;
+
     // Convert GitHub's internal format to the shape Astra's panel expects
     // (mirrors the GitHub REST API response for /pulls/:number/files).
     return summaries.map(summary => {
@@ -170,6 +173,30 @@
     });
   }
 
+  // Full post-image source per file, so the core can find entities and call
+  // edges. Fetched here (github.com origin, same session) because the raw
+  // redirect target does not allow the extension's own origin.
+  let headOid = "";
+  const SOURCE_EXT = /\.(m?[jt]sx?|cjs|py|go|java|rs)$/i;
+
+  async function attachSources(files) {
+    const wanted = files.filter((f) => !isRemoved(f) && SOURCE_EXT.test(f.filename));
+    let next = 0;
+    async function worker() {
+      while (next < wanted.length) {
+        const f = wanted[next++];
+        const path = f.filename.split("/").map(encodeURIComponent).join("/");
+        try {
+          const resp = await fetch(`/${owner}/${repo}/raw/${headOid}/${path}`, { credentials: "same-origin" });
+          if (resp.ok) f.source = await resp.text();
+        } catch {
+          // Left without source: the panel reports it and shows plain hunks.
+        }
+      }
+    }
+    if (headOid) await Promise.all(Array.from({ length: 6 }, worker));
+  }
+
   // Convert GitHub's diffLines array into a unified diff patch string,
   // matching the format the GitHub REST API returns in the `patch` field.
   function diffLinesToPatch(diffLines) {
@@ -180,6 +207,10 @@
       // CONTEXT lines have a leading space in line.text already
       return line.text;
     }).join("\n");
+  }
+
+  function isRemoved(f) {
+    return f.status === "removed" || f.status === "deleted";
   }
 
   function postToPanel(msg) {

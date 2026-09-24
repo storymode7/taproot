@@ -24,13 +24,24 @@ async function initParser() {
 }
 
 async function fetchSource(file) {
-  if (!file.raw_url) return null;
   try {
-    const resp = await fetch(file.raw_url);
+    const url = rawContentURL(file.raw_url);
+    if (!url) return null;
+    const resp = await fetch(url);
     return resp.ok ? await resp.text() : null;
   } catch {
     return null;
   }
+}
+
+// GitHub's raw_url (github.com/o/r/raw/<sha>/<path>) redirects without CORS
+// headers, so browsers block it. raw.githubusercontent.com serves the same
+// file with CORS open, and does not count against the API rate limit.
+export function rawContentURL(rawURL) {
+  const m = rawURL?.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/raw\/([0-9a-f]+)\/(.+)$/);
+  if (!m) return null;
+  const path = decodeURIComponent(m[4]).split("/").map(encodeURIComponent).join("/");
+  return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}/${path}`;
 }
 
 export const { buildReview, reorderReview } = initAstra({

@@ -28,19 +28,22 @@
 export function initAstra(adapter) {
   let corePromise = null;
   let lastFiles = null;
+  let lastMissing = [];
 
   async function loadCore() {
     if (corePromise) return corePromise;
     corePromise = (async () => {
       await loadClassicScript(`${adapter.coreBase}/wasm_exec.js`);
       const go = new globalThis.Go();
-      const resp = await fetch(`${adapter.coreBase}/astra-core.wasm`);
+      // no-cache revalidates, so an upgraded engine never runs against
+      // stale cached bytes (a 304 costs nothing when unchanged).
+      const resp = await fetch(`${adapter.coreBase}/astra-core.wasm`, { cache: "no-cache" });
       let instance;
       try {
         ({ instance } = await WebAssembly.instantiateStreaming(resp, go.importObject));
       } catch {
         // Some static hosts serve .wasm without the right MIME type.
-        const buf = await (await fetch(`${adapter.coreBase}/astra-core.wasm`)).arrayBuffer();
+        const buf = await (await fetch(`${adapter.coreBase}/astra-core.wasm`, { cache: "no-cache" })).arrayBuffer();
         ({ instance } = await WebAssembly.instantiate(buf, go.importObject));
       }
       go.run(instance); // resolves only on exit; astraCore installs at startup
@@ -57,12 +60,16 @@ export function initAstra(adapter) {
    * Build the full review from GitHub REST /pulls/:n/files items.
    * Returns the core response: { snippets, edges, tree, flatOrder }.
    * Snippets arrive in flattened reading order with a `status` field
-   * initialised to "pending".
+   * initialised to "pending". `missingSource` lists supported-language
+   * files whose full source could not be fetched (they fall back to plain
+   * hunks with no call structure).
    */
   async function buildReview(files, order = "pre") {
     const wireFiles = [];
+    const missing = [];
     for (const file of files) {
-      if (file.status === "removed") continue;
+      // REST says "removed"; GitHub's page data says "deleted".
+      if (file.status === "removed" || file.status === "deleted") continue;
       const hunks = hunksFromPatch(file.patch ?? "");
       if (hunks.length === 0) continue;
       const lang = detectLanguage(file.filename);
@@ -73,6 +80,8 @@ export function initAstra(adapter) {
         source = (await adapter.fetchSource(file)) ?? "";
         if (source) {
           entities = (await extractEntitiesAST(adapter, source, lang)) ?? [];
+        } else {
+          missing.push(file.filename);
         }
       }
 
@@ -89,6 +98,7 @@ export function initAstra(adapter) {
       });
     }
     lastFiles = wireFiles;
+    lastMissing = missing;
     return processFiles(wireFiles, order);
   }
 
@@ -105,6 +115,7 @@ export function initAstra(adapter) {
     );
     if (resp.error) throw new Error(`astra core: ${resp.error}`);
     for (const s of resp.snippets ?? []) s.status = "pending";
+    resp.missingSource = lastMissing;
     return resp;
   }
 

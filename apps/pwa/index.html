@@ -3,8 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <!-- Astra ships GitHub's own light and dark palettes; keep Dark Reader from re-tinting the diff. -->
+  <meta name="darkreader-lock" />
   <title>Astra — AST-aware PR reviewer</title>
   <meta name="description" content="Reorders GitHub PR diffs by call-graph depth. No backend, no login, no telemetry. Public repos only." />
+  <link rel="stylesheet" href="lib/shared/review.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
@@ -67,6 +71,7 @@
             </select>
           </label>
         </div>
+        <span class="keys-hint"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>y</kbd> accept · <kbd>n</kbd> reject · <kbd>r</kbd> reviewed · <kbd>c</kbd> comment · <kbd>x</kbd> fold</span>
       </div>
       <div id="snippet-list">
         <!-- Snippet cards inserted here by app.js -->

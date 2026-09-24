@@ -10,12 +10,12 @@
  *   3. Load tree-sitter WASM + grammar WASM for each changed language
  *   4. Build snippets (hunk → AST node) + symbol graph
  *   5. Order snippets by selected preset
- *   6. Render snippet cards
+ *   6. Render the call-tree sidebar and diff cards
  */
 
 import { parsePRUrl, fetchPRFiles } from "./lib/github.js";
 import { buildReview, reorderReview } from "./lib/ast.js";
-import { renderSnippetList } from "./lib/render.js";
+import { renderReview } from "./lib/shared/render.js";
 import { StateStore } from "./lib/state.js";
 
 // ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ function showScreen(name) {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let currentSnippets = [];
+let currentReview = null;
 let currentMeta = null;
 const store = new StateStore("astra-pwa");
 
@@ -91,15 +91,9 @@ async function loadReview({ owner, repo, prNumber }) {
 
   // The Go core (WASM) builds snippets, call edges, and the review tree.
   const preset = document.getElementById("preset-select").value;
-  const review = await buildReview(files, presetToOrder(preset));
-  currentSnippets = review.snippets ?? [];
-
-  renderSnippetList(
-    document.getElementById("snippet-list"),
-    currentSnippets,
-    store,
-  );
-
+  currentReview = await buildReview(files, presetToOrder(preset));
+  await store.warmCache((currentReview.snippets ?? []).map((s) => s.id));
+  render();
   showScreen("review");
 }
 
@@ -107,15 +101,16 @@ async function loadReview({ owner, repo, prNumber }) {
 // Preset change → re-order without re-fetching
 // ---------------------------------------------------------------------------
 document.getElementById("preset-select").addEventListener("change", async (e) => {
-  if (!currentSnippets.length) return;
-  const review = await reorderReview(presetToOrder(e.target.value));
-  currentSnippets = review.snippets ?? [];
-  renderSnippetList(
-    document.getElementById("snippet-list"),
-    currentSnippets,
-    store,
-  );
+  if (!currentReview) return;
+  currentReview = await reorderReview(presetToOrder(e.target.value));
+  render();
 });
+
+function render() {
+  renderReview(document.getElementById("snippet-list"), currentReview, store, {
+    commentHint: "Saved in this browser only — the PWA can't post to GitHub.",
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Back buttons

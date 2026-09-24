@@ -61,11 +61,11 @@ export class GitHubSessionAdapter {
     return atob(data.content.replace(/\n/g, ""));
   }
 
-  async postReviewComment({ path, line, body, replyToId = 0 }) {
+  async postReviewComment({ path, line, side = "RIGHT", body, replyToId = 0 }) {
     const { headSHA } = await this.meta();
     const payload = replyToId
       ? { body, in_reply_to: replyToId }
-      : { body, path, line, side: "RIGHT", commit_id: headSHA };
+      : { body, path, line, side, commit_id: headSHA };
 
     const resp = await this._rawFetch(
       `/repos/${this.owner}/${this.repo}/pulls/${this.prNumber}/comments`,

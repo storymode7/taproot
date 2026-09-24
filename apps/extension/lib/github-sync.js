@@ -57,7 +57,7 @@ export async function submitReview(adapter, snippets, store, event = "COMMENT") 
 
     comments.push({
       path: snippet.filePath,
-      line: snippet.endLine,   // attach comment to last line of snippet
+      ...diffAnchor(snippet),
       body: st.comment,
     });
   }
@@ -86,4 +86,21 @@ export async function submitReview(adapter, snippets, store, event = "COMMENT") 
   if (errors.length > 0) {
     throw new Error(`Some comments failed to post:\n${errors.join("\n")}`);
   }
+}
+
+// GitHub only accepts review comments on lines inside the diff, so anchor
+// on the snippet's last line that appears in its hunks (an entity's endLine
+// is often outside them). A snippet with only deletions is anchored on the
+// old side.
+function diffAnchor(snippet) {
+  let oldN = 0, newN = 0, right = 0, left = 0;
+  for (const l of snippet.diffLines) {
+    const m = l.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)/);
+    if (m) { oldN = Number(m[1]); newN = Number(m[2]); continue; }
+    if (l.startsWith("\\")) continue;
+    if (l.startsWith("-")) { left = oldN++; continue; }
+    right = newN++;
+    if (!l.startsWith("+")) oldN++;
+  }
+  return right ? { line: right, side: "RIGHT" } : { line: left || snippet.startLine, side: "LEFT" };
 }
