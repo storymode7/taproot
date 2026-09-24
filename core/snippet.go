@@ -74,6 +74,10 @@ type Snippet struct {
 	// files, in "path::Entity" form (set by AnnotateUnchangedCallers).
 	UnchangedCallers []string
 
+	// TestedBy lists the changed tests that call this snippet, by symbol
+	// path (set by BuildForest, which keeps tests out of the code's tree).
+	TestedBy []string
+
 	// Status tracks review progress.
 	Status SnippetStatus
 }

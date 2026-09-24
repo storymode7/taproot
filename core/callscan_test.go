@@ -332,3 +332,84 @@ func TestOrderSnippets_ImportEdgesDoNotSetDepth(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildCallEdges_IgnoresStringsAndComments(t *testing.T) {
+	test := entitySnippet("t", "a_test.go", "go", "TestX", "function", 1,
+		"func TestX(t *testing.T) {",
+		"	src := \"func run() { parse() }\"",
+		"	raw := `",
+		"	parse()",
+		"	`",
+		"	/* parse() */ // parse()",
+		"}")
+	callee := entitySnippet("p", "a.go", "go", "parse", "function", 20,
+		"func parse() int { return 1 }")
+
+	if edges := BuildCallEdges([]*Snippet{test, callee}); len(edges) != 0 {
+		t.Errorf("string/comment mentions must not create edges, got %v", edges)
+	}
+}
+
+func TestBuildCallEdges_TemplateInterpolationIsCode(t *testing.T) {
+	caller := entitySnippet("c", "a.ts", "typescript", "label", "function", 1,
+		"function label(x) {",
+		"	return `n=${count(x)} parse()`;",
+		"}")
+	count := entitySnippet("n", "a.ts", "typescript", "count", "function", 5,
+		"function count(x) {}")
+	parse := entitySnippet("p", "a.ts", "typescript", "parse", "function", 6,
+		"function parse(x) {}")
+
+	got := edgeSet(BuildCallEdges([]*Snippet{caller, count, parse}))
+	if _, ok := got["c->n"]; !ok {
+		t.Errorf("call inside ${} must count, got %v", got)
+	}
+	if _, ok := got["c->p"]; ok {
+		t.Errorf("call in template text must not count, got %v", got)
+	}
+}
+
+func TestBuildCallEdges_PythonTripleQuoteAndRustLifetime(t *testing.T) {
+	py := entitySnippet("y", "t.py", "python", "test_it", "function", 1,
+		"def test_it():",
+		"    src = \"\"\"",
+		"    parse()",
+		"    \"\"\"",
+		"    return src")
+	pyParse := entitySnippet("pp", "m.py", "python", "parse", "function", 1,
+		"def parse(): pass")
+	rs := entitySnippet("r", "a.rs", "rust", "get", "function", 1,
+		"fn get<'a>(s: &'a str) -> u8 {",
+		"    decode(s)",
+		"}")
+	decode := entitySnippet("d", "a.rs", "rust", "decode", "function", 5,
+		"fn decode(s: &str) -> u8 { 0 }")
+
+	got := edgeSet(BuildCallEdges([]*Snippet{py, pyParse, rs, decode}))
+	if _, ok := got["y->pp"]; ok {
+		t.Errorf("triple-quoted text must not create edges, got %v", got)
+	}
+	if _, ok := got["r->d"]; !ok {
+		t.Errorf("lifetime 'a must not open a char literal, got %v", got)
+	}
+}
+
+func TestBuildCallEdges_NoCrossLanguageEdges(t *testing.T) {
+	goFn := entitySnippet("g", "main.go", "go", "run", "function", 1,
+		"func run() {}")
+	py := entitySnippet("p", "tool.py", "python", "main", "function", 1,
+		"def main():",
+		"    run()")
+	js := entitySnippet("j", "a.js", "javascript", "boot", "function", 1,
+		"function boot() { start(); }")
+	ts := entitySnippet("s", "b.ts", "typescript", "start", "function", 1,
+		"function start() {}")
+
+	got := edgeSet(BuildCallEdges([]*Snippet{goFn, py, js, ts}))
+	if _, ok := got["p->g"]; ok {
+		t.Errorf("python must not call a Go function, got %v", got)
+	}
+	if _, ok := got["j->s"]; !ok {
+		t.Errorf("JS → TS calls are one family, got %v", got)
+	}
+}

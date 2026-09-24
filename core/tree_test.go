@@ -217,3 +217,42 @@ func TestNextPending_WrapsAndSkipsReviewed(t *testing.T) {
 		t.Error("expected nil when nothing is pending")
 	}
 }
+
+func TestBuildForest_TestsFollowCodeAsTestedBy(t *testing.T) {
+	// TestHandle → handle → parse, TestHandle → fixture (test helper).
+	snippets := []*Snippet{
+		fn("th", "api_test.go", "TestHandle", 1),
+		fn("fx", "api_test.go", "fixture", 10),
+		fn("handle", "api.go", "handle", 1),
+		fn("parse", "parse.go", "parse", 1),
+	}
+	edges := []SymbolEdge{
+		call("th", "handle", 2), call("th", "fx", 3), call("handle", "parse", 2),
+	}
+
+	f := BuildForest(snippets, edges)
+	if got := rootIDs(f); len(got) != 2 || got[0] != "handle" || got[1] != "th" {
+		t.Fatalf("roots = %v, want [handle th]", got)
+	}
+	if got := childIDs(f.ByID["th"]); len(got) != 1 || got[0] != "fx" {
+		t.Errorf("test children = %v, want [fx] (test→test edges keep structure)", got)
+	}
+	if got := f.ByID["handle"].Snippet.TestedBy; len(got) != 1 || got[0] != "TestHandle" {
+		t.Errorf("handle.TestedBy = %v, want [TestHandle]", got)
+	}
+}
+
+func TestIsTestPath(t *testing.T) {
+	for p, want := range map[string]bool{
+		"core/tree_test.go": true, "tests/test_cli.py": true, "pkg/test_x.py": true,
+		"src/app.spec.ts": true, "web/__tests__/a.js": true,
+		"src/test/java/FooTest.java": true, "core/tree.go": false,
+		"test/helpers.js": true, "shop/tests.py": true, "TestFoo.java": true,
+		"FooIT.java": true, "src/Testimony.py": false,
+		"src/contest.py": false, "latest/app.ts": false,
+	} {
+		if got := isTestPath(p); got != want {
+			t.Errorf("isTestPath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

@@ -75,7 +75,7 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 
 	for _, s := range snippets {
 		nested := nestedSpans(s, snippets)
-		for i, line := range s.Body {
+		for i, line := range maskCode(s.Body, s.Language) {
 			callLine := s.StartLine + i
 			if inSpans(callLine, nested) {
 				continue
@@ -113,15 +113,22 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 	return edges
 }
 
-// resolveTargets narrows same-named candidates: prefer declarations in the
-// caller's file, then its directory, else keep all (tolerated ambiguity).
+// resolveTargets narrows same-named candidates: only declarations in the
+// caller's language family count, then prefer the caller's file, then its
+// directory, else keep all (tolerated ambiguity).
 func resolveTargets(from *Snippet, candidates []*Snippet) []*Snippet {
-	if len(candidates) <= 1 {
-		return candidates
+	var sameLang []*Snippet
+	for _, c := range candidates {
+		if langFamily(c.Language) == langFamily(from.Language) {
+			sameLang = append(sameLang, c)
+		}
+	}
+	if len(sameLang) <= 1 {
+		return sameLang
 	}
 	var sameFile, sameDir []*Snippet
 	fromDir := pathDir(from.FilePath)
-	for _, c := range candidates {
+	for _, c := range sameLang {
 		if c.FilePath == from.FilePath {
 			sameFile = append(sameFile, c)
 		} else if pathDir(c.FilePath) == fromDir {
@@ -134,7 +141,15 @@ func resolveTargets(from *Snippet, candidates []*Snippet) []*Snippet {
 	if len(sameDir) > 0 {
 		return sameDir
 	}
-	return candidates
+	return sameLang
+}
+
+// langFamily groups languages that call each other directly (JS ↔ TS).
+func langFamily(lang string) string {
+	if lang == "typescript" {
+		return "javascript"
+	}
+	return lang
 }
 
 // varRefTargets scopes bare-reference resolution. Unlike a call site, a bare
@@ -227,11 +242,9 @@ var refStopwords = map[string]bool{
 }
 
 // callSites returns the identifiers used as call/construction sites on one
-// source line. Line comments are stripped first (crudely — a comment marker
-// inside a string literal will truncate the scan; acceptable tolerance).
+// source line. Callers pass lines through maskCode first, so strings and
+// comments are already blank.
 func callSites(line, lang string) []string {
-	line = stripLineComment(line, lang)
-
 	var names []string
 	runes := []rune(line)
 	n := len(runes)
@@ -275,12 +288,10 @@ func callSites(line, lang string) []string {
 	return names
 }
 
-// identTokens returns every identifier token on one source line (comments
-// stripped, same tokenizer as callSites). Used for bare-reference edges to
+// identTokens returns every identifier token on one masked source line
+// (same tokenizer as callSites). Used for bare-reference edges to
 // var/const snippets; the caller applies the length/stopword guard.
 func identTokens(line, lang string) []string {
-	line = stripLineComment(line, lang)
-
 	var names []string
 	runes := []rune(line)
 	n := len(runes)

@@ -56,10 +56,10 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 		if len(entities) == 0 {
 			continue
 		}
-		lines := splitLines(f.Source)
+		lines := maskCode(splitLines(f.Source), f.Language)
 		// Same-file/same-dir disambiguation reuses resolveTargets; only the
 		// caller's FilePath matters to it.
-		from := &Snippet{FilePath: f.Path}
+		from := &Snippet{FilePath: f.Path, Language: f.Language}
 
 		for i := range entities {
 			e := &entities[i]

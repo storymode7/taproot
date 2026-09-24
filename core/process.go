@@ -66,6 +66,7 @@ type WireSnippet struct {
 	Depth            int      `json:"depth"`
 	DiffLines        []string `json:"diffLines"`
 	UnchangedCallers []string `json:"unchangedCallers,omitempty"`
+	TestedBy         []string `json:"testedBy,omitempty"`
 }
 
 // WireEdge is a SymbolEdge on the wire.
@@ -145,6 +146,7 @@ func Process(req ProcessRequest) ProcessResponse {
 			NodeType: s.NodeType, IsNew: s.IsNew,
 			StartLine: s.StartLine, EndLine: s.EndLine, Depth: s.Depth,
 			DiffLines: s.DiffLines, UnchangedCallers: s.UnchangedCallers,
+			TestedBy: s.TestedBy,
 		})
 		resp.FlatOrder = append(resp.FlatOrder, s.ID)
 	}

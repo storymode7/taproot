@@ -37,8 +37,8 @@ type ReviewNode struct {
 
 // ReviewForest is the full review structure for one diff.
 type ReviewForest struct {
-	// Roots holds, in review order: call-tree roots (largest component
-	// first), then non-entity snippets (imports, preamble, fallback hunks)
+	// Roots holds, in review order: call-tree roots (code components
+	// largest first, then test components), then non-entity snippets (imports, preamble, fallback hunks)
 	// as trailing childless roots sorted by file.
 	Roots []*ReviewNode
 
@@ -63,9 +63,17 @@ const (
 // the entry point. Non-entity snippets trail the forest as childless roots.
 func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 	byID := make(map[string]*Snippet, len(snippets))
+	isTest := make(map[string]bool, len(snippets))
 	for _, s := range snippets {
 		byID[s.ID] = s
+		isTest[s.ID] = isTestPath(s.FilePath)
+		s.TestedBy = nil
 	}
+	// Edges between test and non-test code never shape the tree: a test
+	// calling code becomes a TestedBy note on the callee instead, so the
+	// code's own entry points lead the review and tests follow it.
+	crossesTests := func(e SymbolEdge) bool { return isTest[e.From] != isTest[e.To] }
+	testedBy := make(map[string]map[string]string) // callee → test ID → name
 
 	type callEdge struct {
 		to   string
@@ -83,11 +91,27 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 		if byID[e.From] == nil || byID[e.To] == nil {
 			continue
 		}
+		if crossesTests(e) {
+			if isTest[e.From] {
+				if testedBy[e.To] == nil {
+					testedBy[e.To] = make(map[string]string)
+				}
+				testedBy[e.To][e.From] = byID[e.From].SymbolPath
+			}
+			continue
+		}
 		callAdj[e.From] = append(callAdj[e.From], callEdge{to: e.To, line: e.CallLine})
 		callIn[e.To]++
 		callOut[e.From]++
 		inCallGraph[e.From] = true
 		inCallGraph[e.To] = true
+	}
+	for id, names := range testedBy {
+		s := byID[id]
+		for _, name := range names {
+			s.TestedBy = append(s.TestedBy, name)
+		}
+		sort.Strings(s.TestedBy)
 	}
 	for _, adj := range callAdj {
 		sort.Slice(adj, func(i, j int) bool {
@@ -119,7 +143,7 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 		return parent[x]
 	}
 	for _, e := range edges {
-		if byID[e.From] == nil || byID[e.To] == nil {
+		if byID[e.From] == nil || byID[e.To] == nil || crossesTests(e) {
 			continue
 		}
 		rf, rt := find(e.From), find(e.To)
@@ -179,8 +203,8 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 		attach(root)
 	}
 
-	// Group primary snippets by component; order components by size desc,
-	// then by their smallest file path.
+	// Group primary snippets by component; order code components before
+	// test components, then by size desc, then by their smallest file path.
 	compMembers := make(map[string][]*Snippet)
 	for _, s := range snippets {
 		if isPrimary(s) {
@@ -193,6 +217,9 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 		comps = append(comps, c)
 	}
 	sort.Slice(comps, func(i, j int) bool {
+		if ti, tj := isTest[comps[i]], isTest[comps[j]]; ti != tj {
+			return tj
+		}
 		if compSize[comps[i]] != compSize[comps[j]] {
 			return compSize[comps[i]] > compSize[comps[j]]
 		}
