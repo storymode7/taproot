@@ -7,6 +7,8 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/astra-review/astra/apps/cli/internal/state"
@@ -29,10 +31,18 @@ const (
 	bgYellow = "\033[43m"
 )
 
+// Plain makes View print uncolored text with +/- markers: set when stdout
+// is not a terminal or NO_COLOR is set.
+var Plain bool
+
 // View renders the full list of snippets to stdout.
 // This is the non-interactive "print and exit" mode used when stdout is
 // not a TTY (e.g. piped to `less`).
 func View(snippets []*core.Snippet, store *state.Store) {
+	if Plain {
+		plainView(snippets, store)
+		return
+	}
 	for i, s := range snippets {
 		st := store.Get(s.ID)
 		// Indent by call-tree depth so the drill-down structure survives
@@ -50,7 +60,7 @@ func printSnippetHeader(idx, total int, s *core.Snippet, status, indent string) 
 	fmt.Printf("\n%s%s─── %d/%d%s  %s%s%s  %s%s%s  %s%s%s\n",
 		indent,
 		dim, idx, total, reset,
-		bold+cyan, s.FilePath, reset,
+		bold+cyan, fmt.Sprintf("%s:%d", s.FilePath, firstChangedLine(s)), reset,
 		dim, depth, reset,
 		dim, s.Language, reset,
 	)
@@ -59,10 +69,69 @@ func printSnippetHeader(idx, total int, s *core.Snippet, status, indent string) 
 	if s.SymbolPath != "" {
 		fmt.Printf("%s%s  ∷ %s%s\n", indent, dim, s.SymbolPath, reset)
 	}
-	if len(s.UnchangedCallers) > 0 {
-		fmt.Printf("%s%s  called by unchanged %s%s\n", indent, dim, strings.Join(s.UnchangedCallers, ", "), reset)
+	for _, note := range snippetNotes(s, nil) {
+		fmt.Printf("%s%s  %s%s\n", indent, dim, note, reset)
 	}
 	fmt.Println(strings.Repeat("─", 72))
+}
+
+func plainView(snippets []*core.Snippet, store *state.Store) {
+	for i, s := range snippets {
+		indent := strings.Repeat("  ", s.Depth)
+		title := fmt.Sprintf("%s:%d", s.FilePath, firstChangedLine(s))
+		if s.SymbolPath != "" {
+			title += " :: " + s.SymbolPath
+		}
+		fmt.Printf("%s--- %d/%d  %s  [%s]\n", indent, i+1, len(snippets), title, store.Get(s.ID).Status)
+		for _, note := range snippetNotes(s, nil) {
+			fmt.Printf("%s    %s\n", indent, note)
+		}
+		for _, l := range s.DiffLines {
+			fmt.Println(l)
+		}
+		fmt.Println()
+	}
+}
+
+// snippetNotes lists who else calls s and which tests cover it. alsoCalledBy
+// holds the symbol paths of changed callers beyond the tree parent.
+func snippetNotes(s *core.Snippet, alsoCalledBy []string) []string {
+	var notes []string
+	if len(alsoCalledBy) > 0 {
+		notes = append(notes, "also called by "+strings.Join(alsoCalledBy, ", "))
+	}
+	if len(s.UnchangedCallers) > 0 {
+		notes = append(notes, "called by unchanged "+strings.Join(s.UnchangedCallers, ", "))
+	}
+	if len(s.TestedBy) > 0 {
+		notes = append(notes, "tested by "+strings.Join(s.TestedBy, ", "))
+	}
+	return notes
+}
+
+// firstChangedLine is the post-image line of the snippet's first change,
+// the place an editor should open at.
+func firstChangedLine(s *core.Snippet) int {
+	newN := 0
+	for _, l := range s.DiffLines {
+		switch {
+		case strings.HasPrefix(l, "@@"):
+			if m := reHunk.FindStringSubmatch(l); m != nil {
+				fmt.Sscan(m[2], &newN)
+			}
+		case strings.HasPrefix(l, "+"), strings.HasPrefix(l, "-"):
+			if newN > 0 {
+				return newN
+			}
+		case strings.HasPrefix(l, `\`): // "\ No newline at end of file"
+		default:
+			newN++
+		}
+	}
+	if s.StartLine > 0 {
+		return s.StartLine
+	}
+	return 1
 }
 
 func printDiffLines(filePath string, lines []string) {
@@ -105,6 +174,10 @@ type Runner struct {
 	applyMode   bool // stage accepted hunks on quit (--apply mode)
 	onQuit      func() error
 
+	// RepoRoot resolves snippet paths for the o (open in editor) key.
+	RepoRoot string
+	raw      *rawMode
+
 	tree       *treeState
 	cursor     int // index into tree.visible
 	diffScroll int
@@ -137,7 +210,8 @@ func (r *Runner) Run() error {
 		View(r.flat, r.store)
 		return nil
 	}
-	defer raw.restore()
+	r.raw = raw
+	defer func() { r.raw.restore() }()
 
 	r.render()
 
@@ -191,11 +265,63 @@ func (r *Runner) Run() error {
 		case "\t": // Tab toggles auto-advance
 			r.autoAdvance = !r.autoAdvance
 			r.render()
+		case "o", "O":
+			r.openInEditor()
 		case "?":
 			r.renderHelp()
 		}
 	}
 	return nil
+}
+
+// openInEditor suspends the TUI and opens $VISUAL / $EDITOR at the focused
+// snippet's first changed line.
+func (r *Runner) openInEditor() {
+	n := r.currentNode()
+	if n == nil {
+		return
+	}
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+	path := filepath.Join(r.RepoRoot, n.Snippet.FilePath)
+	name, args := editorArgs(editor, path, firstChangedLine(n.Snippet))
+
+	r.raw.restore()
+	fmt.Print("\033[?25h\033[2J\033[H")
+	cmd := exec.Command(name, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	err := cmd.Run()
+	if raw, rerr := enableRawMode(); rerr == nil {
+		r.raw = raw
+	}
+	r.render()
+	if err != nil {
+		fmt.Printf("\r%sastra: %s: %v%s", red, editor, err, reset)
+	}
+}
+
+// editorArgs builds the command that opens path at line, using the syntax
+// each common editor expects.
+func editorArgs(editor, path string, line int) (string, []string) {
+	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		parts = []string{"vi"}
+	}
+	name, args := parts[0], parts[1:]
+	at := fmt.Sprintf("%s:%d", path, line)
+	switch filepath.Base(name) {
+	case "code", "code-insiders", "codium", "cursor", "windsurf":
+		return name, append(args, "-g", at)
+	case "hx", "helix", "zed", "subl", "idea", "goland", "pycharm":
+		return name, append(args, at)
+	default: // vi, vim, nvim, nano, emacs, micro, kak, …
+		return name, append(args, fmt.Sprintf("+%d", line), path)
+	}
 }
 
 // readKey reads one keypress. Reading byte-by-byte (instead of a 3-byte
@@ -451,15 +577,27 @@ func (r *Runner) render() {
 	n := r.currentNode()
 	if n != nil {
 		s := n.Snippet
-		focus := fmt.Sprintf("── %s", s.FilePath)
+		title := ""
 		if s.SymbolPath != "" {
-			focus += " ∷ " + s.SymbolPath
+			title = s.SymbolPath + "  "
 		}
-		focus += " · " + r.store.Get(s.ID).Status + " "
-		if pad := cols - len([]rune(focus)); pad > 0 {
-			focus += strings.Repeat("─", pad)
+		loc := fmt.Sprintf("%s:%d · %s ", s.FilePath, firstChangedLine(s), r.store.Get(s.ID).Status)
+		rule := ""
+		if pad := cols - len([]rune("── "+title+loc)); pad > 0 {
+			rule = strings.Repeat("─", pad)
 		}
-		fmt.Println(dim + focus + reset)
+		fmt.Println(ansiTruncate(dim+"── "+reset+bold+title+reset+dim+loc+rule+reset, cols))
+
+		var also []string
+		for _, id := range n.AlsoCalledBy {
+			if c := r.forest.ByID[id]; c != nil && c.Snippet.SymbolPath != "" {
+				also = append(also, c.Snippet.SymbolPath)
+			}
+		}
+		if notes := snippetNotes(s, also); len(notes) > 0 {
+			fmt.Println(dim + ansiTruncate(strings.Join(notes, " · "), cols-1) + reset)
+			diffH--
+		}
 
 		lines := r.renderedDiff(s, cols)
 		if r.diffScroll > len(lines)-1 {
@@ -481,7 +619,7 @@ func (r *Runner) render() {
 	}
 
 	// Hint line (truncated so it can never wrap and push the header off).
-	hints := "j/k move · l/h drill in/out · y/n/r judge · ]/[ pending · J/K scroll · E/C fold · tab auto · ? help · q quit"
+	hints := "j/k move · l/h drill in/out · y/n/r judge · ]/[ pending · J/K scroll · o open · E/C fold · tab auto · ? help · q quit"
 	fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
 }
 
@@ -499,6 +637,7 @@ func (r *Runner) renderHelp() {
 	fmt.Println("  r           Mark as reviewed (no judgement)")
 	fmt.Println("  ] / [       Next / previous pending snippet")
 	fmt.Println("  J / K       Scroll the diff pane")
+	fmt.Println("  o           Open the snippet in $VISUAL / $EDITOR at its first change")
 	fmt.Println("  E / C       Expand / collapse the whole tree")
 	fmt.Println("  tab         Toggle auto-advance (jump to next pending after judging)")
 	fmt.Println("  q           Quit")
@@ -506,7 +645,7 @@ func (r *Runner) renderHelp() {
 	fmt.Println()
 	fmt.Println(dim + "The tree is the call graph of changed code: children are the" + reset)
 	fmt.Println(dim + "functions/types the focused snippet calls. Roots are entry points" + reset)
-	fmt.Println(dim + "nothing else in the diff calls." + reset)
+	fmt.Println(dim + "nothing else in the diff calls. Tests follow the code they test." + reset)
 	fmt.Println()
 	fmt.Println(dim + "Note: accept/reject records state locally in .git/astra/state.json." + reset)
 	fmt.Println(dim + "      Use --apply (working tree mode only) to stage accepted hunks on quit." + reset)

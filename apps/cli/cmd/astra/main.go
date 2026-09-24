@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	astra diff [--ref <ref>] [--preset top-down|bottom-up|clusters]
+//	astra diff [--base <ref> [--head <ref>] | --ref <ref>] [--preset top-down|bottom-up|clusters]
 //
 // Reads the git diff in the current repository, reorders hunks by
 // call-graph depth, and presents an interactive review TUI.
@@ -26,8 +26,16 @@ USAGE
   astra diff [options]
 
 OPTIONS
-  --ref <ref>          Diff against this git ref (default: working tree)
-                       Examples: origin/main  HEAD~1  v1.2.3
+  --base <ref>         Review a branch the way its PR shows it: changes since
+                       it forked from <ref> (git diff <ref>...HEAD). Changes
+                       made on <ref> after the fork are left out.
+                       Examples: main  origin/main
+  --head <ref>         With --base: review this branch or commit instead of
+                       HEAD, without checking it out.
+                       Examples: --base main --head feature
+                                 --base abc123~1 --head abc123  (one commit)
+  --ref <ref>          Diff the working tree against <ref> exactly as it is
+                       now (git diff <ref>). Includes uncommitted edits.
   --preset <name>      Reading order for --no-tty output (default: top-down)
                          top-down   Entry-point first, callees after (tree pre-order)
                          bottom-up  Leaves first, entry-point last (tree post-order)
@@ -37,11 +45,18 @@ OPTIONS
   --apply              Stage accepted hunks to the git index on quit (git add -p style).
                        Accepted snippets → git apply --cached. Rejected → skipped (left
                        in working tree). Cannot be combined with --ref.
-  --no-tty             Print diff to stdout without interactive UI
+  --no-tty             Print diff to stdout without interactive UI (plain
+                       text when piped or when NO_COLOR is set)
   --no-delta           Skip delta; use bat or built-in highlighting instead.
                        Delta is used automatically when installed.
-  --no-delta-config    Ignore ~/.gitconfig delta settings; use a built-in
-                       light theme. Override theme with ASTRA_DELTA_THEME.
+  --no-delta-config    Ignore ~/.gitconfig delta settings and use Astra's
+                       GitHub-style theme (the default unless your gitconfig
+                       sets delta's look).
+
+ENVIRONMENT
+  ASTRA_THEME          dark | light  (default: from COLORFGBG, else dark)
+  ASTRA_DELTA_THEME    Syntax theme for delta, e.g. "OneHalfDark"
+  VISUAL / EDITOR      Editor for the o key (default: vi)
   --help               Show this help
 
 KEYBOARD SHORTCUTS (interactive mode)
@@ -51,7 +66,8 @@ KEYBOARD SHORTCUTS (interactive mode)
   j / ↓   Move down          y / a   Accept        ] / [  Next/prev pending
   k / ↑   Move up            n / x   Reject        J / K  Scroll diff
   l / →   Expand / drill in  r       Mark reviewed E / C  Expand/collapse all
-  h / ←   Collapse / caller  tab     Toggle auto   q  ?   Quit, help
+  h / ←   Collapse / caller  o       Open editor   tab    Toggle auto
+                                                   q  ?   Quit, help
 
   Accept/reject records state locally in .git/astra/state.json.
   It does not stage or apply changes to your working tree.
@@ -68,7 +84,7 @@ func main() {
 }
 
 func run(args []string) error {
-	var ref string
+	var ref, base, head string
 	var presetName = "top-down"
 	var noTTY bool
 	var noAutoAdvance bool
@@ -85,6 +101,16 @@ func run(args []string) error {
 			}
 			i++
 			ref = args[i]
+		case "--base", "--head":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires an argument", args[i])
+			}
+			if args[i] == "--base" {
+				base = args[i+1]
+			} else {
+				head = args[i+1]
+			}
+			i++
 		case "--preset":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--preset requires an argument")
@@ -117,8 +143,14 @@ func run(args []string) error {
 		return err
 	}
 
-	if applyMode && ref != "" {
-		return fmt.Errorf("--apply cannot be combined with --ref: staging hunks from a committed diff is not supported")
+	if ref != "" && base != "" {
+		return fmt.Errorf("--ref and --base are exclusive: --base reviews committed work since the fork point, --ref diffs the working tree")
+	}
+	if head != "" && base == "" {
+		return fmt.Errorf("--head needs --base (e.g. --base main --head %s)", head)
+	}
+	if applyMode && (ref != "" || base != "") {
+		return fmt.Errorf("--apply works on the working tree only: staging hunks from a committed diff is not supported")
 	}
 
 	// Find git repo root.
@@ -134,7 +166,7 @@ func run(args []string) error {
 	}
 
 	// Fetch diff.
-	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref}
+	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref, Base: base, Head: head}
 	files, err := adapter.Files()
 	if err != nil {
 		return fmt.Errorf("read diff: %w", err)
@@ -179,6 +211,7 @@ func run(args []string) error {
 	ordered := forest.Flatten(order)
 
 	if noTTY || !isTTY() {
+		tui.Plain = !isTTY() || os.Getenv("NO_COLOR") != ""
 		tui.View(ordered, store)
 		return nil
 	}
@@ -206,6 +239,7 @@ func run(args []string) error {
 	}
 
 	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, onQuit)
+	runner.RepoRoot = repoRoot
 	return runner.Run()
 }
 

@@ -24,6 +24,13 @@ type GitDiffAdapter struct {
 	// If empty, uses the working tree (unstaged + staged changes).
 	Ref string
 
+	// Base, when set, reviews committed work the way a PR shows it: the
+	// diff from merge-base(Base, Head) to Head (git diff Base...Head), with
+	// post-images read from Head rather than the working tree. Head
+	// defaults to HEAD. Mutually exclusive with Ref.
+	Base string
+	Head string
+
 	// meta is lazily populated on first call to Meta().
 	meta *PRMeta
 }
@@ -35,12 +42,15 @@ func (a *GitDiffAdapter) Meta() (*PRMeta, error) {
 	if a.meta != nil {
 		return a.meta, nil
 	}
-	headSHA, err := a.git("rev-parse", "HEAD")
+	headSHA, err := a.git("rev-parse", a.headRef())
 	if err != nil {
-		return nil, fmt.Errorf("git rev-parse HEAD: %w", err)
+		return nil, fmt.Errorf("git rev-parse %s: %w", a.headRef(), err)
 	}
 	baseSHA := ""
-	if a.Ref != "" {
+	switch {
+	case a.Base != "":
+		baseSHA, _ = a.git("merge-base", a.Base, a.headRef())
+	case a.Ref != "":
 		baseSHA, _ = a.git("rev-parse", a.Ref)
 	}
 	remote, _ := a.git("remote", "get-url", "origin")
@@ -60,7 +70,10 @@ func (a *GitDiffAdapter) Meta() (*PRMeta, error) {
 // Files returns all changed files by running git diff.
 func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 	args := []string{"diff", "--unified=3", "--no-color"}
-	if a.Ref != "" {
+	switch {
+	case a.Base != "":
+		args = append(args, a.Base+"..."+a.headRef())
+	case a.Ref != "":
 		args = append(args, a.Ref)
 	}
 	raw, err := a.git(args...)
@@ -73,8 +86,12 @@ func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 // FileBlob returns the full contents of a file at a given commit SHA.
 // With an empty SHA the post-image is the working tree (both plain
 // `git diff` and `git diff <ref>` diff against it), so the working-tree
-// file is read first; HEAD is only a fallback for missing files.
+// file is read first; HEAD is only a fallback for missing files. In Base
+// mode the post-image is Head.
 func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
+	if req.SHA == "" && a.Base != "" {
+		req.SHA = a.headRef()
+	}
 	if req.SHA == "" {
 		path := req.Path
 		if a.RepoRoot != "" {
@@ -94,6 +111,13 @@ func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
 		return nil, fmt.Errorf("git show %s:%s: %w", req.SHA, req.Path, err)
 	}
 	return []byte(out), nil
+}
+
+func (a *GitDiffAdapter) headRef() string {
+	if a.Head != "" {
+		return a.Head
+	}
+	return "HEAD"
 }
 
 // ApplyCached applies the given unified-diff patch to the git index.

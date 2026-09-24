@@ -32,6 +32,19 @@ See [SECURITY.md](SECURITY.md) for the full trust policy.
 6. A single file can appear in multiple positions — `utils.ts::formatDate`
    under one caller, `utils.ts::parseCSV` under another.
 
+## Usage
+
+```
+astra diff                          # review uncommitted changes
+astra diff --base main              # review this branch like its PR (changes since it forked)
+astra diff --base main --head feat  # review another branch without checking it out
+astra diff --base main | less       # plain text when piped
+```
+
+In the TUI: `j/k` move, `l/h` drill in/out, `y/n/r` accept/reject/reviewed,
+`o` open in `$EDITOR`, `?` for everything else. Tests are listed after the
+code they test, and each snippet notes which tests cover it.
+
 ## Surfaces
 
 | Surface | Trust ask | Private repos? |

@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/astra-review/astra/apps/cli/internal/state"
@@ -103,22 +104,9 @@ func (t *treeState) scrollTo(idx, height int) {
 	}
 }
 
-// statusGlyph is the one-character review-state marker used in tree rows.
-func statusGlyph(status string) string {
-	switch status {
-	case "accepted":
-		return green + "✓" + reset
-	case "rejected":
-		return red + "✗" + reset
-	case "reviewed":
-		return yellow + "●" + reset
-	default:
-		return dim + "·" + reset
-	}
-}
-
 // renderTreeRow renders one tree row, truncated to width. The cursor row is
-// drawn in inverse video (uncolored, so the inversion stays intact).
+// drawn in inverse video. Annotations are short counts; the focus header
+// lists the names.
 func (t *treeState) renderTreeRow(row visRow, store *state.Store, cursor bool, width int) string {
 	n := row.node
 	s := n.Snippet
@@ -133,55 +121,102 @@ func (t *treeState) renderTreeRow(row visRow, store *state.Store, cursor bool, w
 		marker = "▶"
 	}
 
-	label := s.FilePath
+	status := store.Get(s.ID).Status
+	segs := []segment{
+		{strings.Repeat("  ", row.depth) + marker + " ", ""},
+		{plainGlyph(status), glyphColor(status)},
+		{" ", ""},
+	}
 	switch {
 	case s.NodeType == "imports":
-		label += " (imports)"
+		segs = append(segs, segment{s.FilePath, ""}, segment{" (imports)", dim})
 	case s.SymbolPath == "":
-		label += " (hunks)"
+		segs = append(segs, segment{s.FilePath, ""}, segment{" (hunks)", dim})
 	default:
-		label += " ∷ " + s.SymbolPath
+		segs = append(segs, segment{s.SymbolPath, bold}, segment{"  " + s.FilePath, dim})
 	}
 
-	annotation := ""
+	var notes []string
 	if n.Ref {
-		annotation = " (shown elsewhere)"
-	} else if len(n.AlsoCalledBy) > 0 {
-		names := make([]string, 0, len(n.AlsoCalledBy))
-		for _, id := range n.AlsoCalledBy {
-			if c := t.forest.ByID[id]; c != nil && c.Snippet.SymbolPath != "" {
-				names = append(names, c.Snippet.SymbolPath)
-			}
+		notes = append(notes, "shown elsewhere")
+	} else {
+		if len(n.Children) > 0 && !t.expanded[s.ID] {
+			notes = append(notes, plural(len(n.Children), "callee"))
 		}
-		if len(names) > 0 {
-			annotation = " (also called by " + strings.Join(names, ", ") + ")"
+		if k := len(n.AlsoCalledBy); k > 0 {
+			notes = append(notes, "+"+plural(k, "caller"))
+		}
+		if k := len(s.UnchangedCallers); k > 0 && n.Parent == nil {
+			notes = append(notes, plural(k, "unchanged caller"))
+		}
+		if k := len(s.TestedBy); k > 0 {
+			notes = append(notes, plural(k, "test"))
 		}
 	}
-	if n.Parent == nil && !n.Ref && len(s.UnchangedCallers) > 0 {
-		annotation += " (called by unchanged " + strings.Join(s.UnchangedCallers, ", ") + ")"
-	}
-
-	status := store.Get(s.ID).Status
-
-	// Truncate the plain text before coloring so escape codes never split.
-	plain := fmt.Sprintf("%s%s %s %s%s",
-		strings.Repeat("  ", row.depth), marker, plainGlyph(status), label, annotation)
-	if width > 1 && len([]rune(plain)) > width {
-		plain = string([]rune(plain)[:width-1]) + "…"
+	if len(notes) > 0 {
+		segs = append(segs, segment{"  · " + strings.Join(notes, " · "), dim})
 	}
 
 	if cursor {
-		return "\033[7m" + plain + "\033[27m"
+		return "\033[7m" + renderSegments(segs, width, true) + "\033[27m"
 	}
-	// Swap the plain glyph for its colored form (first occurrence only —
-	// the glyph is always the marker's right-hand neighbour).
-	colored := strings.Replace(plain,
-		" "+plainGlyph(status)+" ", " "+statusGlyph(status)+" ", 1)
+	line := renderSegments(segs, width, false)
 	if n.Ref {
-		colored = dim + colored + reset
+		line = dim + stripANSI(line) + reset
 	}
-	return colored
+	return line
 }
+
+// segment is a run of text with one style.
+type segment struct{ text, style string }
+
+// renderSegments joins styled segments, cutting the plain text at width
+// (with "…") before styling so escape codes never split. plainOnly drops
+// the styles (the inverse-video cursor row).
+func renderSegments(segs []segment, width int, plainOnly bool) string {
+	var b strings.Builder
+	left := width - 1
+	for _, sg := range segs {
+		if left <= 0 {
+			break
+		}
+		text := sg.text
+		if r := []rune(text); len(r) > left {
+			text = string(r[:left-1]) + "…"
+		}
+		left -= len([]rune(text))
+		if plainOnly || sg.style == "" {
+			b.WriteString(text)
+		} else {
+			b.WriteString(sg.style + text + reset)
+		}
+	}
+	return b.String()
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", word)
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
+
+func glyphColor(status string) string {
+	switch status {
+	case "accepted":
+		return green
+	case "rejected":
+		return red
+	case "reviewed":
+		return yellow
+	default:
+		return dim
+	}
+}
+
+var reANSI = regexp.MustCompile("\x1b\\[[0-9;?]*[A-Za-z]")
+
+func stripANSI(s string) string { return reANSI.ReplaceAllString(s, "") }
 
 // ansiTruncate cuts a line to the given visible width, expanding tabs to
 // four spaces and skipping ANSI escape sequences when counting. A reset is
