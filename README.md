@@ -36,6 +36,8 @@ See [SECURITY.md](SECURITY.md) for the full trust policy.
 
 ```
 astra diff                          # review uncommitted changes
+astra diff --staged                 # review what's staged for commit
+astra diff --base abc1^ --head abc1 # review one commit
 astra diff --base main              # review this branch like its PR (changes since it forked)
 astra diff --base main --head feat  # review another branch without checking it out
 astra diff --base main | less       # plain text when piped

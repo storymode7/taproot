@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	astra diff [--base <ref> [--head <ref>] | --ref <ref>] [--preset top-down|bottom-up|clusters]
+//	astra diff [--base <ref> [--head <ref>] | --ref <ref> | --staged] [--preset top-down|bottom-up|clusters]
 //
 // Reads the git diff in the current repository, reorders hunks by
 // call-graph depth, and presents an interactive review TUI.
@@ -34,6 +34,7 @@ OPTIONS
                        HEAD, without checking it out.
                        Examples: --base main --head feature
                                  --base abc123~1 --head abc123  (one commit)
+  --staged             Review what is staged for commit (git diff --cached).
   --ref <ref>          Diff the working tree against <ref> exactly as it is
                        now (git diff <ref>). Includes uncommitted edits.
   --preset <name>      Reading order for --no-tty output (default: top-down)
@@ -87,6 +88,7 @@ func run(args []string) error {
 	var ref, base, head string
 	var presetName = "top-down"
 	var noTTY bool
+	var staged bool
 	var noAutoAdvance bool
 	var applyMode bool
 
@@ -119,6 +121,8 @@ func run(args []string) error {
 			presetName = args[i]
 		case "--no-tty":
 			noTTY = true
+		case "--staged", "--cached":
+			staged = true
 		case "--no-auto-advance":
 			noAutoAdvance = true
 		case "--apply":
@@ -143,6 +147,12 @@ func run(args []string) error {
 		return err
 	}
 
+	if staged && (ref != "" || base != "") {
+		return fmt.Errorf("--staged can't be combined with --ref or --base")
+	}
+	if staged && applyMode {
+		return fmt.Errorf("--apply stages hunks, so it can't run on an already-staged diff")
+	}
 	if ref != "" && base != "" {
 		return fmt.Errorf("--ref and --base are exclusive: --base reviews committed work since the fork point, --ref diffs the working tree")
 	}
@@ -166,7 +176,7 @@ func run(args []string) error {
 	}
 
 	// Fetch diff.
-	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref, Base: base, Head: head}
+	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref, Base: base, Head: head, Staged: staged}
 	files, err := adapter.Files()
 	if err != nil {
 		return fmt.Errorf("read diff: %w", err)

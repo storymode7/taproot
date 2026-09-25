@@ -64,4 +64,20 @@ func TestBaseMode_IgnoresChangesOnBase(t *testing.T) {
 	if !strings.Contains(string(src), "return 9") {
 		t.Errorf("post-image must come from HEAD, got %q", src)
 	}
+
+	// Staged mode: only the index's changes, post-image from the index.
+	write("def a():\n    return 7\n\ndef b():\n    return 2\n")
+	run("add", "m.py")
+	write("def a():\n    return 8\n\ndef b():\n    return 2\n")
+	st := &GitDiffAdapter{RepoRoot: dir, Staged: true}
+	files, err = st.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || !strings.Contains(strings.Join(files[0].Hunks[0].Lines, "\n"), "+    return 7") {
+		t.Fatalf("staged diff must show the index change, got %+v", files)
+	}
+	if src, _ := st.FileBlob(BlobRequest{Path: "m.py"}); !strings.Contains(string(src), "return 7") {
+		t.Errorf("staged post-image must come from the index, got %q", src)
+	}
 }

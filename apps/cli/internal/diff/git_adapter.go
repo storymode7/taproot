@@ -31,6 +31,10 @@ type GitDiffAdapter struct {
 	Base string
 	Head string
 
+	// Staged reviews what is staged for commit (git diff --cached), with
+	// post-images read from the index. Mutually exclusive with Ref and Base.
+	Staged bool
+
 	// meta is lazily populated on first call to Meta().
 	meta *PRMeta
 }
@@ -71,6 +75,8 @@ func (a *GitDiffAdapter) Meta() (*PRMeta, error) {
 func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 	args := []string{"diff", "--unified=3", "--no-color"}
 	switch {
+	case a.Staged:
+		args = append(args, "--cached")
 	case a.Base != "":
 		args = append(args, a.Base+"..."+a.headRef())
 	case a.Ref != "":
@@ -89,6 +95,13 @@ func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 // file is read first; HEAD is only a fallback for missing files. In Base
 // mode the post-image is Head.
 func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
+	if req.SHA == "" && a.Staged {
+		out, err := a.git("show", ":"+req.Path)
+		if err != nil {
+			return nil, fmt.Errorf("git show :%s: %w", req.Path, err)
+		}
+		return []byte(out), nil
+	}
 	if req.SHA == "" && a.Base != "" {
 		req.SHA = a.headRef()
 	}
