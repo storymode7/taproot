@@ -64,8 +64,8 @@ KEYBOARD SHORTCUTS (interactive mode)
   The main view is a call tree of the changed code: children are the
   functions/types the focused snippet calls; roots are entry points.
 
-  j / ↓   Move down          y / a   Accept        ] / [  Next/prev pending
-  k / ↑   Move up            n / x   Reject        J / K  Scroll diff
+  J / ↓   Move down          y / a   Accept        ] / [  Next/prev pending
+  K / ↑   Move up            n / x   Reject        j / k  Scroll diff
   l / →   Expand / drill in  r       Mark reviewed E / C  Expand/collapse all
   h / ←   Collapse / caller  o       Open editor   tab    Toggle auto
                                                    q  ?   Quit, help

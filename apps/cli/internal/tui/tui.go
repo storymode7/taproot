@@ -230,9 +230,9 @@ func (r *Runner) Run() error {
 				}
 			}
 			return nil
-		case "j", "\033[B":
+		case "J", "\033[B":
 			r.moveCursor(1)
-		case "k", "\033[A":
+		case "K", "\033[A":
 			r.moveCursor(-1)
 		case "l", "\033[C", "\r": // expand / drill in / follow ref
 			r.drillIn()
@@ -248,10 +248,10 @@ func (r *Runner) Run() error {
 			r.gotoPending(1)
 		case "[":
 			r.gotoPending(-1)
-		case "J":
+		case "j":
 			r.diffScroll += 5
 			r.render()
-		case "K":
+		case "k":
 			r.diffScroll -= 5
 			if r.diffScroll < 0 {
 				r.diffScroll = 0
@@ -614,12 +614,12 @@ func (r *Runner) render() {
 			fmt.Println(ansiTruncate(l, cols))
 		}
 		if end < len(lines) {
-			fmt.Printf("%s… %d more lines (J/K to scroll)%s\n", dim, len(lines)-end, reset)
+			fmt.Printf("%s… %d more lines (j/k to scroll)%s\n", dim, len(lines)-end, reset)
 		}
 	}
 
 	// Hint line (truncated so it can never wrap and push the header off).
-	hints := "j/k move · l/h drill in/out · y/n/r judge · ]/[ pending · J/K scroll · o open · E/C fold · tab auto · ? help · q quit"
+	hints := "J/K move · l/h drill in/out · y/n/r judge · ]/[ pending · j/k scroll · o open · E/C fold · tab auto · ? help · q quit"
 	fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
 }
 
@@ -627,8 +627,8 @@ func (r *Runner) renderHelp() {
 	fmt.Print("\033[2J\033[H")
 	fmt.Println(bold + "⭐ Astra keyboard shortcuts" + reset)
 	fmt.Println()
-	fmt.Println("  j / ↓       Move down the tree")
-	fmt.Println("  k / ↑       Move up the tree")
+	fmt.Println("  J / ↓       Move down the tree")
+	fmt.Println("  K / ↑       Move up the tree")
 	fmt.Println("  l / → / ⏎   Expand node; if expanded, move to first callee;")
 	fmt.Println("              on a → reference, jump to where it's shown")
 	fmt.Println("  h / ←       Collapse node; if collapsed, jump to caller")
@@ -636,7 +636,7 @@ func (r *Runner) renderHelp() {
 	fmt.Println("  n / x       Reject snippet")
 	fmt.Println("  r           Mark as reviewed (no judgement)")
 	fmt.Println("  ] / [       Next / previous pending snippet")
-	fmt.Println("  J / K       Scroll the diff pane")
+	fmt.Println("  j / k       Scroll the diff pane")
 	fmt.Println("  o           Open the snippet in $VISUAL / $EDITOR at its first change")
 	fmt.Println("  E / C       Expand / collapse the whole tree")
 	fmt.Println("  tab         Toggle auto-advance (jump to next pending after judging)")

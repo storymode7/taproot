@@ -43,7 +43,7 @@ astra diff --base main --head feat  # review another branch without checking it 
 astra diff --base main | less       # plain text when piped
 ```
 
-In the TUI: `j/k` move, `l/h` drill in/out, `y/n/r` accept/reject/reviewed,
+In the TUI: `J/K` move, `j/k` scroll the diff, `l/h` drill in/out, `y/n/r` accept/reject/reviewed,
 `o` open in `$EDITOR`, `?` for everything else. Tests are listed after the
 code they test, and each snippet notes which tests cover it.
 
