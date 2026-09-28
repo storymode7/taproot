@@ -522,6 +522,11 @@ func (r *Runner) renderedDiff(s *core.Snippet, width int) []string {
 	if lines == nil {
 		lines = highlightLines(s.FilePath, s.DiffLines)
 	}
+	var rows []string
+	for _, l := range lines {
+		rows = append(rows, ansiWrap(l, width)...)
+	}
+	lines = rows
 	r.diffCache[s.ID] = lines
 	return lines
 }

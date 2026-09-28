@@ -76,3 +76,48 @@ func TestScrollStep(t *testing.T) {
 		}
 	}
 }
+
+func TestAnsiWrap(t *testing.T) {
+	if got := ansiWrap("short", 10); len(got) != 1 || got[0] != "short" {
+		t.Errorf("short line changed: %q", got)
+	}
+
+	line := "   1    1 │ " + green + strings.Repeat("x", 70) + "END" + reset
+	rows := ansiWrap(line, 40)
+	var joined strings.Builder
+	for i, r := range rows {
+		plain := stripANSI(r)
+		if n := len([]rune(plain)); n > 40 {
+			t.Errorf("row %d is %d wide, want <= 40: %q", i, n, plain)
+		}
+		if i > 0 {
+			if !strings.HasPrefix(plain, "          │ ") {
+				t.Errorf("row %d lacks the gutter: %q", i, plain)
+			}
+			if !strings.Contains(r, green) {
+				t.Errorf("row %d lost its colour: %q", i, r)
+			}
+			plain = strings.TrimPrefix(plain, "          │ ")
+		}
+		joined.WriteString(plain)
+	}
+	if want := stripANSI(line); joined.String() != want {
+		t.Errorf("wrapped text = %q, want %q", joined.String(), want)
+	}
+}
+
+func TestRenderedDiff_WrapsLongLines(t *testing.T) {
+	long := strings.Repeat("word ", 40) + "END"
+	s := &core.Snippet{ID: "s", FilePath: "x.py", DiffLines: []string{"@@ -1 +1 @@", "-" + long, "+" + long + " changed"}}
+	r := &Runner{diffCache: map[string][]string{}}
+	var all string
+	for _, l := range r.renderedDiff(s, 80) {
+		if n := len([]rune(stripANSI(l))); n > 80 {
+			t.Errorf("row wider than pane (%d): %q", n, stripANSI(l))
+		}
+		all += strings.TrimPrefix(stripANSI(l), "          │ ")
+	}
+	if !strings.Contains(all, "END changed") {
+		t.Errorf("end of the changed line is missing:\n%s", all)
+	}
+}

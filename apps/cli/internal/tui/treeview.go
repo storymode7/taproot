@@ -251,6 +251,56 @@ func ansiTruncate(line string, width int) string {
 	return b.String()
 }
 
+// ansiWrap splits line into rows of at most width visible runes. Each
+// continuation row repeats the line's gutter as blanks (up to and including
+// "│ ") and re-applies the colours active at the split point.
+func ansiWrap(line string, width int) []string {
+	line = strings.ReplaceAll(line, "\t", "    ")
+	plain := stripANSI(line)
+	if width <= 0 || len([]rune(plain)) <= width {
+		return []string{line}
+	}
+	indent, contWidth := "", width
+	if i := strings.Index(plain, "│ "); i >= 0 {
+		if n := len([]rune(plain[:i])); n+2 < width/2 {
+			indent = strings.Repeat(" ", n) + dim + "│" + reset + " "
+			contWidth = width - n - 2
+		}
+	}
+
+	var rows []string
+	var b strings.Builder
+	var active []string // SGR sequences in effect since the last reset
+	visible, limit := 0, width
+	runes := []rune(line)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == 0x1b {
+			j := i + 1
+			for j < len(runes) && !((runes[j] >= 'a' && runes[j] <= 'z') || (runes[j] >= 'A' && runes[j] <= 'Z')) {
+				j++
+			}
+			seq := string(runes[i:min(j+1, len(runes))])
+			b.WriteString(seq)
+			if seq == "\x1b[0m" || seq == "\x1b[m" {
+				active = active[:0]
+			} else if strings.HasSuffix(seq, "m") {
+				active = append(active, seq)
+			}
+			i = j
+			continue
+		}
+		if visible == limit {
+			rows = append(rows, b.String()+reset)
+			b.Reset()
+			b.WriteString(indent + strings.Join(active, ""))
+			visible, limit = 0, contWidth
+		}
+		b.WriteRune(runes[i])
+		visible++
+	}
+	return append(rows, b.String())
+}
+
 func plainGlyph(status string) string {
 	switch status {
 	case "accepted":
