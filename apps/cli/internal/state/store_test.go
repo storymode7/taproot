@@ -150,8 +150,8 @@ func TestStore_StateFilePath(t *testing.T) {
 	}
 	_ = store.Set("x", "reviewed", "")
 
-	if got := filepath.Dir(store.path); got != filepath.Join(dir, ".git", "astra", "reviews") {
-		t.Errorf("store dir = %q, want .git/astra/reviews", got)
+	if got := filepath.Dir(store.path); got != filepath.Join(dir, "astra", "reviews") {
+		t.Errorf("store dir = %q, want <gitDir>/astra/reviews", got)
 	}
 }
 

@@ -34,10 +34,11 @@ type Store struct {
 	snippets map[string]*SnippetState // keyed by snippet ID
 }
 
-// Open opens the state store for one diff, identified by scope, in the git
-// repo rooted at repoRoot. The file is only written once a status is set.
-func Open(repoRoot, scope string) (*Store, error) {
-	dir := filepath.Join(repoRoot, ".git", "astra", "reviews")
+// Open opens the state store for one diff, identified by scope, under gitDir
+// (the repo's .git directory, or a linked worktree's own git dir). The file is
+// only written once a status is set.
+func Open(gitDir, scope string) (*Store, error) {
+	dir := filepath.Join(gitDir, "astra", "reviews")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create state dir: %w", err)
 	}

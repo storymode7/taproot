@@ -172,7 +172,11 @@ func run(args []string) error {
 
 	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref, Base: base, Head: head, Staged: staged}
 
-	store, err := state.Open(repoRoot, reviewScope(adapter))
+	gitDir, err := adapter.RunGit("rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return fmt.Errorf("find git dir: %w", err)
+	}
+	store, err := state.Open(strings.TrimSpace(gitDir), reviewScope(adapter))
 	if err != nil {
 		return fmt.Errorf("open state store: %w", err)
 	}
