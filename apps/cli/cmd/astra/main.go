@@ -65,7 +65,7 @@ KEYBOARD SHORTCUTS (interactive mode)
   functions/types the focused snippet calls; roots are entry points.
 
   J / ↓   Move down          y / a   Accept        ] / [  Next/prev pending
-  K / ↑   Move up            n / x   Reject        j / k  Scroll diff
+  K / ↑   Move up            n / x   Reject        j / k  Scroll / next
   l / →   Expand / drill in  r       Mark reviewed E / C  Expand/collapse all
   h / ←   Collapse / caller  o       Open editor   tab    Toggle auto
                                                    q  ?   Quit, help

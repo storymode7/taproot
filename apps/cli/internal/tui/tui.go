@@ -181,6 +181,7 @@ type Runner struct {
 	tree       *treeState
 	cursor     int // index into tree.visible
 	diffScroll int
+	diffMax    int                 // largest diffScroll that still fills the pane
 	diffCache  map[string][]string // rendered diff lines per snippet ID
 	cacheCols  int                 // width the cache was rendered at
 }
@@ -249,14 +250,9 @@ func (r *Runner) Run() error {
 		case "[":
 			r.gotoPending(-1)
 		case "j":
-			r.diffScroll += 5
-			r.render()
+			r.scrollDiff(1)
 		case "k":
-			r.diffScroll -= 5
-			if r.diffScroll < 0 {
-				r.diffScroll = 0
-			}
-			r.render()
+			r.scrollDiff(-1)
 		case "E":
 			r.tree.expandAllNodes()
 			r.refocus()
@@ -349,6 +345,32 @@ func (r *Runner) currentNode() *core.ReviewNode {
 		r.cursor = len(r.tree.visible) - 1
 	}
 	return r.tree.visible[r.cursor].node
+}
+
+// scrollDiff scrolls the diff pane by a page step; at the bottom (or top)
+// it moves on to the next (or previous) snippet instead.
+func (r *Runner) scrollDiff(dir int) {
+	scroll, move := scrollStep(r.diffScroll, r.diffMax, dir)
+	if move != 0 {
+		r.moveCursor(move)
+		return
+	}
+	r.diffScroll = scroll
+	r.render()
+}
+
+func scrollStep(scroll, max, dir int) (newScroll, move int) {
+	if (dir > 0 && scroll >= max) || (dir < 0 && scroll <= 0) {
+		return scroll, dir
+	}
+	scroll += dir * 5
+	if scroll > max {
+		scroll = max
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	return scroll, 0
 }
 
 func (r *Runner) moveCursor(delta int) {
@@ -600,11 +622,12 @@ func (r *Runner) render() {
 		}
 
 		lines := r.renderedDiff(s, cols)
-		if r.diffScroll > len(lines)-1 {
-			r.diffScroll = len(lines) - 1
+		r.diffMax = len(lines) - diffH
+		if r.diffMax < 0 {
+			r.diffMax = 0
 		}
-		if r.diffScroll < 0 {
-			r.diffScroll = 0
+		if r.diffScroll > r.diffMax {
+			r.diffScroll = r.diffMax
 		}
 		end := r.diffScroll + diffH
 		if end > len(lines) {
@@ -636,7 +659,7 @@ func (r *Runner) renderHelp() {
 	fmt.Println("  n / x       Reject snippet")
 	fmt.Println("  r           Mark as reviewed (no judgement)")
 	fmt.Println("  ] / [       Next / previous pending snippet")
-	fmt.Println("  j / k       Scroll the diff pane")
+	fmt.Println("  j / k       Scroll the diff pane; at its end, next / previous snippet")
 	fmt.Println("  o           Open the snippet in $VISUAL / $EDITOR at its first change")
 	fmt.Println("  E / C       Expand / collapse the whole tree")
 	fmt.Println("  tab         Toggle auto-advance (jump to next pending after judging)")

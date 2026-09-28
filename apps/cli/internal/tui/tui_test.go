@@ -58,3 +58,21 @@ func TestWithLineNumbers_NoNewlineMarker(t *testing.T) {
 		t.Errorf("+b must be new line 2 (marker is not a line), got %q", plain)
 	}
 }
+
+func TestScrollStep(t *testing.T) {
+	for _, c := range []struct{ scroll, max, dir, wantScroll, wantMove int }{
+		{0, 0, 1, 0, 1},   // fits on one page: j moves on
+		{0, 0, -1, 0, -1}, // fits on one page: k moves back
+		{0, 12, 1, 5, 0},
+		{10, 12, 1, 12, 0}, // clamps to the last full page
+		{12, 12, 1, 12, 1}, // at the bottom: j moves on
+		{3, 12, -1, 0, 0},
+		{0, 12, -1, 0, -1}, // at the top: k moves back
+	} {
+		s, m := scrollStep(c.scroll, c.max, c.dir)
+		if s != c.wantScroll || m != c.wantMove {
+			t.Errorf("scrollStep(%d, %d, %d) = (%d, %d), want (%d, %d)",
+				c.scroll, c.max, c.dir, s, m, c.wantScroll, c.wantMove)
+		}
+	}
+}
