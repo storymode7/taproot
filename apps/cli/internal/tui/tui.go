@@ -647,7 +647,7 @@ func (r *Runner) renderHelp() {
 	fmt.Println(dim + "functions/types the focused snippet calls. Roots are entry points" + reset)
 	fmt.Println(dim + "nothing else in the diff calls. Tests follow the code they test." + reset)
 	fmt.Println()
-	fmt.Println(dim + "Note: accept/reject records state locally in .git/astra/state.json." + reset)
+	fmt.Println(dim + "Note: accept/reject records state locally under .git/astra/reviews/, per diff." + reset)
 	fmt.Println(dim + "      Use --apply (working tree mode only) to stage accepted hunks on quit." + reset)
 	fmt.Println()
 	fmt.Println("Press any key to continue…")

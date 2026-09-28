@@ -70,11 +70,12 @@ KEYBOARD SHORTCUTS (interactive mode)
   h / ←   Collapse / caller  o       Open editor   tab    Toggle auto
                                                    q  ?   Quit, help
 
-  Accept/reject records state locally in .git/astra/state.json.
+  Accept/reject records state locally under .git/astra/reviews/.
   It does not stage or apply changes to your working tree.
 
 STATE
-  Review state is saved to .git/astra/state.json (gitignored).
+  Review state is saved per diff under .git/astra/reviews/: one small
+  file per commit range (or working tree at its HEAD) you have marked.
 `
 
 func main() {
@@ -169,14 +170,14 @@ func run(args []string) error {
 		return fmt.Errorf("not inside a git repository: %w", err)
 	}
 
-	// Open (or create) state store.
-	store, err := state.Open(repoRoot)
+	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref, Base: base, Head: head, Staged: staged}
+
+	store, err := state.Open(repoRoot, reviewScope(adapter))
 	if err != nil {
 		return fmt.Errorf("open state store: %w", err)
 	}
 
 	// Fetch diff.
-	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref, Base: base, Head: head, Staged: staged}
 	files, err := adapter.Files()
 	if err != nil {
 		return fmt.Errorf("read diff: %w", err)
@@ -251,6 +252,33 @@ func run(args []string) error {
 	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, onQuit)
 	runner.RepoRoot = repoRoot
 	return runner.Run()
+}
+
+// reviewScope names the diff under review by commit SHAs, so review state
+// follows the exact commits rather than branch names that move.
+func reviewScope(a *diff.GitDiffAdapter) string {
+	sha := func(args ...string) string {
+		out, err := a.RunGit(args...)
+		if err != nil {
+			return "unborn"
+		}
+		return strings.TrimSpace(out)
+	}
+	head := sha("rev-parse", "HEAD")
+	switch {
+	case a.Base != "":
+		tip := a.Head
+		if tip == "" {
+			tip = "HEAD"
+		}
+		return "commits " + sha("merge-base", a.Base, tip) + ".." + sha("rev-parse", tip+"^{commit}")
+	case a.Staged:
+		return "staged@" + head
+	case a.Ref != "":
+		return "worktree vs " + sha("rev-parse", a.Ref+"^{commit}") + "@" + head
+	default:
+		return "worktree@" + head
+	}
 }
 
 func parsePreset(name string) (core.Preset, error) {

@@ -1,13 +1,14 @@
 package state
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestStore_GetDefault_ReturnsPending(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir)
+	store, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -22,7 +23,7 @@ func TestStore_GetDefault_ReturnsPending(t *testing.T) {
 
 func TestStore_SetGet_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir)
+	store, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -40,7 +41,7 @@ func TestStore_SetGet_RoundTrip(t *testing.T) {
 
 func TestStore_SetMultiple_AllRetrievable(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir)
+	store, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -62,7 +63,7 @@ func TestStore_SetMultiple_AllRetrievable(t *testing.T) {
 func TestStore_Persistence_ReloadFromDisk(t *testing.T) {
 	dir := t.TempDir()
 
-	store1, err := Open(dir)
+	store1, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open store1: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestStore_Persistence_ReloadFromDisk(t *testing.T) {
 	}
 
 	// Open a new store pointing to the same directory.
-	store2, err := Open(dir)
+	store2, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open store2: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestStore_Persistence_ReloadFromDisk(t *testing.T) {
 
 func TestStore_Prune_RemovesStaleIDs(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir)
+	store, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -109,7 +110,7 @@ func TestStore_Prune_RemovesStaleIDs(t *testing.T) {
 
 func TestStore_Prune_PersistsToReload(t *testing.T) {
 	dir := t.TempDir()
-	store1, err := Open(dir)
+	store1, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestStore_Prune_PersistsToReload(t *testing.T) {
 	_ = store1.Set("stale", "reviewed", "")
 	_ = store1.Prune(map[string]struct{}{"keep": {}})
 
-	store2, err := Open(dir)
+	store2, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -128,7 +129,7 @@ func TestStore_Prune_PersistsToReload(t *testing.T) {
 
 func TestStore_All_ReturnsCopy(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir)
+	store, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -143,14 +144,38 @@ func TestStore_All_ReturnsCopy(t *testing.T) {
 
 func TestStore_StateFilePath(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir)
+	store, err := Open(dir, "worktree@abc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	_ = store.Set("x", "reviewed", "")
 
-	expected := filepath.Join(dir, ".git", "astra", "state.json")
-	if store.path != expected {
-		t.Errorf("store.path = %q, want %q", store.path, expected)
+	if got := filepath.Dir(store.path); got != filepath.Join(dir, ".git", "astra", "reviews") {
+		t.Errorf("store dir = %q, want .git/astra/reviews", got)
+	}
+}
+
+func TestStore_ScopesAreIndependent(t *testing.T) {
+	dir := t.TempDir()
+	a, _ := Open(dir, "commits a..b")
+	if err := a.Set("id1", "reviewed", ""); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	b, _ := Open(dir, "commits b..c")
+	if st := b.Get("id1"); st.Status != "pending" {
+		t.Errorf("other commit sees status %q, want pending", st.Status)
+	}
+	again, _ := Open(dir, "commits a..b")
+	if st := again.Get("id1"); st.Status != "reviewed" {
+		t.Errorf("same commit lost status: %q, want reviewed", st.Status)
+	}
+}
+
+func TestStore_OpenWithoutSetWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := Open(dir, "commits a..b")
+	s.Get("id1")
+	if _, err := os.Stat(s.path); !os.IsNotExist(err) {
+		t.Errorf("viewing without marking created %s", s.path)
 	}
 }

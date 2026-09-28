@@ -1,10 +1,13 @@
 // Package state manages review state persistence for the CLI.
 //
-// State is stored in .git/astra/state.json relative to the repository root.
-// The file is gitignored and never leaves the developer's machine.
+// Each reviewed diff (a commit range, the index, or the working tree at a
+// given HEAD) gets its own file under .git/astra/reviews/, so marking a
+// function in one commit leaves it pending in the others. Files live inside
+// .git and never leave the developer's machine.
 package state
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -22,25 +25,27 @@ type SnippetState struct {
 	Comment string `json:"comment,omitempty"`
 }
 
-// Store persists snippet review states to .git/astra/state.json.
+// Store persists the snippet review states of one diff.
 // It is safe for concurrent use.
 type Store struct {
 	mu       sync.Mutex
 	path     string
+	scope    string
 	snippets map[string]*SnippetState // keyed by snippet ID
 }
 
-// Open opens (or creates) the state store for the git repo rooted at repoRoot.
-// Creates the .git/astra/ directory and state.json if they don't exist.
-func Open(repoRoot string) (*Store, error) {
-	dir := filepath.Join(repoRoot, ".git", "astra")
+// Open opens the state store for one diff, identified by scope, in the git
+// repo rooted at repoRoot. The file is only written once a status is set.
+func Open(repoRoot, scope string) (*Store, error) {
+	dir := filepath.Join(repoRoot, ".git", "astra", "reviews")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create state dir: %w", err)
 	}
 
-	path := filepath.Join(dir, "state.json")
+	h := sha256.Sum256([]byte(scope))
 	s := &Store{
-		path:     path,
+		path:     filepath.Join(dir, fmt.Sprintf("%x.json", h[:8])),
+		scope:    scope,
 		snippets: make(map[string]*SnippetState),
 	}
 
@@ -100,6 +105,7 @@ func (s *Store) Prune(validIDs map[string]struct{}) error {
 // ---------------------------------------------------------------------------
 
 type storedFile struct {
+	Scope    string          `json:"scope"`
 	Snippets []*SnippetState `json:"snippets"`
 }
 
@@ -110,7 +116,7 @@ func (s *Store) load() error {
 	}
 	var f storedFile
 	if err := json.Unmarshal(data, &f); err != nil {
-		return fmt.Errorf("parse state.json: %w", err)
+		return fmt.Errorf("parse %s: %w", s.path, err)
 	}
 	for _, st := range f.Snippets {
 		s.snippets[st.ID] = st
@@ -123,7 +129,7 @@ func (s *Store) flush() error {
 	for _, v := range s.snippets {
 		states = append(states, v)
 	}
-	data, err := json.MarshalIndent(storedFile{Snippets: states}, "", "  ")
+	data, err := json.MarshalIndent(storedFile{Scope: s.scope, Snippets: states}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
