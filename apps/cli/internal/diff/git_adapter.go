@@ -134,9 +134,13 @@ func (a *GitDiffAdapter) headRef() string {
 }
 
 // ApplyCached applies the given unified-diff patch to the git index.
-// Equivalent to: echo "$patch" | git apply --cached
-func (a *GitDiffAdapter) ApplyCached(patch string) error {
-	cmd := exec.Command("git", "apply", "--cached")
+// Equivalent to: echo "$patch" | git apply --cached [-R]
+func (a *GitDiffAdapter) ApplyCached(patch string, reverse bool) error {
+	args := []string{"apply", "--cached"}
+	if reverse {
+		args = append(args, "-R")
+	}
+	cmd := exec.Command("git", args...)
 	if a.RepoRoot != "" {
 		cmd.Dir = a.RepoRoot
 	}

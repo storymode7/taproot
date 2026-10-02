@@ -43,9 +43,11 @@ OPTIONS
                          clusters   Same as top-down (clustering is built in)
   --no-auto-advance    Stay on the current snippet after accept/reject/reviewed
                        (default: auto-advance to next snippet, like git add -p)
-  --apply              Stage accepted hunks to the git index on quit (git add -p style).
-                       Accepted snippets → git apply --cached. Rejected → skipped (left
-                       in working tree). Cannot be combined with --ref.
+  --no-apply           Record verdicts only; leave the git index alone.
+                       By default y stages the snippet (git apply --cached) and
+                       x/r on an accepted snippet unstages it (-R), like
+                       git add -p. Staging is off anyway with --staged, --ref
+                       or --base, since those don't review the working tree.
   --no-tty             Print diff to stdout without interactive UI (plain
                        text when piped or when NO_COLOR is set)
   --no-delta           Skip delta; use bat or built-in highlighting instead.
@@ -91,7 +93,7 @@ func run(args []string) error {
 	var noTTY bool
 	var staged bool
 	var noAutoAdvance bool
-	var applyMode bool
+	var noApply bool
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -126,8 +128,10 @@ func run(args []string) error {
 			staged = true
 		case "--no-auto-advance":
 			noAutoAdvance = true
+		case "--no-apply":
+			noApply = true
 		case "--apply":
-			applyMode = true
+			// no-op: staging on accept is now the default
 		case "--no-delta":
 			tui.NoDelta = true
 		case "--use-delta":
@@ -151,18 +155,13 @@ func run(args []string) error {
 	if staged && (ref != "" || base != "") {
 		return fmt.Errorf("--staged can't be combined with --ref or --base")
 	}
-	if staged && applyMode {
-		return fmt.Errorf("--apply stages hunks, so it can't run on an already-staged diff")
-	}
 	if ref != "" && base != "" {
 		return fmt.Errorf("--ref and --base are exclusive: --base reviews committed work since the fork point, --ref diffs the working tree")
 	}
 	if head != "" && base == "" {
 		return fmt.Errorf("--head needs --base (e.g. --base main --head %s)", head)
 	}
-	if applyMode && (ref != "" || base != "") {
-		return fmt.Errorf("--apply works on the working tree only: staging hunks from a committed diff is not supported")
-	}
+	applyMode := !noApply && !staged && ref == "" && base == ""
 
 	// Find git repo root.
 	repoRoot, err := findRepoRoot()
@@ -231,29 +230,14 @@ func run(args []string) error {
 		return nil
 	}
 
-	var onQuit func() error
+	var stage func(s *core.Snippet, reverse bool) error
 	if applyMode {
-		onQuit = func() error {
-			var accepted []*core.Snippet
-			for _, s := range ordered {
-				if st := store.Get(s.ID); st.Status == "accepted" {
-					accepted = append(accepted, s)
-				}
-			}
-			patch := buildAcceptedPatch(accepted)
-			if patch == "" {
-				fmt.Println("No accepted hunks — nothing staged.")
-				return nil
-			}
-			if err := adapter.ApplyCached(patch); err != nil {
-				return err
-			}
-			fmt.Printf("Staged %d hunk(s) via git apply --cached.\n", len(accepted))
-			return nil
+		stage = func(s *core.Snippet, reverse bool) error {
+			return adapter.ApplyCached(buildAcceptedPatch([]*core.Snippet{s}), reverse)
 		}
 	}
 
-	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, onQuit)
+	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, stage)
 	runner.RepoRoot = repoRoot
 	return runner.Run()
 }

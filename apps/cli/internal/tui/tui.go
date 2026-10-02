@@ -171,8 +171,8 @@ type Runner struct {
 	flat        []*core.Snippet // pre-order canonical snippets (]/[ nav, progress)
 	store       *state.Store
 	autoAdvance bool // jump to the next pending snippet after accept/reject/reviewed
-	applyMode   bool // stage accepted hunks on quit (--apply mode)
-	onQuit      func() error
+	applyMode   bool // stage on accept, unstage on un-accept (off with --no-apply)
+	stage       func(s *core.Snippet, reverse bool) error
 
 	// RepoRoot resolves snippet paths for the o (open in editor) key.
 	RepoRoot string
@@ -194,15 +194,16 @@ type Runner struct {
 // NewRunner creates a Runner for interactive tree review.
 // autoAdvance controls whether the cursor jumps to the next pending snippet
 // after the user accepts, rejects, or marks a snippet as reviewed.
-// applyMode enables git-staging on quit; onQuit is the staging callback (may be nil).
-func NewRunner(forest *core.ReviewForest, store *state.Store, autoAdvance, applyMode bool, onQuit func() error) *Runner {
+// applyMode enables git-staging; stage applies one snippet to the index
+// (reverse unstages it) and may be nil.
+func NewRunner(forest *core.ReviewForest, store *state.Store, autoAdvance, applyMode bool, stage func(s *core.Snippet, reverse bool) error) *Runner {
 	return &Runner{
 		forest:      forest,
 		flat:        forest.Flatten(core.OrderPre),
 		store:       store,
 		autoAdvance: autoAdvance,
 		applyMode:   applyMode,
-		onQuit:      onQuit,
+		stage:       stage,
 		tree:        newTreeState(forest),
 		diffCache:   make(map[string][]string),
 	}
@@ -231,11 +232,6 @@ func (r *Runner) Run() error {
 		switch key {
 		case "q", "Q":
 			fmt.Print("\033[?25h") // show cursor
-			if r.applyMode && r.onQuit != nil {
-				if err := r.onQuit(); err != nil {
-					fmt.Fprintf(os.Stderr, "\nastra: apply failed: %v\n", err)
-				}
-			}
 			return nil
 		case "J", "\033[B":
 			r.moveCursor(1)
@@ -506,6 +502,13 @@ func (r *Runner) setStatus(status string) {
 		return
 	}
 	st := r.store.Get(n.Snippet.ID)
+	if r.applyMode && r.stage != nil && (st.Status == "accepted") != (status == "accepted") {
+		if err := r.stage(n.Snippet, status != "accepted"); err != nil {
+			r.status = err.Error()
+			r.render()
+			return
+		}
+	}
 	_ = r.store.Set(n.Snippet.ID, status, st.Comment)
 	if r.autoAdvance {
 		r.gotoPending(1)
@@ -618,7 +621,7 @@ func (r *Runner) render() {
 	}
 	applyLabel := ""
 	if r.applyMode {
-		applyLabel = "  " + yellow + "[apply mode]" + reset
+		applyLabel = "  " + yellow + "[staging]" + reset
 	}
 	fmt.Printf("%s Astra%s  %d/%d reviewed %s%s%s %d%%  %s%s%s%s\n",
 		bold+blue+"⭐", reset, done, total, dim, bar, reset, pct,
@@ -728,7 +731,8 @@ func (r *Runner) renderHelp() {
 	fmt.Println(dim + "nothing else in the diff calls. Tests follow the code they test." + reset)
 	fmt.Println()
 	fmt.Println(dim + "Note: accept/reject records state locally under .git/astra/reviews/, per diff." + reset)
-	fmt.Println(dim + "      Use --apply (working tree mode only) to stage accepted hunks on quit." + reset)
+	fmt.Println(dim + "      In working tree mode y also stages the snippet and x/r unstages it;" + reset)
+	fmt.Println(dim + "      pass --no-apply to leave the index alone." + reset)
 	fmt.Println()
 	fmt.Println("Press any key to continue…")
 	buf := make([]byte, 1)

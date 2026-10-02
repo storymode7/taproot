@@ -157,7 +157,7 @@ func TestBuildAcceptedPatch_GitApply_ClassAndMethodSplit(t *testing.T) {
 
 	// Accepting everything must produce a patch git can apply.
 	patch := buildAcceptedPatch(snippets)
-	if err := adapter.ApplyCached(patch); err != nil {
+	if err := adapter.ApplyCached(patch, false); err != nil {
 		t.Fatalf("full patch rejected by git apply: %v\npatch:\n%s", err, patch)
 	}
 	git("reset", "-q")
@@ -172,17 +172,41 @@ func TestBuildAcceptedPatch_GitApply_ClassAndMethodSplit(t *testing.T) {
 	if len(put) != 1 {
 		t.Fatalf("expected a Store.put snippet, got %v", symbols(snippets))
 	}
-	if err := adapter.ApplyCached(buildAcceptedPatch(put)); err != nil {
+	if err := adapter.ApplyCached(buildAcceptedPatch(put), false); err != nil {
 		t.Fatalf("method-only patch rejected by git apply: %v", err)
 	}
-	cmd := exec.Command("git", "show", ":store.py")
-	cmd.Dir = dir
-	staged, err := cmd.Output()
-	if err != nil {
-		t.Fatal(err)
+	show := func() string {
+		t.Helper()
+		cmd := exec.Command("git", "show", ":store.py")
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(out)
 	}
-	if !strings.Contains(string(staged), "limit = 10") {
+	staged := show()
+	if !strings.Contains(staged, "limit = 10") {
 		t.Errorf("accepting only Store.put lost the unaccepted limit line; staged:\n%s", staged)
+	}
+	git("reset", "-q")
+
+	// Staging runs one snippet per keypress, in whatever order the user
+	// reviews them, and -R takes one back out again.
+	for i := len(snippets) - 1; i >= 0; i-- {
+		one := buildAcceptedPatch(snippets[i : i+1])
+		if err := adapter.ApplyCached(one, false); err != nil {
+			t.Fatalf("staging %s alone rejected: %v\npatch:\n%s", snippets[i].SymbolPath, err, one)
+		}
+	}
+	if got := show(); got != newSrc {
+		t.Errorf("staging every snippet one at a time != full change; staged:\n%s", got)
+	}
+	if err := adapter.ApplyCached(buildAcceptedPatch(put), true); err != nil {
+		t.Fatalf("unstaging Store.put rejected: %v", err)
+	}
+	if got := show(); strings.Contains(got, "self.log(x)") || !strings.Contains(got, "version = 2") {
+		t.Errorf("unstaging Store.put should remove only its change; staged:\n%s", got)
 	}
 }
 
