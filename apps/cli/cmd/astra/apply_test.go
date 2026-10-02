@@ -202,11 +202,20 @@ func TestBuildAcceptedPatch_GitApply_ClassAndMethodSplit(t *testing.T) {
 	if got := show(); got != newSrc {
 		t.Errorf("staging every snippet one at a time != full change; staged:\n%s", got)
 	}
+	if err := adapter.ApplyCached(buildAcceptedPatch(put), false); err != nil {
+		t.Fatalf("re-staging an already staged snippet must be a no-op, got: %v", err)
+	}
 	if err := adapter.ApplyCached(buildAcceptedPatch(put), true); err != nil {
 		t.Fatalf("unstaging Store.put rejected: %v", err)
 	}
 	if got := show(); strings.Contains(got, "self.log(x)") || !strings.Contains(got, "version = 2") {
 		t.Errorf("unstaging Store.put should remove only its change; staged:\n%s", got)
+	}
+	if err := adapter.ApplyCached(buildAcceptedPatch(put), true); err != nil {
+		t.Fatalf("unstaging a snippet that isn't staged must be a no-op, got: %v", err)
+	}
+	if got := show(); strings.Contains(got, "self.log(x)") || !strings.Contains(got, "version = 2") {
+		t.Errorf("second unstage changed the index; staged:\n%s", got)
 	}
 }
 

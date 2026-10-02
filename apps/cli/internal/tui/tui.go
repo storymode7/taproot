@@ -502,7 +502,7 @@ func (r *Runner) setStatus(status string) {
 		return
 	}
 	st := r.store.Get(n.Snippet.ID)
-	if r.applyMode && r.stage != nil && (st.Status == "accepted") != (status == "accepted") {
+	if r.applyMode && r.stage != nil && (status == "accepted" || st.Status == "accepted") {
 		if err := r.stage(n.Snippet, status != "accepted"); err != nil {
 			r.status = err.Error()
 			r.render()
