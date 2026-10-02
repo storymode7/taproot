@@ -184,6 +184,11 @@ type Runner struct {
 	diffMax    int                 // largest diffScroll that still fills the pane
 	diffCache  map[string][]string // rendered diff lines per snippet ID
 	cacheCols  int                 // width the cache was rendered at
+
+	search    *searchState
+	prompting bool   // the hint line is the / prompt
+	input     string // pattern being typed at the prompt
+	status    string // one-shot message shown on the hint line
 }
 
 // NewRunner creates a Runner for interactive tree review.
@@ -221,6 +226,7 @@ func (r *Runner) Run() error {
 		if key == "" {
 			break
 		}
+		r.status = ""
 
 		switch key {
 		case "q", "Q":
@@ -241,7 +247,7 @@ func (r *Runner) Run() error {
 			r.drillOut()
 		case "y", "Y", "a", "A": // y/a = accept (y mirrors git add -p)
 			r.setStatus("accepted")
-		case "n", "N", "x", "X": // n/x = reject (n mirrors git add -p)
+		case "x", "X":
 			r.setStatus("rejected")
 		case "r", "R":
 			r.setStatus("reviewed")
@@ -253,6 +259,24 @@ func (r *Runner) Run() error {
 			r.scrollDiff(1)
 		case "k":
 			r.scrollDiff(-1)
+		case "g":
+			if readKey() == "g" {
+				r.diffScroll = 0
+				r.render()
+			}
+		case "G":
+			r.diffScroll = r.diffMax
+			r.render()
+		case "\033[H", "\033[1~", "\033[7~": // Home
+			r.moveCursor(-r.cursor)
+		case "\033[F", "\033[4~", "\033[8~": // End
+			r.moveCursor(len(r.tree.visible) - 1 - r.cursor)
+		case "/":
+			r.promptSearch()
+		case "n":
+			r.searchJump(1)
+		case "N":
+			r.searchJump(-1)
 		case "E":
 			r.tree.expandAllNodes()
 			r.refocus()
@@ -322,18 +346,25 @@ func editorArgs(editor, path string, line int) (string, []string) {
 
 // readKey reads one keypress. Reading byte-by-byte (instead of a 3-byte
 // buffer) keeps rapid keystrokes from batching into one unrecognized chunk;
-// an ESC byte pulls the rest of its arrow-key sequence.
+// an ESC byte pulls the rest of its escape sequence, if one follows within
+// 50ms, so a bare Esc is reported as "\033".
 func readKey() string {
 	var b [1]byte
 	n, err := os.Stdin.Read(b[:])
 	if err != nil || n == 0 {
 		return ""
 	}
-	if b[0] != 0x1b {
+	if b[0] != 0x1b || !stdinReadable(50) {
 		return string(b[:1])
 	}
-	var seq [2]byte
-	n, _ = os.Stdin.Read(seq[:])
+	var seq [3]byte
+	n, _ = os.Stdin.Read(seq[:2])
+	// "\033[1~"-style keys (Home/End on some terminals) carry a trailing ~.
+	if n == 2 && seq[0] == '[' && seq[1] >= '0' && seq[1] <= '9' {
+		if m, _ := os.Stdin.Read(seq[2:]); m == 1 {
+			n = 3
+		}
+	}
 	return "\033" + string(seq[:n])
 }
 
@@ -638,7 +669,16 @@ func (r *Runner) render() {
 		if end > len(lines) {
 			end = len(lines)
 		}
-		for _, l := range lines[r.diffScroll:end] {
+		// The current search hit is shown in inverse video so n/N have
+		// visible effect even when every hit fits on one screen.
+		hitRow := -1
+		if h := r.search; h != nil && h.hit.snip >= 0 && r.flat[h.hit.snip].ID == s.ID {
+			hitRow = h.hit.row
+		}
+		for i, l := range lines[r.diffScroll:end] {
+			if r.diffScroll+i == hitRow {
+				l = "\033[7m" + stripANSI(l) + reset
+			}
 			fmt.Println(ansiTruncate(l, cols))
 		}
 		if end < len(lines) {
@@ -647,8 +687,15 @@ func (r *Runner) render() {
 	}
 
 	// Hint line (truncated so it can never wrap and push the header off).
-	hints := "J/K move · l/h drill in/out · y/n/r judge · ]/[ pending · j/k scroll · o open · E/C fold · tab auto · ? help · q quit"
-	fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
+	switch {
+	case r.prompting:
+		fmt.Print(ansiTruncate("/"+r.input, cols-1) + "\033[?25h")
+	case r.status != "":
+		fmt.Print(yellow + ansiTruncate(r.status, cols-1) + reset)
+	default:
+		hints := "J/K move · l/h drill in/out · y/x/r judge · ]/[ pending · j/k scroll · / search · o open · E/C fold · tab auto · ? help · q quit"
+		fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
+	}
 }
 
 func (r *Runner) renderHelp() {
@@ -661,10 +708,15 @@ func (r *Runner) renderHelp() {
 	fmt.Println("              on a → reference, jump to where it's shown")
 	fmt.Println("  h / ←       Collapse node; if collapsed, jump to caller")
 	fmt.Println("  y / a       Accept snippet")
-	fmt.Println("  n / x       Reject snippet")
+	fmt.Println("  x           Reject snippet")
 	fmt.Println("  r           Mark as reviewed (no judgement)")
 	fmt.Println("  ] / [       Next / previous pending snippet")
 	fmt.Println("  j / k       Scroll the diff pane; at its end, next / previous snippet")
+	fmt.Println("  gg / G      Scroll the diff pane to its top / bottom")
+	fmt.Println("  Home / End  First / last row of the tree")
+	fmt.Println("  /           Search path, symbol, and diff text (regexp; case-insensitive")
+	fmt.Println("              unless the pattern has an uppercase letter)")
+	fmt.Println("  n / N       Next / previous search hit")
 	fmt.Println("  o           Open the snippet in $VISUAL / $EDITOR at its first change")
 	fmt.Println("  E / C       Expand / collapse the whole tree")
 	fmt.Println("  tab         Toggle auto-advance (jump to next pending after judging)")
