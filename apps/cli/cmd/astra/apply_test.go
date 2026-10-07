@@ -219,6 +219,90 @@ func TestBuildAcceptedPatch_GitApply_ClassAndMethodSplit(t *testing.T) {
 	}
 }
 
+func TestBuildAcceptedPatch_GitApply_SplitHunkWithoutTrailingContext(t *testing.T) {
+	// A sub-hunk cut at an entity boundary ends on its last changed line,
+	// with no trailing context. git apply would anchor such a hunk to the
+	// end of the file; staging it must still work.
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+
+	oldSrc := `"""doc"""
+
+import os
+import sys
+
+from app.client import Client
+
+
+def f():
+    pass
+`
+	newSrc := `"""doc"""
+
+import os
+import sys
+from app.errors import RequestError
+
+from app.client import Client
+
+
+def f():
+    pass
+`
+
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(dir, "p.py"), []byte(oldSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "p.py")
+	git("commit", "-q", "-m", "base")
+	if err := os.WriteFile(filepath.Join(dir, "p.py"), []byte(newSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := &diff.GitDiffAdapter{RepoRoot: dir}
+	files, err := adapter.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		f.Source = []byte(newSrc)
+	}
+	snippets := core.BuildSnippets(files)
+	if len(snippets) != 1 || snippets[0].NodeType != "imports" {
+		t.Fatalf("expected one imports snippet, got %v", symbols(snippets))
+	}
+
+	patch := buildAcceptedPatch(snippets)
+	if err := adapter.ApplyCached(patch, false); err != nil {
+		t.Fatalf("staging imports rejected: %v\npatch:\n%s", err, patch)
+	}
+	show := exec.Command("git", "show", ":p.py")
+	show.Dir = dir
+	staged, err := show.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(staged) != newSrc {
+		t.Errorf("staged content != new source; staged:\n%s", staged)
+	}
+	if err := adapter.ApplyCached(patch, true); err != nil {
+		t.Fatalf("unstaging imports rejected: %v", err)
+	}
+}
+
 func symbols(snippets []*core.Snippet) []string {
 	out := make([]string, len(snippets))
 	for i, s := range snippets {

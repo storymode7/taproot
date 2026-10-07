@@ -134,7 +134,9 @@ func (a *GitDiffAdapter) headRef() string {
 }
 
 // ApplyCached applies the given unified-diff patch to the git index.
-// Equivalent to: echo "$patch" | git apply --cached [-R]
+// Equivalent to: echo "$patch" | git apply --cached --unidiff-zero [-R]
+// Hunks cut at entity boundaries end on their last changed line, with no
+// trailing context; without --unidiff-zero git would anchor them to EOF.
 // It is idempotent: a patch already in the index (or, with reverse, already
 // absent from it) is left alone, so review state recorded before staging
 // existed, or an index the user touched by hand, never makes a keypress fail.
@@ -146,7 +148,7 @@ func (a *GitDiffAdapter) ApplyCached(patch string, reverse bool) error {
 }
 
 func (a *GitDiffAdapter) gitApplyCached(patch string, reverse, check bool) error {
-	args := []string{"apply", "--cached"}
+	args := []string{"apply", "--cached", "--unidiff-zero"}
 	if reverse {
 		args = append(args, "-R")
 	}

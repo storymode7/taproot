@@ -171,6 +171,11 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 		// Split hunks that straddle entity boundaries (context overlap,
 		// whole-new-file hunks) so each piece maps to exactly one entity.
 		for _, h := range splitHunkAtEntities(f.Hunks[i], entities) {
+			// A piece with no +/- lines is context spilled across an entity
+			// boundary; git apply rejects such a hunk as corrupt.
+			if !hasChangedLine(h.Lines) {
+				continue
+			}
 			hStart := h.NewStart
 			hEnd := h.NewStart + h.NewLines - 1
 			if hEnd < hStart {

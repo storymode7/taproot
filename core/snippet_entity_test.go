@@ -323,6 +323,61 @@ func callee() {
 	}
 }
 
+func TestBuildSnippets_ContextSpillIntoSameNamedEntityDropped(t *testing.T) {
+	// Two import blocks share the "imports" key. Context from a change in
+	// the first block spilling into the second must not add a context-only
+	// fragment to the merged snippet: git apply rejects a hunk with no
+	// added or removed lines as corrupt.
+	src := []byte(`import os
+import sys
+from app.errors import RequestError
+
+from app.client import Client
+
+
+def f():
+    pass
+`)
+
+	files := []*FileDiff{
+		{
+			Path:     "p.py",
+			OldPath:  "p.py",
+			Language: "python",
+			Hunks: []Hunk{
+				{
+					OldStart: 1, OldLines: 5, NewStart: 1, NewLines: 6,
+					Lines: []string{
+						"@@ -1,5 +1,6 @@",
+						" import os",
+						" import sys",
+						"+from app.errors import RequestError",
+						" ",
+						" from app.client import Client",
+						" ",
+					},
+				},
+			},
+		},
+	}
+
+	files[0].Source = src
+	snippets := BuildSnippets(files)
+
+	if len(snippets) != 1 || snippets[0].NodeType != "imports" {
+		t.Fatalf("expected one imports snippet, got %v", symbolPaths(snippets))
+	}
+	want := []string{
+		"@@ -1,2 +1,3 @@",
+		" import os",
+		" import sys",
+		"+from app.errors import RequestError",
+	}
+	if got := snippets[0].DiffLines; strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("DiffLines =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Rust: struct-level and impl-level hunks must not merge into one snippet
 // ---------------------------------------------------------------------------
