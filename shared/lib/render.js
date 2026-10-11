@@ -156,7 +156,8 @@ export function renderReview(container, review, store, opts = {}) {
   }
 
   const keys = (e) => {
-    if (!container.isConnected || e.ctrlKey || e.metaKey || e.altKey) return;
+    // A hidden or removed review has no boxes; its keys must not judge it.
+    if (!container.getClientRects().length || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest?.("textarea, input, select")) return;
     const i = order.indexOf(current);
     const snippet = byId.get(current);
@@ -289,6 +290,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
       <button type="submit" class="primary">Save comment</button>
     </div>`;
   const textarea = form.querySelector("textarea");
+  textarea.value = state.comment ?? "";
   comment.append(saved, form);
   body.appendChild(comment);
 
@@ -299,16 +301,19 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
   };
   showSaved();
 
+  // Reopening keeps a draft that Escape hid; only Cancel drops it.
   card._comment = () => {
     card.classList.remove("folded");
     form.hidden = false;
-    textarea.value = store.get(snippet.id).comment ?? "";
     textarea.focus();
   };
   card._judge = (status) => onJudge(status);
 
   saved.addEventListener("click", card._comment);
-  form.querySelector("[data-cancel]").addEventListener("click", () => { form.hidden = true; });
+  form.querySelector("[data-cancel]").addEventListener("click", () => {
+    textarea.value = store.get(snippet.id).comment ?? "";
+    form.hidden = true;
+  });
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     store.set(snippet.id, { comment: textarea.value.trim() });
