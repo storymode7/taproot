@@ -1,5 +1,7 @@
 package core
 
+import "slices"
+
 // maskCode blanks comments and string literals in lines of source, so the
 // call scanner only sees code: a test fixture holding "func run() {" must
 // not become a call edge to run. State carries across lines for block
@@ -211,13 +213,18 @@ func isLifetime(rs []rune, i int, lang string) bool {
 
 // regexCanStart reports whether a / at rs[i] opens a JS regex literal rather
 // than dividing: it must follow an operator, an opening bracket, a line
-// start, or a keyword like return.
+// start, or a keyword like return. After '<' or '}' it is a JSX closing or
+// self-closing tag (</p>, key={k} />) or division, and so is a /> that opens
+// its line unless another / follows to close a regex.
 func regexCanStart(rs []rune, i int, prev rune) bool {
 	if i+1 < len(rs) && (rs[i+1] == '/' || rs[i+1] == '*') {
 		return false
 	}
+	if prev == 0 && i+1 < len(rs) && rs[i+1] == '>' && !slices.Contains(rs[i+2:], '/') {
+		return false
+	}
 	switch prev {
-	case 0, '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^':
+	case 0, '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', ';', '+', '-', '*', '%', '>', '~', '^':
 		return true
 	}
 	if isIdentPart(prev) {
