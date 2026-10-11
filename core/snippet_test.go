@@ -121,21 +121,23 @@ func TestBuildSnippets_IsNew(t *testing.T) {
 }
 
 func TestSnippetID_Stable(t *testing.T) {
-	id1 := snippetID("foo.go", "MyFunc", 10)
-	id2 := snippetID("foo.go", "MyFunc", 10)
+	id1 := entitySnippetID("foo.go", "function", "MyFunc")
+	id2 := entitySnippetID("foo.go", "function", "MyFunc")
 	if id1 != id2 {
-		t.Errorf("snippetID not stable: %q != %q", id1, id2)
+		t.Errorf("entitySnippetID not stable: %q != %q", id1, id2)
 	}
 }
 
 func TestSnippetID_DifferentInputs(t *testing.T) {
-	base := snippetID("foo.go", "MyFunc", 10)
+	base := entitySnippetID("foo.go", "function", "MyFunc")
 	cases := []struct {
 		name string
 		id   string
 	}{
-		{"different file", snippetID("bar.go", "MyFunc", 10)},
-		{"different symbol", snippetID("foo.go", "OtherFunc", 10)},
+		{"different file", entitySnippetID("bar.go", "function", "MyFunc")},
+		{"different kind", entitySnippetID("foo.go", "type", "MyFunc")},
+		{"different symbol", entitySnippetID("foo.go", "function", "OtherFunc")},
+		{"nameless", snippetID("foo.go", "", 10)},
 	}
 	for _, tc := range cases {
 		if tc.id == base {
@@ -146,7 +148,21 @@ func TestSnippetID_DifferentInputs(t *testing.T) {
 
 func TestSnippetID_NamedEntitySurvivesLineShift(t *testing.T) {
 	// Review state must survive lines shifting above a named entity.
-	if snippetID("foo.go", "MyFunc", 10) != snippetID("foo.go", "MyFunc", 42) {
+	id := func(src string, line int) string {
+		files := []*FileDiff{{
+			Path: "foo.go", OldPath: "foo.go", Language: "go", Source: []byte(src),
+			Hunks: []Hunk{{OldStart: line, OldLines: 1, NewStart: line, NewLines: 1,
+				Lines: []string{"-\tx()", "+\ty()"}}},
+		}}
+		snippets := BuildSnippets(files)
+		if len(snippets) != 1 || snippets[0].SymbolPath != "MyFunc" {
+			t.Fatalf("expected one MyFunc snippet, got %v", symbolPaths(snippets))
+		}
+		return snippets[0].ID
+	}
+	a := id("package p\n\nfunc MyFunc() {\n\ty()\n}\n", 4)
+	b := id("package p\n\nvar v = 1\n\nfunc MyFunc() {\n\ty()\n}\n", 6)
+	if a != b {
 		t.Error("named entity ID changed when start line shifted")
 	}
 }

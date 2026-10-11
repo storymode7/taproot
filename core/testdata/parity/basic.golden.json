@@ -1,7 +1,7 @@
 {
   "snippets": [
     {
-      "id": "b0884ecbea957095",
+      "id": "eae09bf4f997f566",
       "filePath": "cmd/main.go",
       "oldPath": "cmd/main.go",
       "language": "go",
@@ -20,7 +20,7 @@
       ]
     },
     {
-      "id": "061854a2fbda336c",
+      "id": "6bf1fabbd596ebef",
       "filePath": "api/handler.go",
       "oldPath": "api/handler.go",
       "language": "go",
@@ -38,7 +38,7 @@
       ]
     },
     {
-      "id": "1121ac6db7aba507",
+      "id": "1b01f6b4b09e5de5",
       "filePath": "api/handler.go",
       "oldPath": "api/handler.go",
       "language": "go",
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "id": "4c84fd1eea4b9e23",
+      "id": "94e637465d1aeb44",
       "filePath": "web/app.ts",
       "oldPath": "web/app.ts",
       "language": "typescript",
@@ -94,14 +94,14 @@
   ],
   "edges": [
     {
-      "from": "061854a2fbda336c",
-      "to": "1121ac6db7aba507",
+      "from": "6bf1fabbd596ebef",
+      "to": "1b01f6b4b09e5de5",
       "kind": "call",
       "callLine": 4
     },
     {
-      "from": "b0884ecbea957095",
-      "to": "061854a2fbda336c",
+      "from": "eae09bf4f997f566",
+      "to": "6bf1fabbd596ebef",
       "kind": "call",
       "callLine": 5
     }
@@ -109,20 +109,20 @@
   "tree": {
     "roots": [
       {
-        "id": "b0884ecbea957095",
+        "id": "eae09bf4f997f566",
         "children": [
           {
-            "id": "061854a2fbda336c",
+            "id": "6bf1fabbd596ebef",
             "children": [
               {
-                "id": "1121ac6db7aba507"
+                "id": "1b01f6b4b09e5de5"
               }
             ]
           }
         ]
       },
       {
-        "id": "4c84fd1eea4b9e23"
+        "id": "94e637465d1aeb44"
       },
       {
         "id": "4689c43ac1e86442"
@@ -130,10 +130,10 @@
     ]
   },
   "flatOrder": [
-    "b0884ecbea957095",
-    "061854a2fbda336c",
-    "1121ac6db7aba507",
-    "4c84fd1eea4b9e23",
+    "eae09bf4f997f566",
+    "6bf1fabbd596ebef",
+    "1b01f6b4b09e5de5",
+    "94e637465d1aeb44",
     "4689c43ac1e86442"
   ]
 }

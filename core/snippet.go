@@ -32,7 +32,9 @@ import (
 // entity. This allows the ordering engine to place, e.g., utils.go::formatDate
 // earlier in the review than utils.go::parseCSV, if the call graph demands it.
 type Snippet struct {
-	// ID is a stable hash: sha256(filePath + "::" + symbolPath + "::" + startLine).
+	// ID is a stable hash of the file and the entity's kind and name
+	// (entitySnippetID), or of the file and start line for a snippet with
+	// no entity (snippetID).
 	ID string
 
 	// FilePath is the relative path of the changed file (new path on renames).
@@ -254,7 +256,11 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 			IsTest:     g.entity != nil && g.entity.Test,
 			Status:     StatusPending,
 		}
-		s.ID = snippetID(f.Path, s.SymbolPath, s.StartLine)
+		if g.entity != nil {
+			s.ID = entitySnippetID(f.Path, s.NodeType, s.SymbolPath)
+		} else {
+			s.ID = snippetID(f.Path, s.SymbolPath, s.StartLine)
+		}
 		snippets = append(snippets, s)
 	}
 	return snippets
@@ -377,16 +383,26 @@ func heuristicSnippets(f *FileDiff) []*Snippet {
 	return snippets
 }
 
-// snippetID computes a stable ID for a snippet.
-//
-// Named entities are keyed by (file, symbol) only, so review state survives
-// when lines shift above the entity. Nameless snippets (preamble, fallback
-// hunks) have no symbol to key on and fall back to the start line.
+// snippetID computes a stable ID for a snippet without an entity. Nameless
+// snippets (preamble, fallback hunks) have no symbol to key on and fall back
+// to the start line.
 func snippetID(filePath, symbolPath string, startLine int) string {
 	key := fmt.Sprintf("%s::%s", filePath, symbolPath)
 	if symbolPath == "" {
 		key = fmt.Sprintf("%s::%d", key, startLine)
 	}
+	return hashID(key)
+}
+
+// entitySnippetID computes a stable ID for an entity snippet. It is keyed
+// by (file, kind, name), not by line, so review state survives when lines
+// shift above the entity; the kind keeps a const and a type that share a
+// name (the zod schema pattern) apart.
+func entitySnippetID(filePath, kind, name string) string {
+	return hashID(fmt.Sprintf("%s::%s::%s", filePath, kind, name))
+}
+
+func hashID(key string) string {
 	h := sha256.Sum256([]byte(key))
 	return fmt.Sprintf("%x", h[:8])
 }

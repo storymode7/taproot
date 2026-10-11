@@ -1,7 +1,7 @@
 {
   "snippets": [
     {
-      "id": "c41ed21dbfdd62cf",
+      "id": "df644c97c8f2b2e5",
       "filePath": "spider.py",
       "oldPath": "spider.py",
       "language": "python",
@@ -21,7 +21,7 @@
       ]
     },
     {
-      "id": "b3b5ee5e8fa2b2a0",
+      "id": "cba0442a3ebf844e",
       "filePath": "spider.py",
       "oldPath": "spider.py",
       "language": "python",
@@ -38,7 +38,7 @@
       ]
     },
     {
-      "id": "fb1d1c05d27b2d27",
+      "id": "2c7352e041561f76",
       "filePath": "spider.py",
       "oldPath": "spider.py",
       "language": "python",
@@ -55,7 +55,7 @@
       ]
     },
     {
-      "id": "e68621440a381495",
+      "id": "3772e081d2366da5",
       "filePath": "web/app.ts",
       "oldPath": "web/app.ts",
       "language": "typescript",
@@ -73,7 +73,7 @@
       ]
     },
     {
-      "id": "9c39c1216dae337e",
+      "id": "d4ff1aec45faed51",
       "filePath": "web/app.ts",
       "oldPath": "web/app.ts",
       "language": "typescript",
@@ -91,7 +91,7 @@
       ]
     },
     {
-      "id": "9bb34d7b1f9750c0",
+      "id": "2fd1b3e0e97253ec",
       "filePath": "web/app.ts",
       "oldPath": "web/app.ts",
       "language": "typescript",
@@ -109,26 +109,26 @@
   ],
   "edges": [
     {
-      "from": "9c39c1216dae337e",
-      "to": "9bb34d7b1f9750c0",
-      "kind": "call",
-      "callLine": 2
-    },
-    {
-      "from": "c41ed21dbfdd62cf",
-      "to": "b3b5ee5e8fa2b2a0",
+      "from": "3772e081d2366da5",
+      "to": "d4ff1aec45faed51",
       "kind": "call",
       "callLine": 7
     },
     {
-      "from": "c41ed21dbfdd62cf",
-      "to": "fb1d1c05d27b2d27",
+      "from": "d4ff1aec45faed51",
+      "to": "2fd1b3e0e97253ec",
+      "kind": "call",
+      "callLine": 2
+    },
+    {
+      "from": "df644c97c8f2b2e5",
+      "to": "2c7352e041561f76",
       "kind": "call",
       "callLine": 8
     },
     {
-      "from": "e68621440a381495",
-      "to": "9c39c1216dae337e",
+      "from": "df644c97c8f2b2e5",
+      "to": "cba0442a3ebf844e",
       "kind": "call",
       "callLine": 7
     }
@@ -136,24 +136,24 @@
   "tree": {
     "roots": [
       {
-        "id": "c41ed21dbfdd62cf",
+        "id": "df644c97c8f2b2e5",
         "children": [
           {
-            "id": "b3b5ee5e8fa2b2a0"
+            "id": "cba0442a3ebf844e"
           },
           {
-            "id": "fb1d1c05d27b2d27"
+            "id": "2c7352e041561f76"
           }
         ]
       },
       {
-        "id": "e68621440a381495",
+        "id": "3772e081d2366da5",
         "children": [
           {
-            "id": "9c39c1216dae337e",
+            "id": "d4ff1aec45faed51",
             "children": [
               {
-                "id": "9bb34d7b1f9750c0"
+                "id": "2fd1b3e0e97253ec"
               }
             ]
           }
@@ -162,11 +162,11 @@
     ]
   },
   "flatOrder": [
-    "c41ed21dbfdd62cf",
-    "b3b5ee5e8fa2b2a0",
-    "fb1d1c05d27b2d27",
-    "e68621440a381495",
-    "9c39c1216dae337e",
-    "9bb34d7b1f9750c0"
+    "df644c97c8f2b2e5",
+    "cba0442a3ebf844e",
+    "2c7352e041561f76",
+    "3772e081d2366da5",
+    "d4ff1aec45faed51",
+    "2fd1b3e0e97253ec"
   ]
 }

@@ -457,3 +457,47 @@ func symbolPaths(snippets []*Snippet) []string {
 	}
 	return out
 }
+
+func TestBuildSnippets_SameNameDifferentKindsGetDistinctIDs(t *testing.T) {
+	// The zod pattern: a schema const and its inferred type share a name.
+	// One ID for both would make one accept mark both.
+	src := []byte(`import { z } from "zod";
+
+export const User = z.object({
+  name: z.string(),
+  email: z.string().email(),
+});
+
+export type User = z.infer<typeof User> & { createdAt: Date };
+`)
+	files := []*FileDiff{{
+		Path: "user.ts", OldPath: "user.ts", Language: "typescript", Source: src,
+		Hunks: []Hunk{{
+			OldStart: 1, OldLines: 7, NewStart: 1, NewLines: 8,
+			Lines: []string{
+				"@@ -1,7 +1,8 @@",
+				` import { z } from "zod";`,
+				" ",
+				" export const User = z.object({",
+				"   name: z.string(),",
+				"+  email: z.string().email(),",
+				" });",
+				" ",
+				"-export type User = z.infer<typeof User>;",
+				"+export type User = z.infer<typeof User> & { createdAt: Date };",
+			},
+		}},
+	}}
+
+	snippets := BuildSnippets(files)
+	if len(snippets) != 2 {
+		t.Fatalf("expected the const and the type as 2 snippets, got %v", symbolPaths(snippets))
+	}
+	if snippets[0].ID == snippets[1].ID {
+		t.Errorf("%s %q and %s %q share ID %s", snippets[0].NodeType, snippets[0].SymbolPath,
+			snippets[1].NodeType, snippets[1].SymbolPath, snippets[0].ID)
+	}
+	if f := BuildForest(snippets, BuildCallEdges(snippets)); len(f.ByID) != 2 {
+		t.Errorf("forest has %d nodes, want 2", len(f.ByID))
+	}
+}

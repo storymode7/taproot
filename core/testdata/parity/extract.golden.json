@@ -1,7 +1,7 @@
 {
   "snippets": [
     {
-      "id": "2c74dbee54eff593",
+      "id": "d96f170a253fa893",
       "filePath": "web/Badge.tsx",
       "oldPath": "web/Badge.tsx",
       "language": "typescript",
@@ -18,7 +18,7 @@
       ]
     },
     {
-      "id": "0bfe1d15b4c0b56b",
+      "id": "406e1766927ed225",
       "filePath": "web/Badge.tsx",
       "oldPath": "web/Badge.tsx",
       "language": "typescript",
@@ -35,7 +35,7 @@
       ]
     },
     {
-      "id": "6569f39d7e75f7f5",
+      "id": "08bdfd0fc7122927",
       "filePath": "web/Badge.tsx",
       "oldPath": "web/Badge.tsx",
       "language": "typescript",
@@ -52,7 +52,7 @@
       ]
     },
     {
-      "id": "7a36f6a034135a7e",
+      "id": "46f042c83326f136",
       "filePath": "web/Badge.tsx",
       "oldPath": "web/Badge.tsx",
       "language": "typescript",
@@ -69,7 +69,7 @@
       ]
     },
     {
-      "id": "4c6b73229331d585",
+      "id": "56013464061feea4",
       "filePath": "app/views.py",
       "oldPath": "app/views.py",
       "language": "python",
@@ -86,7 +86,7 @@
       ]
     },
     {
-      "id": "fffbd104c2cec2c9",
+      "id": "4d628fcd3206e8d8",
       "filePath": "app/views.py",
       "oldPath": "app/views.py",
       "language": "python",
@@ -103,7 +103,7 @@
       ]
     },
     {
-      "id": "6e27f709936a91e7",
+      "id": "01df24306205ac12",
       "filePath": "app/views.py",
       "oldPath": "app/views.py",
       "language": "python",
@@ -120,7 +120,7 @@
       ]
     },
     {
-      "id": "2a999dd83219907d",
+      "id": "cc5a007686ce5ea2",
       "filePath": "cmd/config.go",
       "oldPath": "cmd/config.go",
       "language": "go",
@@ -137,7 +137,7 @@
       ]
     },
     {
-      "id": "840c1bb9fb1e3eea",
+      "id": "968f46c12e940db3",
       "filePath": "cmd/config.go",
       "oldPath": "cmd/config.go",
       "language": "go",
@@ -157,7 +157,7 @@
       ]
     },
     {
-      "id": "0f52df999eba3eb0",
+      "id": "47aadc33f447f86f",
       "filePath": "cmd/config.go",
       "oldPath": "cmd/config.go",
       "language": "go",
@@ -174,7 +174,7 @@
       ]
     },
     {
-      "id": "4a53455c6b1d4226",
+      "id": "684cb18a4e6ced0f",
       "filePath": "api/UserController.java",
       "oldPath": "api/UserController.java",
       "language": "java",
@@ -191,7 +191,7 @@
       ]
     },
     {
-      "id": "722a8e6bd81254aa",
+      "id": "3d16ac38a303f0c4",
       "filePath": "api/UserController.java",
       "oldPath": "api/UserController.java",
       "language": "java",
@@ -208,7 +208,7 @@
       ]
     },
     {
-      "id": "dbcfd6295fc9e354",
+      "id": "cc37faf573bb9126",
       "filePath": "src/lib.rs",
       "oldPath": "src/lib.rs",
       "language": "rust",
@@ -228,7 +228,7 @@
       ]
     },
     {
-      "id": "f6ce1becb0401824",
+      "id": "ee5c5c2d8ed9ef8b",
       "filePath": "src/lib.rs",
       "oldPath": "src/lib.rs",
       "language": "rust",
@@ -245,7 +245,7 @@
       ]
     },
     {
-      "id": "1ef29d80782991fa",
+      "id": "b58bea1a5c3f2486",
       "filePath": "app/views.py",
       "oldPath": "app/views.py",
       "language": "python",
@@ -262,7 +262,7 @@
       ]
     },
     {
-      "id": "57c0b374ec82e5ec",
+      "id": "1995818135563255",
       "filePath": "src/lib.rs",
       "oldPath": "src/lib.rs",
       "language": "rust",
@@ -279,7 +279,7 @@
       ]
     },
     {
-      "id": "fb6701b97c4c61d3",
+      "id": "b93866000386282e",
       "filePath": "src/lib.rs",
       "oldPath": "src/lib.rs",
       "language": "rust",
@@ -298,154 +298,154 @@
   ],
   "edges": [
     {
-      "from": "0bfe1d15b4c0b56b",
-      "to": "6569f39d7e75f7f5",
+      "from": "406e1766927ed225",
+      "to": "08bdfd0fc7122927",
       "kind": "call",
       "callLine": 5
     },
     {
-      "from": "2a999dd83219907d",
-      "to": "840c1bb9fb1e3eea",
+      "from": "4d628fcd3206e8d8",
+      "to": "01df24306205ac12",
       "kind": "call",
-      "callLine": 15
+      "callLine": 6
     },
     {
-      "from": "2c74dbee54eff593",
-      "to": "0bfe1d15b4c0b56b",
+      "from": "56013464061feea4",
+      "to": "4d628fcd3206e8d8",
       "kind": "call",
-      "callLine": 9
+      "callLine": 11
     },
     {
-      "from": "2c74dbee54eff593",
-      "to": "7a36f6a034135a7e",
-      "kind": "call",
-      "callLine": 10
-    },
-    {
-      "from": "4a53455c6b1d4226",
-      "to": "722a8e6bd81254aa",
+      "from": "684cb18a4e6ced0f",
+      "to": "3d16ac38a303f0c4",
       "kind": "call",
       "callLine": 5
     },
     {
-      "from": "4c6b73229331d585",
-      "to": "fffbd104c2cec2c9",
+      "from": "968f46c12e940db3",
+      "to": "47aadc33f447f86f",
       "kind": "call",
       "callLine": 11
     },
     {
-      "from": "840c1bb9fb1e3eea",
-      "to": "0f52df999eba3eb0",
-      "kind": "call",
-      "callLine": 11
-    },
-    {
-      "from": "dbcfd6295fc9e354",
-      "to": "f6ce1becb0401824",
-      "kind": "call",
-      "callLine": 13
-    },
-    {
-      "from": "fb6701b97c4c61d3",
-      "to": "dbcfd6295fc9e354",
+      "from": "b93866000386282e",
+      "to": "cc37faf573bb9126",
       "kind": "call",
       "callLine": 23
     },
     {
-      "from": "fffbd104c2cec2c9",
-      "to": "6e27f709936a91e7",
+      "from": "cc37faf573bb9126",
+      "to": "ee5c5c2d8ed9ef8b",
       "kind": "call",
-      "callLine": 6
+      "callLine": 13
+    },
+    {
+      "from": "cc5a007686ce5ea2",
+      "to": "968f46c12e940db3",
+      "kind": "call",
+      "callLine": 15
+    },
+    {
+      "from": "d96f170a253fa893",
+      "to": "406e1766927ed225",
+      "kind": "call",
+      "callLine": 9
+    },
+    {
+      "from": "d96f170a253fa893",
+      "to": "46f042c83326f136",
+      "kind": "call",
+      "callLine": 10
     }
   ],
   "tree": {
     "roots": [
       {
-        "id": "2c74dbee54eff593",
+        "id": "d96f170a253fa893",
         "children": [
           {
-            "id": "0bfe1d15b4c0b56b",
+            "id": "406e1766927ed225",
             "children": [
               {
-                "id": "6569f39d7e75f7f5"
+                "id": "08bdfd0fc7122927"
               }
             ]
           },
           {
-            "id": "7a36f6a034135a7e"
+            "id": "46f042c83326f136"
           }
         ]
       },
       {
-        "id": "4c6b73229331d585",
+        "id": "56013464061feea4",
         "children": [
           {
-            "id": "fffbd104c2cec2c9",
+            "id": "4d628fcd3206e8d8",
             "children": [
               {
-                "id": "6e27f709936a91e7"
+                "id": "01df24306205ac12"
               }
             ]
           }
         ]
       },
       {
-        "id": "2a999dd83219907d",
+        "id": "cc5a007686ce5ea2",
         "children": [
           {
-            "id": "840c1bb9fb1e3eea",
+            "id": "968f46c12e940db3",
             "children": [
               {
-                "id": "0f52df999eba3eb0"
+                "id": "47aadc33f447f86f"
               }
             ]
           }
         ]
       },
       {
-        "id": "4a53455c6b1d4226",
+        "id": "684cb18a4e6ced0f",
         "children": [
           {
-            "id": "722a8e6bd81254aa"
+            "id": "3d16ac38a303f0c4"
           }
         ]
       },
       {
-        "id": "dbcfd6295fc9e354",
+        "id": "cc37faf573bb9126",
         "children": [
           {
-            "id": "f6ce1becb0401824"
+            "id": "ee5c5c2d8ed9ef8b"
           }
         ]
       },
       {
-        "id": "1ef29d80782991fa"
+        "id": "b58bea1a5c3f2486"
       },
       {
-        "id": "57c0b374ec82e5ec"
+        "id": "1995818135563255"
       },
       {
-        "id": "fb6701b97c4c61d3"
+        "id": "b93866000386282e"
       }
     ]
   },
   "flatOrder": [
-    "2c74dbee54eff593",
-    "0bfe1d15b4c0b56b",
-    "6569f39d7e75f7f5",
-    "7a36f6a034135a7e",
-    "4c6b73229331d585",
-    "fffbd104c2cec2c9",
-    "6e27f709936a91e7",
-    "2a999dd83219907d",
-    "840c1bb9fb1e3eea",
-    "0f52df999eba3eb0",
-    "4a53455c6b1d4226",
-    "722a8e6bd81254aa",
-    "dbcfd6295fc9e354",
-    "f6ce1becb0401824",
-    "1ef29d80782991fa",
-    "57c0b374ec82e5ec",
-    "fb6701b97c4c61d3"
+    "d96f170a253fa893",
+    "406e1766927ed225",
+    "08bdfd0fc7122927",
+    "46f042c83326f136",
+    "56013464061feea4",
+    "4d628fcd3206e8d8",
+    "01df24306205ac12",
+    "cc5a007686ce5ea2",
+    "968f46c12e940db3",
+    "47aadc33f447f86f",
+    "684cb18a4e6ced0f",
+    "3d16ac38a303f0c4",
+    "cc37faf573bb9126",
+    "ee5c5c2d8ed9ef8b",
+    "b58bea1a5c3f2486",
+    "1995818135563255",
+    "b93866000386282e"
   ]
 }
