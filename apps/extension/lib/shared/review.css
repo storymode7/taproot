@@ -114,6 +114,11 @@
   font-size: 13px;
 }
 
+.astra-empty {
+  margin: 0; padding: 32px 16px; text-align: center; color: var(--text-dim);
+  border: 1px dashed var(--border); border-radius: 6px;
+}
+
 /* ---------- Cards ---------- */
 .astra-card {
   border: 1px solid var(--border); border-radius: 6px;

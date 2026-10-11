@@ -17,9 +17,14 @@ const STATUS_LABEL = {
   pending: "Pending", reviewed: "Reviewed", accepted: "Accepted", rejected: "Rejected",
 };
 
+const SKIP_REASON = {
+  binary: "binary", renamed: "renamed", mode: "mode change", empty: "empty file",
+  conflict: "conflict", "no-diff": "no diff",
+};
+
 /**
  * @param {HTMLElement} container
- * @param {object} review — core response: { snippets, tree, missingSource? }
+ * @param {object} review — core response: { snippets, tree, missingSource?, skipped? }
  * @param {import('./state.js').StateStore} store
  * @param {object} [opts]
  * @param {(code: string, language: string) => string|null} [opts.highlight]
@@ -65,6 +70,16 @@ export function renderReview(container, review, store, opts = {}) {
       `so they show as plain hunks without call structure: ${review.missingSource.join(", ")}`;
     main.appendChild(warn);
   }
+  if (review.skipped?.length) {
+    const names = review.skipped.map((f) =>
+      `${f.oldPath ? `${f.oldPath} → ` : ""}${f.path} (${SKIP_REASON[f.reason] ?? f.reason})`);
+    main.appendChild(el("div", "astra-banner", `Not shown here, review on GitHub: ${names.join(", ")}`));
+  }
+  if (!order.length) {
+    main.appendChild(el("p", "astra-empty", review.skipped?.length
+      ? "No snippets to review: the changed files listed above have no diff to show here."
+      : "No snippets to review."));
+  }
 
   const cards = new Map();
   for (const id of order) {
@@ -99,8 +114,12 @@ export function renderReview(container, review, store, opts = {}) {
   }
 
   function updateProgress() {
+    if (!order.length) {
+      progress.textContent = "Nothing to review";
+      return;
+    }
     const done = order.filter((id) => store.get(id).status !== "pending").length;
-    const pct = order.length ? Math.round((done * 100) / order.length) : 0;
+    const pct = Math.round((done * 100) / order.length);
     progress.innerHTML =
       `<span>${done} / ${order.length} reviewed</span>` +
       `<span class="astra-bar"><span style="width:${pct}%"></span></span>`;
@@ -195,8 +214,9 @@ function renderTree(nodes, byId, store, onPick) {
 }
 
 function label(s) {
-  if (s.symbolPath) return s.symbolPath;
   const base = s.filePath.split("/").pop();
+  if (s.isDeleted) return `${base} (deleted)`;
+  if (s.symbolPath) return s.symbolPath;
   return s.nodeType === "imports" ? `${base} (imports)` : base;
 }
 

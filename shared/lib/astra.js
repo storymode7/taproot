@@ -27,6 +27,7 @@ export function initAstra(adapter) {
   let corePromise = null;
   let lastFiles = null;
   let lastMissing = [];
+  let lastSkipped = [];
 
   async function loadCore() {
     if (corePromise) return corePromise;
@@ -63,20 +64,29 @@ export function initAstra(adapter) {
    * Snippets arrive in flattened reading order with a `status` field
    * initialised to "pending". `missingSource` lists supported-language
    * files whose full source could not be fetched (they fall back to plain
-   * hunks with no call structure).
+   * hunks with no call structure). `skipped` lists the changed files the
+   * review cannot show, by path: { path, oldPath?, reason }.
    */
   async function buildReview(files, order = "pre") {
     const wireFiles = [];
     const missing = [];
+    const skipped = [];
     for (const file of files) {
-      // REST says "removed"; GitHub's page data says "deleted".
-      if (file.status === "removed" || file.status === "deleted") continue;
+      // GitHub sends no patch for binary files, very large diffs, pure
+      // renames and mode changes; the extension sends "" when it has none.
       const hunks = hunksFromPatch(file.patch ?? "");
-      if (hunks.length === 0) continue;
+      if (hunks.length === 0) {
+        const entry = { path: file.filename, reason: "no-diff" };
+        if (file.previous_filename && file.previous_filename !== file.filename) entry.oldPath = file.previous_filename;
+        skipped.push(entry);
+        continue;
+      }
+      // REST says "removed"; GitHub's page data says "deleted".
+      const isDeleted = file.status === "removed" || file.status === "deleted";
       const lang = detectLanguage(file.filename);
 
       let source = "";
-      if (lang) {
+      if (lang && !isDeleted) {
         source = (await adapter.fetchSource(file)) ?? "";
         if (!source) missing.push(file.filename);
       }
@@ -86,7 +96,7 @@ export function initAstra(adapter) {
         oldPath: file.previous_filename ?? file.filename,
         language: lang ?? "",
         isNew: file.status === "added",
-        isDeleted: false,
+        isDeleted,
         isBinary: false,
         hunks,
         source,
@@ -95,6 +105,7 @@ export function initAstra(adapter) {
     }
     lastFiles = wireFiles;
     lastMissing = missing;
+    lastSkipped = skipped;
     return processFiles(wireFiles, order);
   }
 
@@ -112,6 +123,8 @@ export function initAstra(adapter) {
     if (resp.error) throw new Error(`astra core: ${resp.error}`);
     for (const s of resp.snippets ?? []) s.status = "pending";
     resp.missingSource = lastMissing;
+    resp.skipped = [...lastSkipped, ...(resp.skipped ?? [])]
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     return resp;
   }
 

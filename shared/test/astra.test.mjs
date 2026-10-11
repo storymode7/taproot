@@ -64,3 +64,46 @@ test("browsers send no entities, so the core finds methods and their calls", asy
   const tree = review.tree.roots.map((n) => [name.get(n.id), (n.children ?? []).map((c) => name.get(c.id)).sort()]);
   assert.deepEqual(tree, [["Checkout.total", ["Checkout.price", "Checkout.tax"]]]);
 });
+
+const edit = { filename: "src/app.js", status: "modified", patch: "@@ -1,3 +1,3 @@\n function main() {\n-  a();\n+  b();\n }" };
+const noDiff = [
+  { filename: "assets/logo.png", status: "modified" },
+  { filename: "src/new_name.py", status: "renamed", previous_filename: "src/old_name.py" },
+  { filename: "run.sh", status: "changed" },
+  { filename: "dist/app.min.js", status: "modified", patch: "" },
+];
+const removed = { filename: "svc/auth.go", status: "removed", patch: "@@ -1,3 +0,0 @@\n-package svc\n-\n-func Authorize() bool { return true }" };
+
+test("files without a diff are listed, deleted files go to the core", async () => {
+  const fetched = [];
+  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async (f) => (fetched.push(f.filename), "function main() {\n  b();\n}\n") });
+  const core = await astra.loadCore();
+  const process = core.process;
+  const sent = [];
+  core.process = (req) => { sent.push(JSON.parse(req)); return process(req); };
+
+  const review = await astra.buildReview([removed, ...noDiff, edit]);
+  const reordered = await astra.reorderReview("post");
+  core.process = process;
+
+  const skipped = [
+    { path: "assets/logo.png", reason: "no-diff" },
+    { path: "dist/app.min.js", reason: "no-diff" },
+    { path: "run.sh", reason: "no-diff" },
+    { path: "src/new_name.py", oldPath: "src/old_name.py", reason: "no-diff" },
+  ];
+  assert.deepEqual(review.skipped, skipped);
+  assert.deepEqual(reordered.skipped, skipped);
+  assert.deepEqual(sent[0].files.map((f) => [f.path, f.isDeleted, f.hunks.length]), [["svc/auth.go", true, 1], ["src/app.js", false, 1]]);
+  assert.deepEqual(fetched, ["src/app.js"]);
+});
+
+test("files the core skips are listed with the ones the browser skips", async () => {
+  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
+  const core = await astra.loadCore();
+  const process = core.process;
+  core.process = (req) => JSON.stringify({ ...JSON.parse(process(req)), skipped: [{ path: "b.bin", reason: "binary" }] });
+  const review = await astra.buildReview([{ filename: "c.png", status: "added" }, edit]);
+  core.process = process;
+  assert.deepEqual(review.skipped, [{ path: "b.bin", reason: "binary" }, { path: "c.png", reason: "no-diff" }]);
+});
