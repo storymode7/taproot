@@ -24,6 +24,8 @@
   // The PR files page in view: its coordinates, toggle and panel.
   let view = null;
 
+  const PANEL_ORIGIN = new URL(chrome.runtime.getURL("")).origin;
+
   // GitHub switches pages without a new document (Turbo, React routes), so
   // the script re-checks the URL on every navigation. Turbo can also swap
   // <body> after the URL changes, removing the toggle and the panel.
@@ -103,7 +105,8 @@
 
   // Handle close from inside the panel iframe.
   window.addEventListener("message", (e) => {
-    if (view && e.data?.type === "astra-close") setOpen(view, false);
+    if (!view || e.source !== view.iframe.contentWindow || e.origin !== PANEL_ORIGIN) return;
+    if (e.data?.type === "astra-close") setOpen(view, false);
   });
 
   // ---------------------------------------------------------------------------
@@ -239,7 +242,7 @@
   // A message posted before the panel's script runs is lost.
   async function postToPanel(v, msg) {
     await v.loaded;
-    v.iframe.contentWindow?.postMessage(msg, "*");
+    v.iframe.contentWindow?.postMessage(msg, PANEL_ORIGIN);
   }
 
   sync();

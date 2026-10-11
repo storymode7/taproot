@@ -18,6 +18,7 @@ let currentSnippets = [];
 // Receive diff data from content.js
 // ---------------------------------------------------------------------------
 window.addEventListener("message", async (e) => {
+  if (e.source !== window.parent || e.origin !== "https://github.com") return;
   if (e.data?.type === "files") {
     await handleFiles(e.data);
   } else if (e.data?.type === "error") {
@@ -67,7 +68,7 @@ document.getElementById("preset-select").addEventListener("change", async (e) =>
 });
 
 document.getElementById("btn-close").addEventListener("click", () => {
-  window.parent.postMessage({ type: "astra-close" }, "*");
+  window.parent.postMessage({ type: "astra-close" }, "https://github.com");
 });
 
 // ---------------------------------------------------------------------------
