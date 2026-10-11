@@ -26,3 +26,26 @@ parity:
 .PHONY: cli
 cli:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o astra ./apps/cli/cmd/astra
+
+# Release artifacts in dist/: the CLI for linux and darwin on amd64 and arm64,
+# the extension zip named after its manifest version, and SHA256SUMS.
+VERSION ?= $(shell git describe --tags --always --dirty)
+
+.PHONY: dist
+dist:
+	sh scripts/sync-extension-lib.sh --check
+	node scripts/parity-check.mjs
+	rm -rf dist
+	mkdir dist
+	for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+		os=$${t%/*} arch=$${t#*/}; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath \
+			-ldflags "-s -w -X main.version=$(VERSION)" \
+			-o dist/astra-$(VERSION)-$$os-$$arch ./apps/cli/cmd/astra || exit 1; \
+	done
+	ext=$$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' apps/extension/manifest.json) && \
+		test -n "$$ext" && \
+		(cd apps/extension && git ls-files | zip -q -X -@ ../../dist/astra-extension-$$ext.zip) && \
+		zip -q -X -j dist/astra-extension-$$ext.zip LICENSE THIRD_PARTY_NOTICES
+	cd dist && sha256sum astra-* > SHA256SUMS
+	@cat dist/SHA256SUMS
