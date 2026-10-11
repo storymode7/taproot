@@ -1,0 +1,451 @@
+{
+  "snippets": [
+    {
+      "id": "2c74dbee54eff593",
+      "filePath": "web/Badge.tsx",
+      "oldPath": "web/Badge.tsx",
+      "language": "typescript",
+      "symbolPath": "Badge",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 8,
+      "endLine": 14,
+      "depth": 0,
+      "diffLines": [
+        "@@ -10,1 +10,1 @@",
+        "-    {count \u003e 0 \u0026\u0026 \u003cp\u003eCan't wait: {count}\u003c/p\u003e}",
+        "+    {count \u003e 0 \u0026\u0026 \u003cp\u003eCan't wait: {formatCount(count)}\u003c/p\u003e}"
+      ]
+    },
+    {
+      "id": "0bfe1d15b4c0b56b",
+      "filePath": "web/Badge.tsx",
+      "oldPath": "web/Badge.tsx",
+      "language": "typescript",
+      "symbolPath": "Pill",
+      "nodeType": "var",
+      "isNew": false,
+      "startLine": 3,
+      "endLine": 6,
+      "depth": 1,
+      "diffLines": [
+        "@@ -4,1 +4,1 @@",
+        "-  padding: 2px;",
+        "+  padding: 4px;"
+      ]
+    },
+    {
+      "id": "6569f39d7e75f7f5",
+      "filePath": "web/Badge.tsx",
+      "oldPath": "web/Badge.tsx",
+      "language": "typescript",
+      "symbolPath": "darken",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 20,
+      "endLine": 22,
+      "depth": 2,
+      "diffLines": [
+        "@@ -21,1 +21,1 @@",
+        "-  return c + '';",
+        "+  return c;"
+      ]
+    },
+    {
+      "id": "7a36f6a034135a7e",
+      "filePath": "web/Badge.tsx",
+      "oldPath": "web/Badge.tsx",
+      "language": "typescript",
+      "symbolPath": "formatCount",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 16,
+      "endLine": 18,
+      "depth": 1,
+      "diffLines": [
+        "@@ -17,1 +17,1 @@",
+        "-  return `${n}`;",
+        "+  return String(n);"
+      ]
+    },
+    {
+      "id": "4c6b73229331d585",
+      "filePath": "app/views.py",
+      "oldPath": "app/views.py",
+      "language": "python",
+      "symbolPath": "View.get",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 10,
+      "endLine": 12,
+      "depth": 0,
+      "diffLines": [
+        "@@ -11,1 +11,1 @@",
+        "-        return {}",
+        "+        return settings()"
+      ]
+    },
+    {
+      "id": "fffbd104c2cec2c9",
+      "filePath": "app/views.py",
+      "oldPath": "app/views.py",
+      "language": "python",
+      "symbolPath": "settings",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 4,
+      "endLine": 8,
+      "depth": 1,
+      "diffLines": [
+        "@@ -4,1 +4,1 @@",
+        "-@functools.lru_cache",
+        "+@functools.cache"
+      ]
+    },
+    {
+      "id": "6e27f709936a91e7",
+      "filePath": "app/views.py",
+      "oldPath": "app/views.py",
+      "language": "python",
+      "symbolPath": "load",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 19,
+      "endLine": 21,
+      "depth": 2,
+      "diffLines": [
+        "@@ -20,1 +20,1 @@",
+        "-    return {\"debug\": False}",
+        "+    return {\"debug\": True}"
+      ]
+    },
+    {
+      "id": "2a999dd83219907d",
+      "filePath": "cmd/config.go",
+      "oldPath": "cmd/config.go",
+      "language": "go",
+      "symbolPath": "New",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 14,
+      "endLine": 16,
+      "depth": 0,
+      "diffLines": [
+        "@@ -15,1 +15,1 @@",
+        "-\treturn Config{}",
+        "+\treturn defaultConfig"
+      ]
+    },
+    {
+      "id": "840c1bb9fb1e3eea",
+      "filePath": "cmd/config.go",
+      "oldPath": "cmd/config.go",
+      "language": "go",
+      "symbolPath": "defaultConfig",
+      "nodeType": "var",
+      "isNew": false,
+      "startLine": 8,
+      "endLine": 12,
+      "depth": 1,
+      "diffLines": [
+        "@@ -8,1 +8,1 @@",
+        "-// defaultConfig holds the defaults.",
+        "+// defaultConfig is used when no flags are given.",
+        "@@ -10,1 +10,1 @@",
+        "-\tTimeout: time.Second,",
+        "+\tTimeout: 5 * time.Second,"
+      ]
+    },
+    {
+      "id": "0f52df999eba3eb0",
+      "filePath": "cmd/config.go",
+      "oldPath": "cmd/config.go",
+      "language": "go",
+      "symbolPath": "Mode",
+      "nodeType": "type",
+      "isNew": false,
+      "startLine": 5,
+      "endLine": 6,
+      "depth": 2,
+      "diffLines": [
+        "@@ -5,1 +5,1 @@",
+        "-// Mode picks the output.",
+        "+// Mode selects the output."
+      ]
+    },
+    {
+      "id": "4a53455c6b1d4226",
+      "filePath": "api/UserController.java",
+      "oldPath": "api/UserController.java",
+      "language": "java",
+      "symbolPath": "UserController.updateUser",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 2,
+      "endLine": 6,
+      "depth": 0,
+      "diffLines": [
+        "@@ -2,1 +2,1 @@",
+        "-    @PostMapping(\"/{id}\")",
+        "+    @PutMapping(\"/{id}\")"
+      ]
+    },
+    {
+      "id": "722a8e6bd81254aa",
+      "filePath": "api/UserController.java",
+      "oldPath": "api/UserController.java",
+      "language": "java",
+      "symbolPath": "UserController.normalize",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 8,
+      "endLine": 10,
+      "depth": 1,
+      "diffLines": [
+        "@@ -9,1 +9,1 @@",
+        "-        return null;",
+        "+        return body;"
+      ]
+    },
+    {
+      "id": "dbcfd6295fc9e354",
+      "filePath": "src/lib.rs",
+      "oldPath": "src/lib.rs",
+      "language": "rust",
+      "symbolPath": "Parser.parse",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 12,
+      "endLine": 14,
+      "depth": 0,
+      "diffLines": [
+        "@@ -13,1 +13,1 @@",
+        "-        s.len()",
+        "+        s.len().min(LIMIT)"
+      ],
+      "testedBy": [
+        "tests"
+      ]
+    },
+    {
+      "id": "f6ce1becb0401824",
+      "filePath": "src/lib.rs",
+      "oldPath": "src/lib.rs",
+      "language": "rust",
+      "symbolPath": "LIMIT",
+      "nodeType": "const",
+      "isNew": false,
+      "startLine": 4,
+      "endLine": 4,
+      "depth": 1,
+      "diffLines": [
+        "@@ -4,1 +4,1 @@",
+        "-const LIMIT: usize = 4; // max depth",
+        "+const LIMIT: usize = 8; // max depth"
+      ]
+    },
+    {
+      "id": "1ef29d80782991fa",
+      "filePath": "app/views.py",
+      "oldPath": "app/views.py",
+      "language": "python",
+      "symbolPath": "View",
+      "nodeType": "class",
+      "isNew": false,
+      "startLine": 9,
+      "endLine": 18,
+      "depth": 0,
+      "diffLines": [
+        "@@ -13,1 +13,1 @@",
+        "-    \"\"\"Utilities.\"\"\"",
+        "+    \"\"\"Helpers.\"\"\""
+      ]
+    },
+    {
+      "id": "57c0b374ec82e5ec",
+      "filePath": "src/lib.rs",
+      "oldPath": "src/lib.rs",
+      "language": "rust",
+      "symbolPath": "Parser",
+      "nodeType": "type",
+      "isNew": false,
+      "startLine": 1,
+      "endLine": 2,
+      "depth": 0,
+      "diffLines": [
+        "@@ -1,1 +1,1 @@",
+        "-/// Parses.",
+        "+/// Parses input."
+      ]
+    },
+    {
+      "id": "fb6701b97c4c61d3",
+      "filePath": "src/lib.rs",
+      "oldPath": "src/lib.rs",
+      "language": "rust",
+      "symbolPath": "tests",
+      "nodeType": "type",
+      "isNew": false,
+      "startLine": 17,
+      "endLine": 25,
+      "depth": 0,
+      "diffLines": [
+        "@@ -23,1 +23,1 @@",
+        "-        assert_eq!(Parser::new().parse(\"a\"), 1);",
+        "+        assert_eq!(Parser::new().parse(\"ab\"), 2);"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "0bfe1d15b4c0b56b",
+      "to": "6569f39d7e75f7f5",
+      "kind": "call",
+      "callLine": 5
+    },
+    {
+      "from": "2a999dd83219907d",
+      "to": "840c1bb9fb1e3eea",
+      "kind": "call",
+      "callLine": 15
+    },
+    {
+      "from": "2c74dbee54eff593",
+      "to": "0bfe1d15b4c0b56b",
+      "kind": "call",
+      "callLine": 9
+    },
+    {
+      "from": "2c74dbee54eff593",
+      "to": "7a36f6a034135a7e",
+      "kind": "call",
+      "callLine": 10
+    },
+    {
+      "from": "4a53455c6b1d4226",
+      "to": "722a8e6bd81254aa",
+      "kind": "call",
+      "callLine": 5
+    },
+    {
+      "from": "4c6b73229331d585",
+      "to": "fffbd104c2cec2c9",
+      "kind": "call",
+      "callLine": 11
+    },
+    {
+      "from": "840c1bb9fb1e3eea",
+      "to": "0f52df999eba3eb0",
+      "kind": "call",
+      "callLine": 11
+    },
+    {
+      "from": "dbcfd6295fc9e354",
+      "to": "f6ce1becb0401824",
+      "kind": "call",
+      "callLine": 13
+    },
+    {
+      "from": "fb6701b97c4c61d3",
+      "to": "dbcfd6295fc9e354",
+      "kind": "call",
+      "callLine": 23
+    },
+    {
+      "from": "fffbd104c2cec2c9",
+      "to": "6e27f709936a91e7",
+      "kind": "call",
+      "callLine": 6
+    }
+  ],
+  "tree": {
+    "roots": [
+      {
+        "id": "2c74dbee54eff593",
+        "children": [
+          {
+            "id": "0bfe1d15b4c0b56b",
+            "children": [
+              {
+                "id": "6569f39d7e75f7f5"
+              }
+            ]
+          },
+          {
+            "id": "7a36f6a034135a7e"
+          }
+        ]
+      },
+      {
+        "id": "4c6b73229331d585",
+        "children": [
+          {
+            "id": "fffbd104c2cec2c9",
+            "children": [
+              {
+                "id": "6e27f709936a91e7"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "2a999dd83219907d",
+        "children": [
+          {
+            "id": "840c1bb9fb1e3eea",
+            "children": [
+              {
+                "id": "0f52df999eba3eb0"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "4a53455c6b1d4226",
+        "children": [
+          {
+            "id": "722a8e6bd81254aa"
+          }
+        ]
+      },
+      {
+        "id": "dbcfd6295fc9e354",
+        "children": [
+          {
+            "id": "f6ce1becb0401824"
+          }
+        ]
+      },
+      {
+        "id": "1ef29d80782991fa"
+      },
+      {
+        "id": "57c0b374ec82e5ec"
+      },
+      {
+        "id": "fb6701b97c4c61d3"
+      }
+    ]
+  },
+  "flatOrder": [
+    "2c74dbee54eff593",
+    "0bfe1d15b4c0b56b",
+    "6569f39d7e75f7f5",
+    "7a36f6a034135a7e",
+    "4c6b73229331d585",
+    "fffbd104c2cec2c9",
+    "6e27f709936a91e7",
+    "2a999dd83219907d",
+    "840c1bb9fb1e3eea",
+    "0f52df999eba3eb0",
+    "4a53455c6b1d4226",
+    "722a8e6bd81254aa",
+    "dbcfd6295fc9e354",
+    "f6ce1becb0401824",
+    "1ef29d80782991fa",
+    "57c0b374ec82e5ec",
+    "fb6701b97c4c61d3"
+  ]
+}

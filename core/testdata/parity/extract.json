@@ -1,0 +1,250 @@
+{
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "oldPath": "src/lib.rs",
+      "language": "rust",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 1,
+          "newStart": 1,
+          "newLines": 1,
+          "lines": [
+            "@@ -1,1 +1,1 @@",
+            "-/// Parses.",
+            "+/// Parses input."
+          ]
+        },
+        {
+          "oldStart": 4,
+          "oldLines": 1,
+          "newStart": 4,
+          "newLines": 1,
+          "lines": [
+            "@@ -4,1 +4,1 @@",
+            "-const LIMIT: usize = 4; // max depth",
+            "+const LIMIT: usize = 8; // max depth"
+          ]
+        },
+        {
+          "oldStart": 13,
+          "oldLines": 1,
+          "newStart": 13,
+          "newLines": 1,
+          "lines": [
+            "@@ -13,1 +13,1 @@",
+            "-        s.len()",
+            "+        s.len().min(LIMIT)"
+          ]
+        },
+        {
+          "oldStart": 23,
+          "oldLines": 1,
+          "newStart": 23,
+          "newLines": 1,
+          "lines": [
+            "@@ -23,1 +23,1 @@",
+            "-        assert_eq!(Parser::new().parse(\"a\"), 1);",
+            "+        assert_eq!(Parser::new().parse(\"ab\"), 2);"
+          ]
+        }
+      ],
+      "source": "/// Parses input.\npub struct Parser;\n\nconst LIMIT: usize = 8; // max depth\n\nimpl Parser {\n    #[inline]\n    pub const fn new() -> Self {\n        Parser\n    }\n\n    pub fn parse(&self, s: &str) -> usize {\n        s.len().min(LIMIT)\n    }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn parses() {\n        assert_eq!(Parser::new().parse(\"ab\"), 2);\n    }\n}\n",
+      "entities": []
+    },
+    {
+      "path": "web/Badge.tsx",
+      "oldPath": "web/Badge.tsx",
+      "language": "typescript",
+      "hunks": [
+        {
+          "oldStart": 4,
+          "oldLines": 1,
+          "newStart": 4,
+          "newLines": 1,
+          "lines": [
+            "@@ -4,1 +4,1 @@",
+            "-  padding: 2px;",
+            "+  padding: 4px;"
+          ]
+        },
+        {
+          "oldStart": 10,
+          "oldLines": 1,
+          "newStart": 10,
+          "newLines": 1,
+          "lines": [
+            "@@ -10,1 +10,1 @@",
+            "-    {count > 0 && <p>Can't wait: {count}</p>}",
+            "+    {count > 0 && <p>Can't wait: {formatCount(count)}</p>}"
+          ]
+        },
+        {
+          "oldStart": 17,
+          "oldLines": 1,
+          "newStart": 17,
+          "newLines": 1,
+          "lines": [
+            "@@ -17,1 +17,1 @@",
+            "-  return `${n}`;",
+            "+  return String(n);"
+          ]
+        },
+        {
+          "oldStart": 21,
+          "oldLines": 1,
+          "newStart": 21,
+          "newLines": 1,
+          "lines": [
+            "@@ -21,1 +21,1 @@",
+            "-  return c + '';",
+            "+  return c;"
+          ]
+        }
+      ],
+      "source": "import styled from \"styled-components\";\n\nexport const Pill = styled.span`\n  padding: 4px;\n  color: ${(p) => darken(p.color)};\n`;\n\nexport const Badge = ({ count, url }: Props) => (\n  <Pill>\n    {count > 0 && <p>Can't wait: {formatCount(count)}</p>}\n    {url && <a href={url}>https://example.com</a>}\n    <Dot size={2} />\n  </Pill>\n);\n\nexport function formatCount(n: number): string {\n  return String(n);\n}\n\nexport function darken(c: string): string {\n  return c;\n}\n",
+      "entities": []
+    },
+    {
+      "path": "app/views.py",
+      "oldPath": "app/views.py",
+      "language": "python",
+      "hunks": [
+        {
+          "oldStart": 4,
+          "oldLines": 1,
+          "newStart": 4,
+          "newLines": 1,
+          "lines": [
+            "@@ -4,1 +4,1 @@",
+            "-@functools.lru_cache",
+            "+@functools.cache"
+          ]
+        },
+        {
+          "oldStart": 11,
+          "oldLines": 1,
+          "newStart": 11,
+          "newLines": 1,
+          "lines": [
+            "@@ -11,1 +11,1 @@",
+            "-        return {}",
+            "+        return settings()"
+          ]
+        },
+        {
+          "oldStart": 13,
+          "oldLines": 1,
+          "newStart": 13,
+          "newLines": 1,
+          "lines": [
+            "@@ -13,1 +13,1 @@",
+            "-    \"\"\"Utilities.\"\"\"",
+            "+    \"\"\"Helpers.\"\"\""
+          ]
+        },
+        {
+          "oldStart": 20,
+          "oldLines": 1,
+          "newStart": 20,
+          "newLines": 1,
+          "lines": [
+            "@@ -20,1 +20,1 @@",
+            "-    return {\"debug\": False}",
+            "+    return {\"debug\": True}"
+          ]
+        }
+      ],
+      "source": "import functools\n\n\n@functools.cache\ndef settings():\n    return load()\n\n\nclass View:\n    def get(self):\n        return settings()\n\n    \"\"\"Helpers.\"\"\"\n\n    def render(self):\n        return {}\n\n\ndef load():\n    return {\"debug\": True}\n",
+      "entities": []
+    },
+    {
+      "path": "cmd/config.go",
+      "oldPath": "cmd/config.go",
+      "language": "go",
+      "hunks": [
+        {
+          "oldStart": 5,
+          "oldLines": 1,
+          "newStart": 5,
+          "newLines": 1,
+          "lines": [
+            "@@ -5,1 +5,1 @@",
+            "-// Mode picks the output.",
+            "+// Mode selects the output."
+          ]
+        },
+        {
+          "oldStart": 8,
+          "oldLines": 1,
+          "newStart": 8,
+          "newLines": 1,
+          "lines": [
+            "@@ -8,1 +8,1 @@",
+            "-// defaultConfig holds the defaults.",
+            "+// defaultConfig is used when no flags are given."
+          ]
+        },
+        {
+          "oldStart": 10,
+          "oldLines": 1,
+          "newStart": 10,
+          "newLines": 1,
+          "lines": [
+            "@@ -10,1 +10,1 @@",
+            "-\tTimeout: time.Second,",
+            "+\tTimeout: 5 * time.Second,"
+          ]
+        },
+        {
+          "oldStart": 15,
+          "oldLines": 1,
+          "newStart": 15,
+          "newLines": 1,
+          "lines": [
+            "@@ -15,1 +15,1 @@",
+            "-\treturn Config{}",
+            "+\treturn defaultConfig"
+          ]
+        }
+      ],
+      "source": "package main\n\nimport \"time\"\n\n// Mode selects the output.\ntype Mode int\n\n// defaultConfig is used when no flags are given.\nvar defaultConfig = Config{\n\tTimeout: 5 * time.Second,\n\tMode:    Mode(1),\n}\n\nfunc New() Config {\n\treturn defaultConfig\n}\n",
+      "entities": []
+    },
+    {
+      "path": "api/UserController.java",
+      "oldPath": "api/UserController.java",
+      "language": "java",
+      "hunks": [
+        {
+          "oldStart": 2,
+          "oldLines": 1,
+          "newStart": 2,
+          "newLines": 1,
+          "lines": [
+            "@@ -2,1 +2,1 @@",
+            "-    @PostMapping(\"/{id}\")",
+            "+    @PutMapping(\"/{id}\")"
+          ]
+        },
+        {
+          "oldStart": 9,
+          "oldLines": 1,
+          "newStart": 9,
+          "newLines": 1,
+          "lines": [
+            "@@ -9,1 +9,1 @@",
+            "-        return null;",
+            "+        return body;"
+          ]
+        }
+      ],
+      "source": "public class UserController {\n    @PutMapping(\"/{id}\")\n    public UserDto updateUser(\n            Long id, UserDto body) {\n        return normalize(body);\n    }\n\n    private UserDto normalize(UserDto body) {\n        return body;\n    }\n}\n",
+      "entities": []
+    }
+  ],
+  "options": {
+    "order": "pre"
+  }
+}
