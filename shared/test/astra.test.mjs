@@ -1,0 +1,66 @@
+// Run: node --test shared/test/*.test.mjs
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { initAstra } from "../lib/astra.js";
+
+const root = new URL("../../", import.meta.url);
+
+// loadCore() adds wasm_exec.js as a <script> and fetches the vendored core.
+globalThis.document = {
+  querySelector: () => null,
+  createElement: () => ({}),
+  head: { appendChild(s) { new Function(readFileSync(new URL(s.src, root), "utf8"))(); s.onload(); } },
+};
+globalThis.fetch = async (url) =>
+  new Response(readFileSync(new URL(url, root)), { headers: { "Content-Type": "application/wasm" } });
+
+const source = `package shop;
+
+public class Checkout {
+    public int total() {
+        return price() + tax() + 1;
+    }
+
+    int price() {
+        return 12;
+    }
+
+    int tax() {
+        return 2;
+    }
+}
+`;
+const patch = `@@ -3,14 +3,14 @@
+ public class Checkout {
+     public int total() {
+-        return price() + tax();
++        return price() + tax() + 1;
+     }
+
+     int price() {
+-        return 10;
++        return 12;
+     }
+
+     int tax() {
+-        return 1;
++        return 2;
+     }
+ }`;
+
+test("browsers send no entities, so the core finds methods and their calls", async () => {
+  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => source });
+  const core = await astra.loadCore();
+  const process = core.process;
+  const sent = [];
+  core.process = (req) => { sent.push(JSON.parse(req)); return process(req); };
+
+  const review = await astra.buildReview([{ filename: "src/Checkout.java", status: "modified", patch }]);
+  core.process = process;
+
+  assert.deepEqual(sent[0].files.map((f) => f.entities), [[]]);
+  const name = new Map(review.snippets.map((s) => [s.id, s.symbolPath]));
+  const tree = review.tree.roots.map((n) => [name.get(n.id), (n.children ?? []).map((c) => name.get(c.id)).sort()]);
+  assert.deepEqual(tree, [["Checkout.total", ["Checkout.price", "Checkout.tax"]]]);
+});
