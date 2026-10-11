@@ -48,6 +48,13 @@ func TestMaskCode(t *testing.T) {
 			},
 			[]string{"helper(a)", "</p>}", "calm(a)", "first(a)", "second(a)", "third(a,", "fourth(e)"},
 			[]string{"cart"}},
+		{"jsx text url is not a comment", "typescript",
+			[]string{
+				`<p>See https://example.com for {helper(a)}</p>`,
+				`{a && <a href={a}>http://localhost:3000</a>}{tail(a)}`,
+				`x(); // see https://example.com and y()`,
+			},
+			[]string{"helper(a)", "</a>}", "tail(a)", "x()"}, []string{"see", "y()"}},
 		{"js string literals still mask", "javascript",
 			[]string{`x = 'a(b)'; keep()`, `y = 'it\'s z()' + f()`, `return"q()"`, `case'k()': g()`, `s = 'abc \`},
 			[]string{"keep()", "f()", "g()"}, []string{"a(b)", "z()", "q()", "k()", "abc"}},

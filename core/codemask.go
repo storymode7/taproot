@@ -59,7 +59,7 @@ func maskCode(lines []string, lang string) []string {
 			switch st {
 			case stCode:
 				switch {
-				case python && c == '#', !python && c == '/' && next == '/':
+				case python && c == '#', !python && c == '/' && next == '/' && !(jsLike && urlSlashes(rs, i)):
 					for ; i < n; i++ {
 						rs[i] = ' '
 					}
@@ -242,6 +242,19 @@ func regexCanStart(rs []rune, i int, prev rune) bool {
 		}
 	}
 	return false
+}
+
+// urlSlashes reports whether the // at rs[i] is the scheme separator of a
+// URL written as JSX text (https://example.com), not a line comment.
+func urlSlashes(rs []rune, i int) bool {
+	if i < 2 || rs[i-1] != ':' || i+2 >= len(rs) || !isIdentPart(rs[i+2]) {
+		return false
+	}
+	j := i - 2
+	for j >= 0 && (rs[j] >= 'a' && rs[j] <= 'z' || rs[j] >= 'A' && rs[j] <= 'Z') {
+		j--
+	}
+	return j < i-2 && (j < 0 || !isIdentPart(rs[j]))
 }
 
 // jsQuoteOpens reports whether a quote at rs[i] in JS/TS code opens a string
