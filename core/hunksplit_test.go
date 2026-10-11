@@ -360,3 +360,50 @@ func TestSplitHunk_BlankLinesBelongToTheCodeTheyTouch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) { runStagingCase(t, tc) })
 	}
 }
+
+func TestSplitHunk_EachEntityKeepsItsOwnBoundaryLine(t *testing.T) {
+	// git may pair an unchanged line with an equal line of a neighbouring
+	// new entity. Staging either entity alone must not move that line.
+	cases := []stagingCase{{
+		name: "go closing brace", path: "a.go", lang: "go",
+		oldText: "package main\n\nfunc alpha() int {\n\treturn x + y\n}\n\nfunc gamma() int {\n\treturn 3\n}\n",
+		newText: "package main\n\nfunc alpha() int {\n\treturn x * y\n}\n\nfunc helper() int {\n\treturn 42\n}\n\nfunc gamma() int {\n\treturn 3\n}\n",
+		hunk: []string{"@@ -1,7 +1,11 @@", " package main", " ", " func alpha() int {", "-\treturn x + y",
+			"+\treturn x * y", "+}", "+", "+func helper() int {", "+\treturn 42", " }", " ", " func gamma() int {"},
+		symbols: []string{"alpha", "helper"},
+		alone: map[string]string{
+			"alpha":  "package main\n\nfunc alpha() int {\n\treturn x * y\n}\n\nfunc gamma() int {\n\treturn 3\n}\n",
+			"helper": "package main\n\nfunc alpha() int {\n\treturn x + y\n}\n\nfunc helper() int {\n\treturn 42\n}\n\nfunc gamma() int {\n\treturn 3\n}\n",
+		},
+	}, {
+		// Staging g alone used to move f's return into g: f returned None
+		// and the file still compiled.
+		name: "python last statement", path: "f.py", lang: "python",
+		oldText: "def f():\n    result = compute()\n    return result\n",
+		newText: "def f():\n    result = compute2()\n    return result\n\n\ndef g():\n    result = other()\n    return result\n",
+		hunk: []string{"@@ -1,3 +1,8 @@", " def f():", "-    result = compute()", "+    result = compute2()",
+			"+    return result", "+", "+", "+def g():", "+    result = other()", "     return result"},
+		symbols: []string{"f", "g"},
+		alone: map[string]string{
+			"f": "def f():\n    result = compute2()\n    return result\n",
+			"g": "def f():\n    result = compute()\n    return result\n\n\ndef g():\n    result = other()\n    return result\n",
+		},
+	}, {
+		name: "python decorator", path: "d.py", lang: "python",
+		oldText: "@cache\ndef a():\n    return 1\n",
+		newText: "@cache\ndef z():\n    return 0\n\n\n@cache\ndef a():\n    return 1\n",
+		hunk: []string{"@@ -1,3 +1,8 @@", " @cache", "+def z():", "+    return 0", "+", "+", "+@cache",
+			" def a():", "     return 1"},
+		symbols: []string{"z"},
+	}, {
+		name: "java annotation", path: "T.java", lang: "java",
+		oldText: "class T {\n    @Test\n    void a() {}\n}\n",
+		newText: "class T {\n    @Test\n    void z() {}\n\n    @Test\n    void a() {}\n}\n",
+		hunk: []string{"@@ -1,4 +1,7 @@", " class T {", "     @Test", "+    void z() {}", "+", "+    @Test",
+			"     void a() {}", " }"},
+		symbols: []string{"T.z"},
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { runStagingCase(t, tc) })
+	}
+}

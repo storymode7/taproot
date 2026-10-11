@@ -16,7 +16,9 @@ import (
 // by added lines: such a -/+ pair is a replacement and must stay together,
 // or accepting only one snippet would stage a deletion the reviewer never
 // saw. A blank changed line goes with the code it touches, so blank
-// separators stage with the function they belong to. A "\ No newline at
+// separators stage with the function they belong to. An unchanged line
+// that git paired with an equal line of a neighbouring entity is paired
+// back, so each entity keeps its own boundary lines. A "\ No newline at
 // end of file" marker stays with the line it annotates.
 //
 // Every changed line lands in exactly one piece, so applying any set of
@@ -49,6 +51,9 @@ func splitHunkAtEntities(h Hunk, entities []Entity) []piece {
 		newNext++
 	}
 	s.number(oldNext, newNext)
+	if s.slide() {
+		s.number(oldNext, newNext)
+	}
 	s.assignOwners(tail, same)
 
 	segs := s.segments()
@@ -130,6 +135,14 @@ func blank(l diffLine) bool {
 	return l.kind != ' ' && strings.TrimSpace(l.text[1:]) == ""
 }
 
+// content is a line without its sigil.
+func content(l diffLine) string {
+	if l.text == "" {
+		return ""
+	}
+	return l.text[1:]
+}
+
 // entityAt returns the smallest entity containing a post-image line.
 func (s *hunkSplit) entityAt(line int) *Entity {
 	var best *Entity
@@ -192,6 +205,123 @@ func (s *hunkSplit) eofTail() (start int, same bool) {
 		return b, false
 	}
 	return -1, false
+}
+
+// slide re-pairs an unchanged line that a run of added lines could match
+// as well. git aligns an added block with the nearest equal line, so the
+// closing line of a new function can take the old closing line of the
+// function above it, which then gets an added line of its own:
+//
+//	 func alpha() int {
+//	-	return x + y
+//	+	return x * y
+//	+}
+//	+
+//	+func helper() int {
+//	+	return 42
+//	 }
+//
+// Pairing the old "}" with the first added "}" is the same change, and each
+// function keeps its own closing line, so either one staged alone is whole.
+// Likewise a line before a pure insertion (a decorator the new function
+// shares with the next one) moves to its end. A line is re-paired only
+// from the entity at one end of the run to the entity at the other end,
+// onto an equal added line of that entity. It reports whether any line
+// moved.
+func (s *hunkSplit) slide() bool {
+	L := s.lines
+	moved := false
+	for b := 0; b < len(L); {
+		if L[b].kind == ' ' {
+			b++
+			continue
+		}
+		e := b
+		for e < len(L) && L[e].kind != ' ' {
+			e++
+		}
+		switch {
+		case s.slideDown(b, e):
+			moved = true
+			e++ // the line moved down is now added; it starts no run of its own
+		case s.slideUp(b, e):
+			moved = true
+		}
+		b = e
+	}
+	return moved
+}
+
+// runEnds returns the entities of the first and last non-blank lines added
+// in the run L[b:e], and whether the run holds a marker.
+func (s *hunkSplit) runEnds(b, e int) (first, last *Entity, marker bool) {
+	seen := false
+	for _, l := range s.lines[b:e] {
+		switch {
+		case l.kind == '\\':
+			marker = true
+		case l.kind == '+' && !blank(l):
+			last = s.entityAt(l.new)
+			if !seen {
+				first, seen = last, true
+			}
+		}
+	}
+	return first, last, marker
+}
+
+// slideDown pairs the context line after the run L[b:e] with the last
+// equal line added in the run's first entity, when the context line sits
+// in the run's last entity.
+func (s *hunkSplit) slideDown(b, e int) bool {
+	L := s.lines
+	if e >= len(L) || L[e].kind != ' ' || strings.TrimSpace(content(L[e])) == "" ||
+		e+1 < len(L) && L[e+1].kind == '\\' {
+		return false
+	}
+	first, last, marker := s.runEnds(b, e)
+	at := s.entityAt(L[e].new)
+	if marker || first == nil || at != last || at == first {
+		return false
+	}
+	text := content(L[e])
+	for k := e - 1; k >= b && L[k].kind == '+'; k-- {
+		if content(L[k]) == text && s.entityAt(L[k].new) == first {
+			L[k].kind, L[k].text = ' ', " "+text
+			L[e].kind, L[e].text = '+', "+"+text
+			return true
+		}
+	}
+	return false
+}
+
+// slideUp pairs the context line before the pure insertion L[b:e] with the
+// first equal line added in the run's last entity, when the context line
+// sits in the run's first entity.
+func (s *hunkSplit) slideUp(b, e int) bool {
+	L := s.lines
+	if b == 0 || L[b-1].kind != ' ' || strings.TrimSpace(content(L[b-1])) == "" {
+		return false
+	}
+	for _, l := range L[b:e] {
+		if l.kind != '+' {
+			return false
+		}
+	}
+	first, last, _ := s.runEnds(b, e)
+	at := s.entityAt(L[b-1].new)
+	if last == nil || at != first || at == last {
+		return false
+	}
+	text := content(L[b-1])
+	for k := b; k < e; k++ {
+		if content(L[k]) == text && s.entityAt(L[k].new) == last {
+			L[b-1].kind, L[b-1].text = '+', "+"+text
+			L[k].kind, L[k].text = ' ', " "+text
+			return true
+		}
+	}
+	return false
 }
 
 // assignOwners gives every line the entity whose piece it goes to.
