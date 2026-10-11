@@ -1,0 +1,37 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Cross-compile the CLI
+        run: |
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./apps/cli/cmd/astra
+          done
+
+      - name: Vendored core checksums
+        run: cd vendor/core && sha256sum -c checksums.txt
+
+      - name: Browser copies in sync
+        run: sh scripts/sync-extension-lib.sh --check
+
+      - name: Committed WASM matches the Go goldens
+        run: node scripts/parity-check.mjs
