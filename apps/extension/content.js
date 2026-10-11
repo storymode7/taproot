@@ -100,7 +100,22 @@
     v.open = open;
     v.container.style.display = open ? "block" : "none";
     v.toggle.style.right = open ? "480px" : "0";
-    if (open) fetchAndSend(v);
+    if (open) {
+      v.iframe.style.colorScheme = githubColorScheme();
+      v.iframe.focus(); // review keys work without a click into the panel
+      fetchAndSend(v);
+    } else {
+      v.toggle.focus(); // keys must not reach the hidden panel
+    }
+  }
+
+  // The panel's prefers-color-scheme follows the iframe's color-scheme, so
+  // set that from GitHub's theme setting instead of leaving it to the OS.
+  function githubColorScheme() {
+    const { colorMode, lightTheme, darkTheme } = document.documentElement.dataset;
+    const night = colorMode === "dark" || (colorMode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+    const theme = (night ? darkTheme : lightTheme) ?? colorMode ?? "";
+    return theme.startsWith("dark") ? "dark" : theme.startsWith("light") ? "light" : "";
   }
 
   // Handle close from inside the panel iframe.
