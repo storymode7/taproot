@@ -243,8 +243,8 @@ func goVarConstName(line string) string {
 var (
 	// export async function foo(  /  function foo(  /  async function foo(
 	reJSFunc = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*\*?\s*(\w+)`)
-	// export class Foo  /  class Foo
-	reJSClass = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?class\s+(\w+)`)
+	// export class Foo  /  class Foo  /  export abstract class Foo
+	reJSClass = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:abstract\s+)?class\s+(\w+)`)
 	// export interface Foo  (TypeScript)
 	reJSInterface = regexp.MustCompile(`^(?:export\s+)?interface\s+(\w+)`)
 	// export type Foo =  /  type Box<T> =  (TypeScript)
@@ -258,12 +258,12 @@ var (
 	reJSFuncVal = regexp.MustCompile(`=\s*(?:async\s+)?(?:function\b|\(.*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)`)
 	// method inside a class body: [static async get set ...] [*] name[<T>](
 	// (generics allow one nesting level: <T extends Base<K>>)
-	reJSMethod = regexp.MustCompile(`^(?:(?:static|async|get|set|public|private|protected|readonly)\s+)*\*?\s*(#?[A-Za-z_$][\w$]*)\s*(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\s*\(`)
+	reJSMethod = regexp.MustCompile(`^(?:(?:static|async|get|set|public|private|protected|readonly|override)\s+)*\*?\s*(#?[A-Za-z_$][\w$]*)\s*(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\s*\(`)
 	// class-property arrow: [modifiers] name = [async] (…) =>
 	reJSPropArrow = regexp.MustCompile(`^(?:(?:static|public|private|protected|readonly)\s+)*(#?[A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(.*\)\s*=>`)
 	// start of a new top-level declaration — used to stop the no-brace
 	// arrow-body scan in semicolon-less code
-	reJSDeclStart = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\b|class\s|interface\s|enum\s|const\s|let\s|var\s|type\s+\w+\s*(?:<.*>)?\s*=|import(?:\s|$))`)
+	reJSDeclStart = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\b|(?:abstract\s+)?class\s|interface\s|enum\s|const\s|let\s|var\s|type\s+\w+\s*(?:<.*>)?\s*=|import(?:\s|$))`)
 	// import ...
 	reJSImport = regexp.MustCompile(`^import(?:\s|$)`)
 	// require(...)
@@ -759,7 +759,7 @@ func extractJava(lines []string) []Entity {
 			entities = append(entities, Entity{Name: name, Kind: "class", StartLine: start, EndLine: end})
 			classBodyLines(lines, i, end, func(j int) {
 				tl := strings.TrimSpace(lines[j])
-				if !reJavaMethod.MatchString(tl) || !strings.Contains(lines[j], "{") {
+				if !reJavaMethod.MatchString(tl) || !javaSigOpensBody(lines, j, end) {
 					return
 				}
 				mEnd := goBlockEnd(lines, j)
@@ -784,6 +784,32 @@ func extractJava(lines []string) []Entity {
 	}
 	flushImports(n)
 	return entities
+}
+
+// javaSigOpensBody reports whether the method signature at line j opens a
+// body: its parameter list closes and a '{' follows before any ';'. A
+// wrapped signature or throws clause puts the '{' on a later line; an
+// abstract or interface method ends in ';' instead.
+func javaSigOpensBody(lines []string, j, end int) bool {
+	depth, closed := 0, false
+	for k := j; k < end && k < len(lines); k++ {
+		for _, c := range lines[k] {
+			switch c {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				closed = closed || depth == 0
+			case ';':
+				return false
+			case '{':
+				if closed && depth == 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

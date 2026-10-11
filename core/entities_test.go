@@ -1206,6 +1206,79 @@ export function Card() {
 `, map[string][2]int{"Props": {1, 4}, "Kind": {6, 8}, "Box": {10, 12}, "Card": {13, 15}})
 }
 
+func TestExtractEntities_TS_AbstractClasses(t *testing.T) {
+	checkSpans(t, "typescript", `export abstract class Repo<T> {
+  abstract find(id: string): T;
+
+  save(item: T): void {
+    validate(item);
+  }
+}
+
+abstract class Base {
+  run() {}
+}
+
+export default abstract class Service {
+  start() {}
+}
+
+class Users extends Repo<User> {
+  protected override find(id: string): User {
+    return load(id);
+  }
+}
+
+const double = x =>
+  x * 2
+export abstract class Late {
+  go() {}
+}
+`, map[string][2]int{
+		"Repo": {1, 7}, "Repo.save": {4, 6}, "Base": {9, 11}, "Base.run": {10, 10},
+		"Service": {13, 15}, "Service.start": {14, 14}, "Users.find": {18, 20},
+		"double": {23, 24}, "Late": {25, 27}, "Late.go": {26, 26},
+	})
+}
+
+func TestExtractEntities_Java_WrappedSignatures(t *testing.T) {
+	src := `public class UserController {
+    public ResponseEntity<UserDto> updateUser(
+            Long id, UpdateUserRequest request) {
+        return service.update(id, request);
+    }
+
+    public void load()
+            throws IOException {
+        read();
+    }
+
+    public void run()
+    {
+        go();
+    }
+}
+
+interface UserRepository {
+    Optional<User> findActiveByEmail(
+            String email);
+
+    default void touch() {
+        save();
+    }
+}
+`
+	checkSpans(t, "java", src, map[string][2]int{
+		"UserController.updateUser": {2, 5}, "UserController.load": {7, 10}, "UserController.run": {12, 15},
+		"UserRepository.touch": {22, 24},
+	})
+	for _, e := range ExtractEntities([]byte(src), "java") {
+		if e.Name == "UserRepository.findActiveByEmail" {
+			t.Errorf("bodiless interface method extracted as %d-%d", e.StartLine, e.EndLine)
+		}
+	}
+}
+
 func TestBuildSnippets_MultiLineVarMemberChange(t *testing.T) {
 	// A change inside a multi-line initializer belongs to the var, and its
 	// users get a reference edge to it.
