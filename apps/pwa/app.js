@@ -98,10 +98,12 @@ async function route() {
     showScreen("review");
   } catch (err) {
     if (navigation !== nav) return;
-    if (err.status === 403 || err.status === 429) {
-      showScreen("ratelimit");
+    if (err.rateLimited) {
+      showRateLimit(err.retryAt);
+    } else if (err.status === 404) {
+      showInput("PR not found. If the repository is private, use the Chrome extension: the PWA reads public repositories only.");
     } else {
-      showInput(`Error: ${err.message}`);
+      showInput(err.network ? err.message : `Error: ${err.message}`);
     }
   }
 }
@@ -110,6 +112,17 @@ function showInput(error = "") {
   errEl.textContent = error;
   errEl.hidden = !error;
   showScreen("input");
+  urlInput.focus();
+}
+
+function showRateLimit(retryAt) {
+  const mins = retryAt && Math.ceil((retryAt - Date.now()) / 60000);
+  const at = retryAt && new Date(retryAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  document.getElementById("ratelimit-when").textContent = mins > 0
+    ? `Try again after ${at}, in ${mins} minute${mins === 1 ? "" : "s"}.`
+    : "The limit resets within an hour.";
+  showScreen("ratelimit");
+  document.getElementById("btn-back-ratelimit").focus();
 }
 
 // ---------------------------------------------------------------------------

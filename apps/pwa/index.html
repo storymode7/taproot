@@ -23,10 +23,11 @@
       <h1>Paste a public GitHub PR URL</h1>
       <p class="note">
         Astra only reads public PRs via GitHub&rsquo;s unauthenticated API.
-        Private repos require the <a href="https://github.com/storymode7/astra/tree/main/apps/extension">Chrome extension</a>
-        (uses your existing GitHub session &mdash; no token stored).
+        Private repos require the Chrome extension, which uses your existing GitHub session (no token stored):
+        download the extension zip from the <a href="https://github.com/storymode7/astra/releases/latest">latest release</a>,
+        unzip it, open <code>chrome://extensions</code>, turn on Developer mode and click Load unpacked.
       </p>
-      <form id="pr-form">
+      <form id="pr-form" novalidate>
         <input
           id="pr-url"
           type="url"
@@ -50,10 +51,13 @@
     <section id="screen-ratelimit" class="screen">
       <h2>GitHub rate limit reached</h2>
       <p>
-        Unauthenticated requests to <code>api.github.com</code> are limited to 60/hr per IP.
-        Wait a moment and try again, or install the
-        <a href="https://github.com/storymode7/astra/tree/main/apps/extension">Chrome extension</a>
-        which uses your logged-in session (no token stored by Astra).
+        Unauthenticated requests to <code>api.github.com</code> are limited to 60 an hour per IP address.
+        <span id="ratelimit-when">The limit resets within an hour.</span>
+      </p>
+      <p>
+        The Chrome extension uses your GitHub session instead (no token stored by Astra):
+        download the extension zip from the <a href="https://github.com/storymode7/astra/releases/latest">latest release</a>,
+        unzip it, open <code>chrome://extensions</code>, turn on Developer mode and click Load unpacked.
       </p>
       <button id="btn-back-ratelimit">← Back</button>
     </section>

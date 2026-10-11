@@ -7,13 +7,14 @@
 const GH_API = "https://api.github.com";
 
 /**
- * Parse a GitHub PR URL into { owner, repo, prNumber }.
- * Throws if the URL is not a recognisable GitHub PR URL.
+ * Parse a GitHub PR URL into { owner, repo, prNumber }; "https://" may be
+ * left out. Throws if the URL is not a recognisable GitHub PR URL.
  */
 export function parsePRUrl(raw) {
+  if (!raw) throw new Error("Paste the URL of a GitHub pull request.");
   let url;
   try {
-    url = new URL(raw);
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
   } catch {
     throw new Error("Not a valid URL.");
   }
@@ -41,8 +42,10 @@ const MAX_FILES = 3000;
  *
  * `onPage(n, pages)` runs before each page after the first.
  *
- * Throws an object with { status, message } on HTTP errors, and an
- * AbortError once `signal` aborts.
+ * Throws an Error with `status` on HTTP errors, plus `rateLimited` and
+ * `retryAt` (ms since the epoch, or null when GitHub did not say); with
+ * `network` set when GitHub could not be reached; and an AbortError once
+ * `signal` aborts.
  */
 export async function fetchPRFiles(owner, repo, prNumber, { signal, onPage } = {}) {
   const pr = `/repos/${owner}/${repo}/pulls/${prNumber}`;
@@ -67,13 +70,28 @@ export async function fetchPRFiles(owner, repo, prNumber, { signal, onPage } = {
 }
 
 async function ghFetch(path, signal) {
-  const resp = await fetch(`${GH_API}${path}`, {
-    headers: { Accept: "application/vnd.github+json" },
-    signal,
-  });
+  let resp;
+  try {
+    resp = await fetch(`${GH_API}${path}`, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal,
+    });
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    throw Object.assign(new Error("Couldn't reach GitHub. Check your connection and try again."), { network: true });
+  }
   if (!resp.ok) {
-    const err = new Error(`GitHub API error: ${resp.status} ${resp.statusText}`);
+    // statusText is empty over HTTP/2; GitHub's own message says more.
+    const body = await resp.json().catch(() => ({}));
+    const err = new Error(`GitHub API error: ${resp.status} ${body.message ?? resp.statusText}`);
     err.status = resp.status;
+    // A 403 is a rate limit only when the quota is spent or GitHub asks to
+    // wait; when the headers are unreadable, assume it is one.
+    const left = resp.headers.get("x-ratelimit-remaining");
+    const wait = resp.headers.get("retry-after");
+    err.rateLimited = resp.status === 429 || (resp.status === 403 && (left === null || left === "0" || wait !== null));
+    const reset = Number(resp.headers.get("x-ratelimit-reset"));
+    err.retryAt = wait !== null ? Date.now() + Number(wait) * 1000 : left === "0" && reset ? reset * 1000 : null;
     throw err;
   }
   return resp.json();

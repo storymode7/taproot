@@ -29,7 +29,7 @@ body {
 
 #screen-input h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
 .note { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
-.note a { color: var(--accent); }
+a { color: var(--accent); }
 
 #pr-form { display: flex; gap: 8px; flex-wrap: wrap; }
 #pr-url {
