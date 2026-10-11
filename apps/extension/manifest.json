@@ -8,34 +8,17 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
 
-  "host_permissions": [
-    "https://github.com/*"
-  ],
-
   "content_scripts": [
     {
       "matches": ["https://github.com/*/*/pull/*/changes*"],
       "js": ["content.js"],
-      "css": ["panel/panel.css"],
       "run_at": "document_idle"
     }
   ],
 
   "web_accessible_resources": [
     {
-      "resources": [
-        "panel/panel.html",
-        "panel/panel.js",
-        "panel/panel.css",
-        "lib/ast-ext.js",
-        "lib/state.js",
-        "lib/shared/astra.js",
-        "lib/shared/render.js",
-        "lib/shared/review.css",
-        "vendor/core/astra-core.wasm",
-        "vendor/core/wasm_exec.js",
-        "vendor/highlight.min.js"
-      ],
+      "resources": ["panel/panel.html"],
       "matches": ["https://github.com/*"]
     }
   ],
