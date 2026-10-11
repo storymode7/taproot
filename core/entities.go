@@ -43,7 +43,7 @@ func ExtractEntities(src []byte, lang string) []Entity {
 	lines, open := maskCodeState(raw, lang)
 	switch lang {
 	case "go":
-		return extractGo(lines)
+		return extractGo(lines, open)
 	case "javascript", "typescript":
 		return extractJS(lines, raw)
 	case "python":
@@ -62,16 +62,15 @@ func ExtractEntities(src []byte, lang string) []Entity {
 // ---------------------------------------------------------------------------
 
 var (
-	reGoFunc          = regexp.MustCompile(`^func\s`)
-	reGoType          = regexp.MustCompile(`^type\s+\w`)
-	reGoVarConst      = regexp.MustCompile(`^(?:var|const)\s`)
-	reGoImport        = regexp.MustCompile(`^import(?:\s|$)`)
-	reGoBlockOpen     = regexp.MustCompile(`\{`)
-	reGoImportGroup   = regexp.MustCompile(`^import\s*\($`)
-	reGoVarConstGroup = regexp.MustCompile(`^(?:var|const)\s*\($`)
+	reGoFunc        = regexp.MustCompile(`^func\s`)
+	reGoType        = regexp.MustCompile(`^type\s+\w`)
+	reGoVarConst    = regexp.MustCompile(`^(?:var|const)\s`)
+	reGoImport      = regexp.MustCompile(`^import(?:\s|$)`)
+	reGoBlockOpen   = regexp.MustCompile(`\{`)
+	reGoImportGroup = regexp.MustCompile(`^import\s*\($`)
 )
 
-func extractGo(lines []string) []Entity {
+func extractGo(lines []string, open []bool) []Entity {
 	var entities []Entity
 	i := 0
 	n := len(lines)
@@ -119,19 +118,7 @@ func extractGo(lines []string) []Entity {
 			}
 			name := goVarConstName(stripped)
 			start := i + 1
-			if reGoVarConstGroup.MatchString(stripped) {
-				// block: var ( ... ) ends where its paren closes
-				depth := 0
-				for i < n {
-					depth += parenDelta(lines[i])
-					i++
-					if depth <= 0 {
-						break
-					}
-				}
-			} else {
-				i++
-			}
+			i = goVarEnd(lines, open, i)
 			entities = append(entities, Entity{Name: name, Kind: kind, StartLine: start, EndLine: i})
 
 		default:
@@ -139,6 +126,20 @@ func extractGo(lines []string) []Entity {
 		}
 	}
 	return entities
+}
+
+// goVarEnd returns the 1-indexed last line of a var or const declaration:
+// the first line where its brackets balance with no string left open, so a
+// ( ... ) group, a composite or func literal, or a raw string stays whole.
+func goVarEnd(lines []string, open []bool, startIdx int) int {
+	depth := 0
+	for i := startIdx; i < len(lines); i++ {
+		depth += bracketDelta(lines[i])
+		if depth <= 0 && !open[i] {
+			return i + 1
+		}
+	}
+	return len(lines)
 }
 
 // goBlockEnd finds the line where the brace-delimited block starting at or
@@ -246,8 +247,8 @@ var (
 	reJSClass = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?class\s+(\w+)`)
 	// export interface Foo  (TypeScript)
 	reJSInterface = regexp.MustCompile(`^(?:export\s+)?interface\s+(\w+)`)
-	// export type Foo =  (TypeScript)
-	reJSTypeAlias = regexp.MustCompile(`^(?:export\s+)?type\s+(\w+)\s*=`)
+	// export type Foo =  /  type Box<T> =  (TypeScript)
+	reJSTypeAlias = regexp.MustCompile(`^(?:export\s+)?type\s+(\w+)\s*(?:<.*>)?\s*=`)
 	// export enum Foo  (TypeScript)
 	reJSEnum = regexp.MustCompile(`^(?:export\s+)?(?:const\s+)?enum\s+(\w+)`)
 	// const/let/var foo = ...  or  export const foo = ...
@@ -262,7 +263,7 @@ var (
 	reJSPropArrow = regexp.MustCompile(`^(?:(?:static|public|private|protected|readonly)\s+)*(#?[A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(.*\)\s*=>`)
 	// start of a new top-level declaration — used to stop the no-brace
 	// arrow-body scan in semicolon-less code
-	reJSDeclStart = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\b|class\s|interface\s|enum\s|const\s|let\s|var\s|type\s+\w+\s*=|import(?:\s|$))`)
+	reJSDeclStart = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\b|class\s|interface\s|enum\s|const\s|let\s|var\s|type\s+\w+\s*(?:<.*>)?\s*=|import(?:\s|$))`)
 	// import ...
 	reJSImport = regexp.MustCompile(`^import(?:\s|$)`)
 	// require(...)
@@ -323,15 +324,7 @@ func extractJS(lines, raw []string) []Entity {
 			flushImports(i)
 			name := reJSTypeAlias.FindStringSubmatch(line)[1]
 			start := i + 1
-			// Type aliases end at semicolon or next blank line; find it
-			end := i + 1
-			for end < n {
-				tl := strings.TrimSpace(lines[end-1])
-				if strings.HasSuffix(tl, ";") || strings.TrimSpace(raw[end-1]) == "" {
-					break
-				}
-				end++
-			}
+			end := jsTypeAliasEnd(lines, raw, i)
 			entities = append(entities, Entity{Name: name, Kind: "type", StartLine: start, EndLine: end})
 			i = end
 
@@ -368,6 +361,25 @@ func extractJS(lines, raw []string) []Entity {
 	}
 	flushImports(n)
 	return entities
+}
+
+// jsTypeAliasEnd returns the 1-indexed last line of a type alias: the first
+// line outside brackets that ends in ';' or is blank, or the line before the
+// next declaration in semicolon-less code. A union alias has no brackets
+// around its members, so it runs to its ';'.
+func jsTypeAliasEnd(lines, raw []string, startIdx int) int {
+	depth := 0
+	for i := startIdx; i < len(lines); i++ {
+		tl := strings.TrimSpace(lines[i])
+		if i > startIdx && depth <= 0 && reJSDeclStart.MatchString(tl) {
+			return i
+		}
+		depth += bracketDelta(lines[i])
+		if depth <= 0 && (strings.HasSuffix(tl, ";") || strings.TrimSpace(raw[i]) == "") {
+			return i + 1
+		}
+	}
+	return len(lines)
 }
 
 // jsBraceEnd finds the closing brace of a block that opens on or after startIdx.

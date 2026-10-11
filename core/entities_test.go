@@ -1025,7 +1025,7 @@ var (
 		"y")
 	b = 2
 )
-`, map[string][2]int{"Mode": {6, 6}, "String": {8, 10}, "tpl": {12, 12}, "var": {17, 21}})
+`, map[string][2]int{"Mode": {6, 6}, "String": {8, 10}, "tpl": {12, 15}, "var": {17, 21}})
 
 	checkSpans(t, "rust", `pub struct Marker; // zero-sized
 
@@ -1152,6 +1152,75 @@ func TestExtractEntities_Rust_LeadingStringIsNotADeclaration(t *testing.T) {
 		if e.Name == "Underscore" {
 			t.Errorf("macro input extracted as %s %q %d-%d", e.Kind, e.Name, e.StartLine, e.EndLine)
 		}
+	}
+}
+
+func TestExtractEntities_MultiLineDeclarations(t *testing.T) {
+	checkSpans(t, "go", "package p\n\n"+`var defaultConfig = Config{
+	Timeout: 5,
+	Retries: 3,
+}
+
+var routes = map[string]string{
+	"/": "home",
+}
+
+var (
+	x = foo(
+		1,
+	)
+	y = 2
+)
+
+const usage = `+"`"+`usage: astra
+  --base REF
+`+"`"+`
+
+var reOpen = regexp.MustCompile(`+"`"+`^import\s*\($`+"`"+`)
+
+var handler = func() {
+	run()
+}
+
+func After() {}
+`, map[string][2]int{
+		"defaultConfig": {3, 6}, "routes": {8, 10}, "var": {12, 17}, "usage": {19, 21},
+		"reOpen": {23, 23}, "handler": {25, 27}, "After": {29, 29},
+	})
+
+	checkSpans(t, "typescript", `export type Props = {
+  title: string;
+  count: number;
+};
+
+type Kind =
+  | "a"
+  | "b";
+
+type Box<T> = {
+  value: T
+}
+export function Card() {
+  return null;
+}
+`, map[string][2]int{"Props": {1, 4}, "Kind": {6, 8}, "Box": {10, 12}, "Card": {13, 15}})
+}
+
+func TestBuildSnippets_MultiLineVarMemberChange(t *testing.T) {
+	// A change inside a multi-line initializer belongs to the var, and its
+	// users get a reference edge to it.
+	src := "package p\n\nvar defaultConfig = Config{\n\tTimeout: 10,\n}\n\nfunc New() Config {\n\treturn defaultConfig\n}\n"
+	f := &FileDiff{Path: "c.go", OldPath: "c.go", Language: "go", Source: []byte(src), Hunks: []Hunk{
+		{OldStart: 4, OldLines: 1, NewStart: 4, NewLines: 1, Lines: []string{"@@ -4,1 +4,1 @@", "-\tTimeout: 5,", "+\tTimeout: 10,"}},
+		{OldStart: 8, OldLines: 1, NewStart: 8, NewLines: 1, Lines: []string{"@@ -8,1 +8,1 @@", "-\treturn Config{}", "+\treturn defaultConfig"}},
+	}}
+	snippets := BuildSnippets([]*FileDiff{f})
+	if got := symbolPaths(snippets); len(got) != 2 || got[0] != "defaultConfig" || got[1] != "New" {
+		t.Fatalf("snippets = %v, want [defaultConfig New]", got)
+	}
+	edges := BuildCallEdges(snippets)
+	if len(edges) != 1 || edges[0].From != snippets[1].ID || edges[0].To != snippets[0].ID {
+		t.Errorf("edges = %v, want New -> defaultConfig", edges)
 	}
 }
 
