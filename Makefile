@@ -23,4 +23,4 @@ parity: core-wasm
 
 .PHONY: cli
 cli:
-	go build -o astra ./apps/cli/cmd/astra
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o astra ./apps/cli/cmd/astra
