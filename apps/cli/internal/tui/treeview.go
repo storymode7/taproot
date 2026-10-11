@@ -181,10 +181,10 @@ func renderSegments(segs []segment, width int, plainOnly bool) string {
 			break
 		}
 		text := displaySafe(sg.text)
-		if r := []rune(text); len(r) > left {
-			text = string(r[:left-1]) + "…"
+		if strWidth(text) > left {
+			text = cutWidth(text, left-1) + "…"
 		}
-		left -= len([]rune(text))
+		left -= strWidth(text)
 		if plainOnly || sg.style == "" {
 			b.WriteString(text)
 		} else {
@@ -242,27 +242,28 @@ func ansiTruncate(line string, width int) string {
 			b.WriteRune(r)
 			continue
 		}
-		if visible >= width {
+		w := runeWidth(r)
+		if visible+w > width {
 			return b.String() + reset
 		}
 		b.WriteRune(r)
-		visible++
+		visible += w
 	}
 	return b.String()
 }
 
-// ansiWrap splits line into rows of at most width visible runes. Each
+// ansiWrap splits line into rows of at most width columns. Each
 // continuation row repeats the line's gutter as blanks (up to and including
 // "│ ") and re-applies the colours active at the split point.
 func ansiWrap(line string, width int) []string {
 	line = strings.ReplaceAll(line, "\t", "    ")
 	plain := stripANSI(line)
-	if width <= 0 || len([]rune(plain)) <= width {
+	if width <= 0 || strWidth(plain) <= width {
 		return []string{line}
 	}
 	indent, contWidth := "", width
 	if i := strings.Index(plain, "│ "); i >= 0 {
-		if n := len([]rune(plain[:i])); n+2 < width/2 {
+		if n := strWidth(plain[:i]); n+2 < width/2 {
 			indent = strings.Repeat(" ", n) + dim + "│" + reset + " "
 			contWidth = width - n - 2
 		}
@@ -289,14 +290,15 @@ func ansiWrap(line string, width int) []string {
 			i = j
 			continue
 		}
-		if visible == limit {
+		w := runeWidth(runes[i])
+		if visible+w > limit && visible > 0 {
 			rows = append(rows, b.String()+reset)
 			b.Reset()
 			b.WriteString(indent + strings.Join(active, ""))
 			visible, limit = 0, contWidth
 		}
 		b.WriteRune(runes[i])
-		visible++
+		visible += w
 	}
 	return append(rows, b.String())
 }

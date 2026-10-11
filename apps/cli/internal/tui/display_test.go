@@ -106,3 +106,96 @@ func TestRender_ShowsControlCharacters(t *testing.T) {
 	prompt := strings.TrimSuffix(lines[len(lines)-1], "\033[?25h")
 	assertShown(t, "search prompt", prompt)
 }
+
+// cells counts terminal columns in the test strings below, independently of
+// the code under test: CJK punctuation, kana, ideographs, ⭐ and emoji take
+// two.
+func cells(s string) int {
+	n := 0
+	for _, r := range stripANSI(s) {
+		switch {
+		case r >= 0x3000 && r <= 0x30ff, r >= 0x4e00 && r <= 0x9fff, r == 0x2b50, r >= 0x1f300 && r <= 0x1faff:
+			n += 2
+		default:
+			n++
+		}
+	}
+	return n
+}
+
+func TestRuneWidth(t *testing.T) {
+	for r, want := range map[rune]int{
+		'a': 1, 'é': 1, '\u00ad': 1, '─': 1, '│': 1, '…': 1, '●': 1, '▼': 1, '✓': 1, '✗': 1, '␍': 1, '�': 1,
+		'日': 2, '。': 2, 'カ': 2, '한': 2, 'Ａ': 2, '⭐': 2, '✅': 2, '⚡': 2, '😀': 2, '🇺': 2,
+		'\u0301': 0, '\u200b': 0, '\u200d': 0, '\ufe0f': 1,
+	} {
+		if got := runeWidth(r); got != want {
+			t.Errorf("runeWidth(%q %U) = %d, want %d", r, r, got, want)
+		}
+	}
+}
+
+const wideLine = "  18   18 │ " + green + "+        // 日本語のコメント — wide chars 😀 emoji 🎉 and a very long line follows" + reset
+
+func TestAnsiWrap_CountsWideCharacters(t *testing.T) {
+	for _, width := range []int{80, 41, 24} {
+		rows := ansiWrap(wideLine, width)
+		var joined strings.Builder
+		for i, row := range rows {
+			if w := cells(row); w > width {
+				t.Errorf("width %d: row %d is %d columns: %q", width, i, w, stripANSI(row))
+			}
+			plain := stripANSI(row)
+			if i > 0 {
+				plain = strings.TrimPrefix(plain, "          │ ")
+			}
+			joined.WriteString(plain)
+		}
+		if want := stripANSI(wideLine); joined.String() != want {
+			t.Errorf("width %d: wrapped text = %q, want %q", width, joined.String(), want)
+		}
+	}
+	if got := ansiWrap("abc日", 4); len(got) != 2 || stripANSI(got[0]) != "abc" || got[1] != "日" {
+		t.Errorf("a wide character that does not fit must move to the next row: %q", got)
+	}
+}
+
+func TestAnsiTruncate_CountsWideCharacters(t *testing.T) {
+	if w := cells(ansiTruncate(strings.Repeat("😀", 50), 9)); w > 9 {
+		t.Errorf("50 emoji cut to 9 columns take %d", w)
+	}
+	if got := stripANSI(ansiTruncate("ab日本", 3)); got != "ab" {
+		t.Errorf("ansiTruncate(ab日本, 3) = %q, want ab", got)
+	}
+	if got := ansiTruncate("é", 1); got != "é" {
+		t.Errorf("a combining mark takes no column: %q", got)
+	}
+}
+
+func TestRenderSegments_CountsWideCharacters(t *testing.T) {
+	out := renderSegments([]segment{{"処理する関数の名前がとても長い", bold}, {"  main.go", dim}}, 20, false)
+	if w := cells(out); w > 19 {
+		t.Errorf("tree row is %d columns, want at most 19: %q", w, stripANSI(out))
+	}
+}
+
+func TestRender_WideCharactersFit(t *testing.T) {
+	diff := []string{"@@ -1,0 +1,30 @@"}
+	for i := 0; i < 30; i++ {
+		diff = append(diff, "+日本語の段落です。これはとても長い行で、端末の幅を超えて折り返されます 😀🎉")
+	}
+	r := testRunner(t, &core.Snippet{
+		ID: "a", FilePath: "docs/快速开始.md", SymbolPath: "设置", NodeType: "function", DiffLines: diff,
+	})
+	for _, size := range [][2]int{{24, 80}, {16, 60}} {
+		lines := frame(t, r, size[0], size[1])
+		if len(lines) > size[0] {
+			t.Errorf("%dx%d: frame has %d rows", size[0], size[1], len(lines))
+		}
+		for i, l := range lines {
+			if w := cells(l); w > size[1] {
+				t.Errorf("%dx%d: row %d is %d columns: %q", size[0], size[1], i, w, stripANSI(l))
+			}
+		}
+	}
+}

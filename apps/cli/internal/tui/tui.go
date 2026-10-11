@@ -689,7 +689,7 @@ func (r *Runner) render() {
 		}
 		loc := fmt.Sprintf("%s:%d · %s ", displaySafe(s.FilePath), firstChangedLine(s), r.store.Get(s.ID).Status)
 		rule := ""
-		if pad := cols - len([]rune("── "+title+loc)); pad > 0 {
+		if pad := cols - strWidth("── "+title+loc); pad > 0 {
 			rule = strings.Repeat("─", pad)
 		}
 		fmt.Println(ansiTruncate(dim+"── "+reset+bold+title+reset+dim+loc+rule+reset, cols))
