@@ -5,9 +5,11 @@
  * review order) next to one diff card per snippet, with old/new line
  * numbers, +/- markers, and a collapsed state once a snippet is judged.
  *
- * Keyboard (when focus is not in a text field):
- *   j / k  next / previous snippet     y  accept     n  reject
- *   r      mark reviewed               c  comment    x  fold / unfold
+ * Keyboard (when focus is not in a text field), as in the CLI where both
+ * have the action:
+ *   j / k  next / previous snippet (J / K too)    y / a  accept
+ *   x      reject                                 r      mark reviewed
+ *   c      comment                                z      fold / unfold
  *
  * Vanilla JS, no dependencies. Syntax highlighting is optional and injected
  * (the extension passes highlight.js; the PWA renders plain code).
@@ -162,13 +164,13 @@ export function renderReview(container, review, store, opts = {}) {
     const i = order.indexOf(current);
     const snippet = byId.get(current);
     switch (e.key) {
-      case "j": focusSnippet(order[Math.min(i + 1, order.length - 1)]); break;
-      case "k": focusSnippet(order[Math.max(i - 1, 0)]); break;
-      case "y": if (snippet) cards.get(current)._judge("accepted"); break;
-      case "n": if (snippet) cards.get(current)._judge("rejected"); break;
+      case "j": case "J": focusSnippet(order[Math.min(i + 1, order.length - 1)]); break;
+      case "k": case "K": focusSnippet(order[Math.max(i - 1, 0)]); break;
+      case "y": case "a": if (snippet) cards.get(current)._judge("accepted"); break;
+      case "x": if (snippet) cards.get(current)._judge("rejected"); break;
       case "r": if (snippet) cards.get(current)._judge("reviewed"); break;
       case "c": cards.get(current)?._comment(); break;
-      case "x": cards.get(current)?.classList.toggle("folded"); break;
+      case "z": cards.get(current)?.classList.toggle("folded"); break;
       default: return;
     }
     e.preventDefault();
@@ -243,7 +245,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
   const { adds, dels } = countChanges(snippet.diffLines);
   const head = el("header", "astra-card-head");
   head.innerHTML = `
-    <button class="astra-fold" title="Fold (x)" tabindex="-1">▾</button>
+    <button class="astra-fold" title="Fold (z)" tabindex="-1">▾</button>
     <div class="astra-title">
       ${crumbs.length ? `<span class="astra-crumbs">${crumbs.map(esc).join(" › ")} ›</span>` : ""}
       <strong class="astra-symbol">${esc(label(snippet))}</strong>
@@ -253,7 +255,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
     <span class="astra-status">${STATUS_LABEL[state.status]}</span>
     <div class="astra-actions">
       <button data-status="accepted" title="Accept (y)">Accept</button>
-      <button data-status="rejected" title="Reject (n)">Reject</button>
+      <button data-status="rejected" title="Reject (x)">Reject</button>
       <button data-status="reviewed" title="Mark reviewed (r)">Reviewed</button>
       <button data-comment title="Comment (c)">Comment</button>
     </div>`;
