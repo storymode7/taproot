@@ -2,7 +2,7 @@
  * app.js — Astra PWA entry point
  *
  * Vanilla JS ES module. No framework, no build step, no npm.
- * All dependencies are vendored WASM files loaded from /vendor/.
+ * The review engine is vendored WASM in vendor/core/, next to this file.
  *
  * Flow:
  *   1. User pastes a public GH PR URL → parsePRUrl()

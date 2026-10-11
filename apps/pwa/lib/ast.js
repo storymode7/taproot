@@ -9,7 +9,8 @@
 
 import { initAstra } from "./shared/astra.js";
 
-const CORE = "../../vendor/core";
+// Relative to the page: the PWA ships its own copy (scripts/sync-extension-lib.sh).
+const CORE = "vendor/core";
 
 async function fetchSource(file) {
   try {
