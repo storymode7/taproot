@@ -167,7 +167,7 @@ func TestAnsiTruncate_CountsWideCharacters(t *testing.T) {
 	if got := stripANSI(ansiTruncate("ab日本", 3)); got != "ab" {
 		t.Errorf("ansiTruncate(ab日本, 3) = %q, want ab", got)
 	}
-	if got := ansiTruncate("é", 1); got != "é" {
+	if got := ansiTruncate("e\u0301", 1); got != "e\u0301" {
 		t.Errorf("a combining mark takes no column: %q", got)
 	}
 }
