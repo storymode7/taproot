@@ -60,6 +60,7 @@ export function renderReview(container, review, store, opts = {}) {
 
   const nav = el("nav", "astra-tree");
   const progress = el("div", "astra-progress");
+  progress.setAttribute("role", "status");
   nav.appendChild(progress);
   nav.appendChild(renderTree(roots, byId, store, focusSnippet));
 
@@ -111,7 +112,7 @@ export function renderReview(container, review, store, opts = {}) {
     card.classList.toggle("folded", status !== "pending");
     card.querySelector(".astra-status").textContent = STATUS_LABEL[status];
     nav.querySelectorAll(`[data-id="${snippet.id}"] > .astra-tree-row:not(.ref) .astra-dot`)
-      .forEach((d) => { d.className = `astra-dot status-${status}`; });
+      .forEach((d) => paintDot(d, status));
     updateProgress();
   }
 
@@ -191,11 +192,19 @@ function renderTree(nodes, byId, store, onPick) {
     li.dataset.id = n.id;
     const row = el("div", "astra-tree-row");
     const kids = n.ref ? [] : (n.children ?? []);
-    const twisty = el("button", "astra-twisty", kids.length ? "▾" : "");
-    twisty.tabIndex = -1;
-    twisty.disabled = !kids.length;
-    const dot = el("span", `astra-dot status-${n.ref ? "ref" : store.get(n.id).status}`);
-    const name = el("span", "astra-tree-name", label(s));
+    const twisty = kids.length ? el("button", "astra-twisty", "▾") : el("span", "astra-twisty");
+    if (kids.length) {
+      twisty.type = "button";
+      twisty.setAttribute("aria-label", `Callees of ${label(s)}`);
+      twisty.setAttribute("aria-expanded", "true");
+    }
+    const dot = el("span", "astra-dot status-ref");
+    if (!n.ref) {
+      dot.setAttribute("role", "img");
+      paintDot(dot, store.get(n.id).status);
+    }
+    const name = el("button", "astra-tree-name", label(s));
+    name.type = "button";
     name.title = `${s.filePath}${s.symbolPath ? " :: " + s.symbolPath : ""}`;
     row.append(twisty, dot, name);
     if (n.ref) {
@@ -213,11 +222,18 @@ function renderTree(nodes, byId, store, onPick) {
       twisty.addEventListener("click", () => {
         sub.hidden = !sub.hidden;
         twisty.textContent = sub.hidden ? "▸" : "▾";
+        twisty.setAttribute("aria-expanded", String(!sub.hidden));
       });
     }
     ul.appendChild(li);
   }
   return ul;
+}
+
+function paintDot(dot, status) {
+  dot.className = `astra-dot status-${status}`;
+  dot.title = STATUS_LABEL[status];
+  dot.setAttribute("aria-label", STATUS_LABEL[status]);
 }
 
 function label(s) {

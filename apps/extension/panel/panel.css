@@ -32,4 +32,5 @@ body {
   border: 1px solid var(--border); background: var(--surface);
 }
 #panel-status { padding: 8px 12px; color: var(--text-dim); font-size: 13px; }
+#panel-status:empty { padding: 0; }
 #snippet-list { padding: 12px; }

@@ -20,7 +20,7 @@
   <main id="app">
     <!-- URL input screen (shown on load) -->
     <section id="screen-input" class="screen active">
-      <h1>Paste a public GitHub PR URL</h1>
+      <h1 id="pr-url-label">Paste a public GitHub PR URL</h1>
       <p class="note">
         Astra only reads public PRs via GitHub&rsquo;s unauthenticated API.
         Private repos require the Chrome extension, which uses your existing GitHub session (no token stored):
@@ -31,6 +31,7 @@
         <input
           id="pr-url"
           type="url"
+          aria-labelledby="pr-url-label"
           placeholder="https://github.com/owner/repo/pull/123"
           autocomplete="off"
           spellcheck="false"
@@ -38,7 +39,7 @@
         />
         <button type="submit">Review</button>
       </form>
-      <p id="input-error" class="error" hidden></p>
+      <p id="input-error" class="error" role="alert" hidden></p>
     </section>
 
     <!-- Loading screen -->

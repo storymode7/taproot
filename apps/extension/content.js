@@ -63,6 +63,7 @@
     const iframe = document.createElement("iframe");
     const loaded = new Promise((resolve) => iframe.addEventListener("load", resolve, { once: true }));
     iframe.src = chrome.runtime.getURL("panel/panel.html");
+    iframe.title = "Astra review panel";
     iframe.style.cssText = "width:100%;height:100%;border:none;";
     iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
     container.appendChild(iframe);

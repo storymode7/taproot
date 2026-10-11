@@ -73,8 +73,8 @@ document.getElementById("btn-close").addEventListener("click", () => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+// The status region stays in the page, empty when idle, so screen
+// readers announce what is put in it.
 function setStatus(msg) {
-  const el = document.getElementById("panel-status");
-  el.textContent = msg;
-  el.hidden = !msg;
+  document.getElementById("panel-status").textContent = msg;
 }
