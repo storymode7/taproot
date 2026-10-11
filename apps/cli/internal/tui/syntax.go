@@ -296,7 +296,7 @@ func runBat(filePath string, diffLines []string) []string {
 		"--paging=never",
 		"--style=plain",
 		"--color=always",
-		"--language="+batLang(filePath),
+		"--file-name="+filePath,
 		"-",
 	)
 	cmd.Stdin = strings.NewReader(strings.Join(codeLines, "\n"))
@@ -324,29 +324,6 @@ func runBat(filePath string, diffLines []string) []string {
 		}
 	}
 	return result
-}
-
-func batLang(filePath string) string {
-	ext := filePath
-	if i := strings.LastIndexByte(filePath, '.'); i >= 0 {
-		ext = filePath[i+1:]
-	}
-	switch strings.ToLower(ext) {
-	case "js", "mjs", "cjs", "jsx":
-		return "JavaScript"
-	case "ts", "tsx", "mts":
-		return "TypeScript"
-	case "py":
-		return "Python"
-	case "go":
-		return "Go"
-	case "java":
-		return "Java"
-	case "rs":
-		return "Rust"
-	default:
-		return "text"
-	}
 }
 
 // ---------------------------------------------------------------------------

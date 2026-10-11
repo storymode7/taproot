@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -119,5 +121,27 @@ func TestRenderedDiff_WrapsLongLines(t *testing.T) {
 	}
 	if !strings.Contains(all, "END changed") {
 		t.Errorf("end of the changed line is missing:\n%s", all)
+	}
+}
+
+// TestRunBat_SyntaxFromFileName checks that bat gets the file name, so it
+// picks TypeScriptReact for .tsx rather than a forced plain TypeScript.
+func TestRunBat_SyntaxFromFileName(t *testing.T) {
+	bin := t.TempDir()
+	argsFile := filepath.Join(bin, "args")
+	fake := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + argsFile + "'\nexec /bin/cat\n"
+	if err := os.WriteFile(filepath.Join(bin, "bat"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	if out := runBat("web/App.tsx", []string{"@@ -1 +1 @@", "+const a = <p>Don't</p>;"}); out == nil {
+		t.Fatal("bat did not run")
+	}
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), "--file-name=web/App.tsx\n") || strings.Contains(string(args), "--language") {
+		t.Errorf("bat args = %q, want --file-name=web/App.tsx and no --language", args)
 	}
 }
