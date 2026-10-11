@@ -1436,6 +1436,149 @@ func TestBuildSnippets_TSX_StyledComponentsStaySeparate(t *testing.T) {
 	}
 }
 
+func TestExtractEntities_LeadLinesBelongToTheEntity(t *testing.T) {
+	// Decorators, annotations, attributes and doc comments directly above a
+	// declaration are part of it.
+	checkSpans(t, "python", `import functools
+
+
+@functools.cache
+def helper():
+    return 3
+
+
+@pytest.mark.parametrize(
+    "x",
+    [1, 2],
+)
+def test_square(x):
+    assert x
+
+
+class V:
+    @app.route(
+        "/v",
+    )
+    def view(self):
+        return 1
+
+    # not a decorator
+    def other(self):
+        return 2
+`, map[string][2]int{"helper": {4, 8}, "test_square": {9, 16}, "V.view": {18, 24}, "V.other": {25, 27}})
+
+	checkSpans(t, "java", `public class A {
+    /**
+     * Returns b.
+     */
+    @Override
+    public int b() {
+        return 1;
+    }
+
+    @RequestMapping(
+        value = "/x"
+    )
+    public void c() {
+    }
+
+    @Autowired private Foo foo;
+    public void d() {
+    }
+}
+`, map[string][2]int{"A.b": {2, 8}, "A.c": {10, 14}, "A.d": {17, 18}})
+
+	checkSpans(t, "typescript", `/** Formats a name. */
+export function fmt(n: string) {
+  return n;
+}
+
+@Component({
+  selector: 'app',
+})
+export class AppComponent {
+  @HostListener('click')
+  onClick() {
+    run();
+  }
+}
+`, map[string][2]int{"fmt": {1, 4}, "AppComponent": {6, 14}, "AppComponent.onClick": {10, 13}})
+
+	checkSpans(t, "rust", `//! Crate docs.
+fn first() {}
+
+/// A point.
+#[derive(
+    Debug,
+    Clone,
+)]
+pub struct Point {
+    x: i32,
+}
+
+impl Point {
+    /// Builds one.
+    #[inline]
+    pub fn new() -> Self {
+        Point { x: 0 }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn works() {}
+}
+`, map[string][2]int{"first": {2, 2}, "Point": {4, 11}, "impl Point": {13, 19}, "Point.new": {14, 18}, "tests": {21, 25}})
+
+	checkSpans(t, "go", `package p
+
+// Add adds.
+//
+//go:noinline
+func Add(a, b int) int {
+	return a + b
+}
+
+// Unrelated comment.
+
+func Sub(a, b int) int {
+	return a - b
+}
+
+/* Mul multiplies. */
+func Mul(a, b int) int {
+	return a * b
+}
+`, map[string][2]int{"Add": {3, 8}, "Sub": {12, 14}, "Mul": {16, 19}})
+}
+
+func TestBuildSnippets_DecoratorStaysWithItsFunction(t *testing.T) {
+	// A new decorated function's decorator is part of its snippet, not a
+	// nameless snippet that staging would put above the next function.
+	src := "def a():\n    return 1\n\n\n@functools.cache\ndef helper():\n    return 3\n\n\ndef b():\n    return 2\n"
+	f := &FileDiff{Path: "m.py", OldPath: "m.py", Language: "python", Source: []byte(src), Hunks: []Hunk{{
+		OldStart: 1, OldLines: 6, NewStart: 1, NewLines: 11,
+		Lines: []string{"@@ -1,6 +1,11 @@", " def a():", "     return 1", " ", " ", "+@functools.cache", "+def helper():", "+    return 3", "+", "+", " def b():", "     return 2"},
+	}}}
+	snippets := BuildSnippets([]*FileDiff{f})
+	if len(snippets) != 1 || snippets[0].SymbolPath != "helper" || !strings.Contains(strings.Join(snippets[0].DiffLines, "\n"), "+@functools.cache\n+def helper():") {
+		for _, s := range snippets {
+			t.Logf("snippet %q: %q", s.SymbolPath, s.DiffLines)
+		}
+		t.Fatalf("want one helper snippet holding its decorator")
+	}
+
+	src = "@pytest.mark.parametrize(\"x\", [1, 2, 3])\ndef test_square(x):\n    assert x\n"
+	f = &FileDiff{Path: "t.py", OldPath: "t.py", Language: "python", Source: []byte(src), Hunks: []Hunk{{
+		OldStart: 1, OldLines: 1, NewStart: 1, NewLines: 1,
+		Lines: []string{"@@ -1,1 +1,1 @@", "-@pytest.mark.parametrize(\"x\", [1, 2])", "+@pytest.mark.parametrize(\"x\", [1, 2, 3])"},
+	}}}
+	if got := symbolPaths(BuildSnippets([]*FileDiff{f})); len(got) != 1 || got[0] != "test_square" {
+		t.Errorf("decorator change snippets = %v, want [test_square]", got)
+	}
+}
+
 func TestBuildSnippets_TSX_ComponentsKeepTheirBodies(t *testing.T) {
 	// Edits inside two arrow components' JSX bodies stay in two named
 	// snippets, and their calls make edges.

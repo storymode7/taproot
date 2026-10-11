@@ -143,12 +143,12 @@ func maskPass(lines []string, lang string, text map[[2]int]bool) ([]string, []bo
 					prev = c
 				}
 			case stBlock:
+				rs[i] = ' '
 				if c == '*' && next == '/' {
 					rs[i+1] = ' '
 					i++
 					st = stCode
 				}
-				rs[i] = ' '
 			case stString:
 				switch {
 				case c == '\\' && i+1 < n:

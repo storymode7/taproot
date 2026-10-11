@@ -18,6 +18,7 @@ package core
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -41,20 +42,118 @@ type Entity struct {
 func ExtractEntities(src []byte, lang string) []Entity {
 	raw := splitLines(src)
 	lines, open := maskCodeState(raw, lang)
+	var entities []Entity
 	switch lang {
 	case "go":
-		return extractGo(lines, open)
+		entities = extractGo(lines, open)
 	case "javascript", "typescript":
-		return extractJS(lines, raw, open)
+		entities = extractJS(lines, raw, open)
 	case "python":
-		return extractPython(lines, raw, open)
+		entities = extractPython(lines, raw, open)
 	case "java":
-		return extractJava(lines)
+		entities = extractJava(lines)
 	case "rust":
-		return extractRust(lines, raw)
+		entities = extractRust(lines, raw)
 	default:
 		return nil
 	}
+	extendLeads(entities, lines, raw, lang)
+	return entities
+}
+
+var (
+	// a decorator or annotation with nothing after it: @Get(':id'), not
+	// @Input() name: string
+	reLeadAt       = regexp.MustCompile(`^@[\w.$]+\s*(?:\(.*\))?$`)
+	reLeadRustAttr = regexp.MustCompile(`^#\[.*\]$`)
+)
+
+// extendLeads moves each entity's start up over the decorators,
+// annotations, attributes and doc comments written directly above it, so a
+// change to them belongs to the entity and staging the entity takes them
+// along. code holds the masked lines, raw the source lines.
+func extendLeads(entities []Entity, code, raw []string, lang string) {
+	ends := make([]int, len(entities))
+	for i, e := range entities {
+		ends[i] = e.EndLine
+	}
+	slices.Sort(ends)
+	for i := range entities {
+		e := &entities[i]
+		if e.Kind == "imports" || e.StartLine < 1 || e.StartLine > len(raw) {
+			continue
+		}
+		floor := 0 // the last line of the entities above; a lead never reaches into one
+		if k, _ := slices.BinarySearch(ends, e.StartLine); k > 0 {
+			floor = ends[k-1]
+		}
+		e.StartLine = leadStart(code, raw, e.StartLine-1, floor, lang) + 1
+	}
+}
+
+// leadStart returns the index of the first lead line directly above line
+// decl, at its indent and at index floor or below: comments (a block comment
+// counts whole) and decorators, annotations or attributes, whose arguments
+// may wrap. Python takes decorators only; Rust leaves //!, /*! and #![...]
+// to the enclosing module.
+func leadStart(code, raw []string, decl, floor int, lang string) int {
+	indent := indentLen(raw[decl])
+	start := decl
+	for start > floor {
+		k := start - 1
+		t := strings.TrimSpace(raw[k])
+		switch {
+		case t == "":
+			return start
+		case lang != "python" && strings.TrimSpace(code[k]) == "" && strings.HasSuffix(t, "*/"):
+			o := k
+			for o > floor && !strings.Contains(raw[o], "/*") {
+				o--
+			}
+			ot := strings.TrimSpace(raw[o])
+			if !strings.HasPrefix(ot, "/*") || lang == "rust" && strings.HasPrefix(ot, "/*!") || indentLen(raw[o]) != indent {
+				return start
+			}
+			for j := o; j < k; j++ {
+				if strings.TrimSpace(code[j]) != "" {
+					return start
+				}
+			}
+			start = o
+		case lang != "python" && strings.HasPrefix(t, "//") && indentLen(raw[k]) == indent:
+			if lang == "rust" && strings.HasPrefix(t, "//!") {
+				return start
+			}
+			start = k
+		default:
+			o, depth := k, bracketDelta(code[k])
+			for depth < 0 && o > floor {
+				o--
+				depth += bracketDelta(code[o])
+			}
+			group := make([]string, 0, k-o+1)
+			for j := o; j <= k; j++ {
+				group = append(group, strings.TrimSpace(code[j]))
+			}
+			attr := strings.Join(group, " ")
+			ok := depth == 0 && indentLen(raw[o]) == indent
+			switch lang {
+			case "python":
+				ok = ok && strings.HasPrefix(attr, "@")
+			case "rust":
+				ok = ok && reLeadRustAttr.MatchString(attr)
+			case "go":
+				ok = false
+			default:
+				ok = ok && reLeadAt.MatchString(attr)
+			}
+			if !ok {
+				return start
+			}
+			start = o
+		}
+	}
+	return start
 }
 
 // ---------------------------------------------------------------------------
@@ -655,9 +754,8 @@ func extractPython(lines, raw []string, open []bool) []Entity {
 // pyClassMethods extracts defs directly inside a class body as
 // "Class.method" entities. The shallowest def indent in the body defines
 // the method indent (a nested class's deeper defs must not lock it);
-// deeper defs are absorbed by their method's span. Contiguous decorator
-// lines belong to the method they decorate. Method spans are clamped to
-// the class end.
+// deeper defs are absorbed by their method's span. Method spans are
+// clamped to the class end; extendLeads adds their decorators.
 func pyClassMethods(lines, raw []string, open []bool, classIdx, classEnd int, className string) []Entity {
 	methodIndent := -1
 	for j := classIdx + 1; j < classEnd && j < len(lines); j++ {
@@ -677,16 +775,11 @@ func pyClassMethods(lines, raw []string, open []bool, classIdx, classEnd int, cl
 		if m == nil || indentLen(lines[j]) != methodIndent {
 			continue
 		}
-		start := j
-		for start > classIdx+1 && indentLen(lines[start-1]) == methodIndent &&
-			strings.HasPrefix(strings.TrimSpace(lines[start-1]), "@") {
-			start--
-		}
 		end := pyBlockEnd(lines, raw, open, j)
 		if end > classEnd {
 			end = classEnd
 		}
-		methods = append(methods, Entity{Name: className + "." + m[1], Kind: "function", StartLine: start + 1, EndLine: end})
+		methods = append(methods, Entity{Name: className + "." + m[1], Kind: "function", StartLine: j + 1, EndLine: end})
 	}
 	return methods
 }
