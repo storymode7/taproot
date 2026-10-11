@@ -9,6 +9,35 @@ import "slices"
 // column positions intact. Interpolations (JS ${...}, Python f"{...}")
 // stay visible, since they are code.
 func maskCode(lines []string, lang string) []string {
+	out, _ := maskCodeState(lines, lang)
+	return out
+}
+
+// maskCodeState is maskCode that also reports, per line, whether a string or
+// template literal is still open at its end (Go raw strings, JS templates,
+// Python triple quotes, Rust multi-line strings), so the next line starts
+// inside it. A literal or block comment that is still open at the end of the
+// file was misread, like a backtick in JSX text; its opener is read again as
+// text, so one stray character cannot blank the rest of the file.
+func maskCodeState(lines []string, lang string) ([]string, []bool) {
+	var text map[[2]int]bool
+	for {
+		out, open, unclosed := maskPass(lines, lang, text)
+		if unclosed[0] < 0 || len(text) == 8 {
+			return out, open
+		}
+		if text == nil {
+			text = make(map[[2]int]bool)
+		}
+		text[unclosed] = true
+	}
+}
+
+// maskPass is one masking pass that reads the openers at the {line, rune}
+// positions in text as plain text. It also returns the position of the
+// opener whose literal or comment is open at the end of the file, else
+// {-1, -1}.
+func maskPass(lines []string, lang string, text map[[2]int]bool) ([]string, []bool, [2]int) {
 	const (
 		stCode    = iota
 		stBlock   // /* ... */
@@ -39,15 +68,13 @@ func maskCode(lines []string, lang string) []string {
 	hashes := 0 // stRustRaw closing # count
 	inClass := false
 	braces := 0
+	opener := [2]int{-1, -1}
 
 	out := make([]string, len(lines))
+	open := make([]bool, len(lines))
 	for li, line := range lines {
 		rs := []rune(line)
 		n := len(rs)
-		if (st == stString && !rust) || st == stRegex {
-			st = stCode // unterminated single-line literal ends at EOL
-			stack = stack[:0]
-		}
 		var prev rune // last non-space code rune on this line
 		for i := 0; i < n; i++ {
 			c := rs[i]
@@ -58,8 +85,10 @@ func maskCode(lines []string, lang string) []string {
 			wasCode := st == stCode
 			switch st {
 			case stCode:
+				at := i
 				switch {
-				case python && c == '#', !python && c == '/' && next == '/' && !(jsLike && urlSlashes(rs, i)):
+				case text[[2]int{li, i}]:
+				case python && c == '#' && len(stack) == 0, !python && c == '/' && next == '/' && !(jsLike && urlSlashes(rs, i)):
 					for ; i < n; i++ {
 						rs[i] = ' '
 					}
@@ -106,6 +135,9 @@ func maskCode(lines []string, lang string) []string {
 					} else {
 						braces--
 					}
+				}
+				if st != stCode && c != '}' && len(stack) == 0 {
+					opener = [2]int{li, at}
 				}
 				if c != ' ' && c != '\t' && st == stCode {
 					prev = c
@@ -195,8 +227,16 @@ func maskCode(lines []string, lang string) []string {
 			}
 		}
 		out[li] = string(rs)
+		if (st == stString && !rust) || st == stRegex {
+			st = stCode // unterminated single-line literal ends at EOL
+			stack = stack[:0]
+		}
+		open[li] = st != stCode && st != stBlock || len(stack) > 0
 	}
-	return out
+	if st == stCode && len(stack) == 0 {
+		opener = [2]int{-1, -1}
+	}
+	return out, open, opener
 }
 
 // isLifetime reports whether the ' at rs[i] opens a Rust lifetime or label

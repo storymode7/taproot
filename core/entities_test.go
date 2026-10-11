@@ -961,6 +961,200 @@ const LAST: u8 = 9;`, map[string][2]int{
 	})
 }
 
+func TestExtractEntities_StringsAndCommentsDoNotMoveBounds(t *testing.T) {
+	checkSpans(t, "javascript", `const OPEN = '(';
+
+function makeClient() {
+  return new Client({ baseURL: 'https://api.example.com' });
+}
+
+const RE = /\[(\d+)/;
+
+const COLORS = {
+  warn: `+"`\\x1b[33m${'['}`"+`,
+};
+
+class Logger {
+  log() {}
+}
+`, map[string][2]int{"OPEN": {1, 1}, "makeClient": {3, 5}, "RE": {7, 7}, "COLORS": {9, 11}, "Logger": {13, 15}})
+
+	checkSpans(t, "python", `def color(hex="#fff"):
+    return hex
+
+SMILEY = ":)"
+def nxt():
+    pass
+
+_MULTI_QUOTES = ('"""', "'''")
+
+class Unparser:
+    # use """ for docstrings
+    def visit(self):
+        return 1
+
+def get_users():
+    sql = """
+SELECT *
+FROM users
+"""
+    return sql
+`, map[string][2]int{
+		"color": {1, 3}, "SMILEY": {4, 4}, "nxt": {5, 7}, "_MULTI_QUOTES": {8, 8},
+		"Unparser": {10, 14}, "Unparser.visit": {12, 14}, "get_users": {15, 21},
+	})
+
+	checkSpans(t, "go", `package p
+
+import "fmt"
+import "os" // why
+
+type Mode int // see (docs
+
+func (m Mode) String() string {
+	return fmt.Sprint(int(m))
+}
+
+const tpl = `+"`"+`
+func fake() {
+}
+`+"`"+`
+
+var (
+	a = f("x",
+		"y")
+	b = 2
+)
+`, map[string][2]int{"Mode": {6, 6}, "String": {8, 10}, "tpl": {12, 12}, "var": {17, 21}})
+
+	checkSpans(t, "rust", `pub struct Marker; // zero-sized
+
+impl Marker {
+    fn new() -> Self { Marker }
+}
+
+mod config; // settings
+const MAX_RETRIES: u32 = 3; // retry budget
+
+fn main() {
+    let s = r#"fn fake() {"#;
+}
+`, map[string][2]int{"Marker": {1, 1}, "Marker.new": {4, 4}, "config": {7, 7}, "MAX_RETRIES": {8, 8}, "main": {10, 12}})
+
+	for _, tc := range []struct{ lang, src, name string }{
+		{"go", "package p\n\nconst tpl = `\nfunc fake() {\n}\n`\n", "fake"},
+		{"rust", "fn main() {\n    let s = r#\"\nfn fake() {\n\"#;\n}\n", "fake"},
+	} {
+		for _, e := range ExtractEntities([]byte(tc.src), tc.lang) {
+			if e.Name == tc.name {
+				t.Errorf("%s: text inside a string extracted as %q %d-%d", tc.lang, e.Name, e.StartLine, e.EndLine)
+			}
+		}
+	}
+}
+
+func TestExtractEntities_ImportsWithoutTrailingText(t *testing.T) {
+	// Masking blanks the path string; a bare `import` keyword is still an
+	// import, and an unterminated side-effect import still ends the arrow
+	// body above it.
+	checkSpans(t, "go", "package p\n\nimport \"fmt\"\n\nfunc F() { fmt.Println() }\n",
+		map[string][2]int{"imports": {3, 3}, "F": {5, 5}})
+	checkSpans(t, "javascript", "import './polyfill'\n\nexport function f() {\n  return 1\n}\n",
+		map[string][2]int{"imports": {1, 1}, "f": {3, 5}})
+	checkSpans(t, "javascript", "const f = (x) =>\n  g(x)\nimport './late.css'\nfunction h() {}\n",
+		map[string][2]int{"f": {1, 2}, "imports": {3, 3}, "h": {4, 4}})
+}
+
+func TestExtractEntities_JS_MaskedArrowBodies(t *testing.T) {
+	// A template literal or a comment in a brace-less arrow body masks to a
+	// blank line; only a truly blank line ends the body.
+	checkSpans(t, "javascript", "const render = (x) =>\n  `<div>\n    ${x}\n  </div>`;\n\nconst f = (x) =>\n  // note\n  x + 1;\n",
+		map[string][2]int{"render": {1, 4}, "f": {6, 8}})
+}
+
+func TestExtractEntities_TSX_TextDoesNotMoveBounds(t *testing.T) {
+	// JSX text is not code: apostrophes, inch marks, URLs and self-closing
+	// tags must not unbalance a component's braces.
+	for _, line := range []string{
+		`{error && <p className="error">Can't load: {formatError(error)}</p>}`,
+		`<p>Don't panic. {formatError(error)}</p>`,
+		`{fits && <p>Fits 12" laptops: {formatError(error)}</p>}`,
+		`{items.map((i) => <Row key={i.id} />)}{formatError(error)}`,
+		`{open && <Modal onClose={close} />}`,
+		`{show && <a href="https://docs.example.com">https://docs.example.com</a>}`,
+		`<span>{a} / {formatError(b)}</span>`,
+		"<kbd>`</kbd> {formatError(error)}",
+		`<p>Use /* for globs</p>`,
+	} {
+		src := `import React from "react";
+
+export function Panel({ error, items, open, close }: Props) {
+  return (
+    <div>
+      ` + line + `
+      {items.map((i) =>
+        <Row key={i.id}
+        />)}
+    </div>
+  );
+}
+
+export function formatError(e: Error): string {
+  return e.message;
+}
+`
+		entities := ExtractEntities([]byte(src), "typescript")
+		got := make(map[string][2]int)
+		for _, e := range entities {
+			got[e.Name] = [2]int{e.StartLine, e.EndLine}
+		}
+		if got["Panel"] != [2]int{3, 12} || got["formatError"] != [2]int{14, 16} {
+			t.Errorf("line %s:\n  got %v, want Panel 3-12 and formatError 14-16", line, got)
+		}
+	}
+}
+
+func TestExtractEntities_Python_StringStatements(t *testing.T) {
+	// A string-only statement masks to a blank line; it still ends the block
+	// above it at its own indent.
+	checkSpans(t, "python", `class A:
+    def f(self):
+        return 1
+
+    """Section docstring."""
+
+    def g(self):
+        return 2
+
+def top():
+    return 1
+
+'module string'
+
+def nxt():
+    x = \
+"""text
+"""
+    return x
+
+"abc".join([])
+`, map[string][2]int{"A": {1, 9}, "A.f": {2, 4}, "A.g": {7, 9}, "top": {10, 12}, "nxt": {15, 20}})
+	checkSpans(t, "python", "Q = '\"\"\"'\n\ndef f():\n    return 1\n\n\"\"\"Section.\"\"\"\n",
+		map[string][2]int{"Q": {1, 1}, "f": {3, 5}})
+}
+
+func TestExtractEntities_Rust_LeadingStringIsNotADeclaration(t *testing.T) {
+	// Macro input that opens with a string literal is not an item, though
+	// masking leaves the words after the literal at the start of the line.
+	src := "define_punctuation_structs! {\n    \"_\" pub struct Underscore/1 /// wildcard\n}\n\nimpl ToTokens for Underscore {\n    fn to_tokens(&self) {\n    }\n}\n"
+	checkSpans(t, "rust", src, map[string][2]int{"impl ToTokens for Underscore": {5, 8}, "Underscore.to_tokens": {6, 7}})
+	for _, e := range ExtractEntities([]byte(src), "rust") {
+		if e.Name == "Underscore" {
+			t.Errorf("macro input extracted as %s %q %d-%d", e.Kind, e.Name, e.StartLine, e.EndLine)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Unsupported language returns nil
 // ---------------------------------------------------------------------------

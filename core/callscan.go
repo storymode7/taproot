@@ -310,17 +310,6 @@ func identTokens(line, lang string) []string {
 	return names
 }
 
-func stripLineComment(line, lang string) string {
-	marker := "//"
-	if lang == "python" {
-		marker = "#"
-	}
-	if idx := strings.Index(line, marker); idx >= 0 {
-		return line[:idx]
-	}
-	return line
-}
-
 func isIdentStart(r rune) bool {
 	return r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }

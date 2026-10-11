@@ -5,10 +5,12 @@
 // large top-level variable/constant block. Import groups are treated as a
 // single "imports" entity so they are shown together.
 //
-// The strategy is intentionally heuristic: we scan the raw source lines with
+// The strategy is intentionally heuristic: we scan the source lines with
 // language-specific regexes rather than requiring a full AST parser. This is
 // fast, has no WASM/CGo dependencies, and is accurate enough for the entity
-// boundaries produced by real codebases.
+// boundaries produced by real codebases. The scanners read the lines with
+// strings and comments blanked by maskCode, so a brace, bracket, quote or #
+// inside a literal or comment never moves a boundary.
 //
 // Accuracy priority: never merge two distinct named entities into one snippet.
 // If a boundary is ambiguous, split conservatively (produce more snippets).
@@ -37,18 +39,19 @@ type Entity struct {
 // Returns nil (not an error) for unsupported languages — callers fall back to
 // hunk-level snippets.
 func ExtractEntities(src []byte, lang string) []Entity {
-	lines := splitLines(src)
+	raw := splitLines(src)
+	lines, open := maskCodeState(raw, lang)
 	switch lang {
 	case "go":
 		return extractGo(lines)
 	case "javascript", "typescript":
-		return extractJS(lines)
+		return extractJS(lines, raw)
 	case "python":
-		return extractPython(lines)
+		return extractPython(lines, raw, open)
 	case "java":
 		return extractJava(lines)
 	case "rust":
-		return extractRust(lines)
+		return extractRust(lines, raw)
 	default:
 		return nil
 	}
@@ -62,7 +65,7 @@ var (
 	reGoFunc          = regexp.MustCompile(`^func\s`)
 	reGoType          = regexp.MustCompile(`^type\s+\w`)
 	reGoVarConst      = regexp.MustCompile(`^(?:var|const)\s`)
-	reGoImport        = regexp.MustCompile(`^import\s`)
+	reGoImport        = regexp.MustCompile(`^import(?:\s|$)`)
 	reGoBlockOpen     = regexp.MustCompile(`\{`)
 	reGoImportGroup   = regexp.MustCompile(`^import\s*\($`)
 	reGoVarConstGroup = regexp.MustCompile(`^(?:var|const)\s*\($`)
@@ -117,11 +120,15 @@ func extractGo(lines []string) []Entity {
 			name := goVarConstName(stripped)
 			start := i + 1
 			if reGoVarConstGroup.MatchString(stripped) {
-				// block: var ( ... )
-				for i < n && !strings.HasPrefix(strings.TrimSpace(lines[i]), ")") {
+				// block: var ( ... ) ends where its paren closes
+				depth := 0
+				for i < n {
+					depth += parenDelta(lines[i])
 					i++
+					if depth <= 0 {
+						break
+					}
 				}
-				i++
 			} else {
 				i++
 			}
@@ -180,36 +187,17 @@ func parenDelta(line string) int {
 	return d
 }
 
-// braceDelta counts one line's net {/} balance, ignoring braces inside
-// string/char literals and // line comments. Double-quoted and backtick
-// strings are skipped whole (with \ escapes); a single quote only opens a
-// literal when it closes within two characters ('{', '\n'), so Rust
-// lifetimes ('a) don't swallow the rest of the line. Multi-line strings,
-// block comments, and long single-quoted JS strings remain the tolerated
-// blind spots of this heuristic.
+// bracketDelta counts one masked line's net ()/[]/{} balance.
+func bracketDelta(line string) int {
+	d, _ := braceDelta(line)
+	return d + parenDelta(line)
+}
+
+// braceDelta counts one line's net {/} balance. Lines arrive masked, so
+// braces in strings, char literals and comments are already blank.
 func braceDelta(line string) (delta int, opened bool) {
-	runes := []rune(line)
-	n := len(runes)
-	for i := 0; i < n; i++ {
-		switch runes[i] {
-		case '/':
-			if i+1 < n && runes[i+1] == '/' {
-				return delta, opened // line comment
-			}
-		case '"', '`':
-			q := runes[i]
-			for i++; i < n && runes[i] != q; i++ {
-				if runes[i] == '\\' {
-					i++
-				}
-			}
-		case '\'':
-			if i+2 < n && runes[i+1] != '\\' && runes[i+2] == '\'' {
-				i += 2 // 'x'
-			} else if i+3 < n && runes[i+1] == '\\' && runes[i+3] == '\'' {
-				i += 3 // '\n'
-			}
-			// otherwise: bare quote (lifetime, apostrophe) — not a literal
+	for _, c := range line {
+		switch c {
 		case '{':
 			delta++
 			opened = true
@@ -274,14 +262,14 @@ var (
 	reJSPropArrow = regexp.MustCompile(`^(?:(?:static|public|private|protected|readonly)\s+)*(#?[A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(.*\)\s*=>`)
 	// start of a new top-level declaration — used to stop the no-brace
 	// arrow-body scan in semicolon-less code
-	reJSDeclStart = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\b|class\s|interface\s|enum\s|const\s|let\s|var\s|type\s+\w+\s*=|import\s)`)
+	reJSDeclStart = regexp.MustCompile(`^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\b|class\s|interface\s|enum\s|const\s|let\s|var\s|type\s+\w+\s*=|import(?:\s|$))`)
 	// import ...
-	reJSImport = regexp.MustCompile(`^import\s`)
+	reJSImport = regexp.MustCompile(`^import(?:\s|$)`)
 	// require(...)
 	reJSRequire = regexp.MustCompile(`\brequire\s*\(`)
 )
 
-func extractJS(lines []string) []Entity {
+func extractJS(lines, raw []string) []Entity {
 	var entities []Entity
 	n := len(lines)
 	i := 0
@@ -312,7 +300,7 @@ func extractJS(lines []string) []Entity {
 			start := i + 1
 			end := jsBraceEnd(lines, i)
 			entities = append(entities, Entity{Name: name, Kind: "class", StartLine: start, EndLine: end})
-			entities = append(entities, jsClassMethods(lines, i, end, name)...)
+			entities = append(entities, jsClassMethods(lines, raw, i, end, name)...)
 			i = end
 
 		case reJSInterface.MatchString(line):
@@ -339,7 +327,7 @@ func extractJS(lines []string) []Entity {
 			end := i + 1
 			for end < n {
 				tl := strings.TrimSpace(lines[end-1])
-				if strings.HasSuffix(tl, ";") || tl == "" {
+				if strings.HasSuffix(tl, ";") || strings.TrimSpace(raw[end-1]) == "" {
 					break
 				}
 				end++
@@ -351,7 +339,7 @@ func extractJS(lines []string) []Entity {
 			flushImports(i)
 			name := reJSFunc.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := jsFuncEnd(lines, i)
+			end := jsFuncEnd(lines, raw, i)
 			entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
 			i = end
 
@@ -363,7 +351,7 @@ func extractJS(lines []string) []Entity {
 				// function-valued const/let/var: arrow or function expression
 				end := jsVarEnd(lines, i)
 				if strings.Contains(line, "{") || strings.HasSuffix(line, "=>") {
-					end = jsFuncEnd(lines, i)
+					end = jsFuncEnd(lines, raw, i)
 				}
 				entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
 				i = end
@@ -399,7 +387,9 @@ func jsBraceEnd(lines []string, startIdx int) int {
 }
 
 // jsFuncEnd handles both brace-delimited and arrow functions (multi-line).
-func jsFuncEnd(lines []string, startIdx int) int {
+// raw holds the unmasked lines: a comment or template line masks to blank,
+// but only a truly blank line ends a brace-less arrow body.
+func jsFuncEnd(lines, raw []string, startIdx int) int {
 	line := strings.TrimSpace(lines[startIdx])
 	// Arrow function assigned to const: const foo = (...) => { ... }
 	// or naked: function foo() { ... }
@@ -419,7 +409,7 @@ func jsFuncEnd(lines []string, startIdx int) int {
 	n := len(lines)
 	for i := startIdx + 1; i < n; i++ {
 		tl := strings.TrimSpace(lines[i])
-		if tl == "" || strings.HasSuffix(tl, ";") || strings.HasSuffix(tl, ",") {
+		if strings.TrimSpace(raw[i]) == "" || strings.HasSuffix(tl, ";") || strings.HasSuffix(tl, ",") {
 			return i + 1
 		}
 		if reJSDeclStart.MatchString(tl) {
@@ -496,7 +486,7 @@ func classBodyLines(lines []string, startIdx, endLine int, fn func(j int)) {
 // jsClassMethods extracts methods (and class-property arrows) declared
 // directly inside a class body as "Class.method" entities. Method spans are
 // clamped to the class end so they never leak past it.
-func jsClassMethods(lines []string, classIdx, classEnd int, className string) []Entity {
+func jsClassMethods(lines, raw []string, classIdx, classEnd int, className string) []Entity {
 	var methods []Entity
 	classBodyLines(lines, classIdx, classEnd, func(j int) {
 		tl := strings.TrimSpace(lines[j])
@@ -513,7 +503,7 @@ func jsClassMethods(lines []string, classIdx, classEnd int, className string) []
 		} else {
 			return
 		}
-		end := jsFuncEnd(lines, j)
+		end := jsFuncEnd(lines, raw, j)
 		if multiLineSig {
 			end = jsBraceEnd(lines, j)
 		}
@@ -544,7 +534,7 @@ var (
 	rePyConstName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 )
 
-func extractPython(lines []string) []Entity {
+func extractPython(lines, raw []string, open []bool) []Entity {
 	var entities []Entity
 	n := len(lines)
 	i := 0
@@ -557,18 +547,10 @@ func extractPython(lines []string) []Entity {
 		}
 	}
 
-	inString := pyTripleStringMask(lines)
-
 	for i < n {
 		line := lines[i]
 
 		switch {
-		case inString[i]:
-			// Inside a triple-quoted string (docstring / multi-line literal):
-			// assignment- or def-looking text in there is prose, not code.
-			flushImports(i)
-			i++
-
 		case rePyImport.MatchString(strings.TrimSpace(line)):
 			if importStart < 0 {
 				importStart = i
@@ -579,16 +561,16 @@ func extractPython(lines []string) []Entity {
 			flushImports(i)
 			name := rePyClass.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := pyBlockEnd(lines, i)
+			end := pyBlockEnd(lines, raw, open, i)
 			entities = append(entities, Entity{Name: name, Kind: "class", StartLine: start, EndLine: end})
-			entities = append(entities, pyClassMethods(lines, i, end, name)...)
+			entities = append(entities, pyClassMethods(lines, raw, open, i, end, name)...)
 			i = end
 
 		case rePyTopFunc.MatchString(line):
 			flushImports(i)
 			name := rePyTopFunc.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := pyBlockEnd(lines, i)
+			end := pyBlockEnd(lines, raw, open, i)
 			entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
 			i = end
 
@@ -613,48 +595,13 @@ func extractPython(lines []string) []Entity {
 	return entities
 }
 
-// pyTripleStringMask marks lines that start inside a triple-quoted string
-// (module docstring or multi-line literal), so the extractor never reads
-// assignment- or def-looking prose inside one as an entity. The opening
-// line itself is not masked.
-func pyTripleStringMask(lines []string) []bool {
-	mask := make([]bool, len(lines))
-	delim := "" // "" = not inside a string
-	for i, l := range lines {
-		mask[i] = delim != ""
-		rest := l
-		for {
-			if delim == "" {
-				dq := strings.Index(rest, `"""`)
-				sq := strings.Index(rest, `'''`)
-				if dq < 0 && sq < 0 {
-					break
-				}
-				if dq >= 0 && (sq < 0 || dq < sq) {
-					delim, rest = `"""`, rest[dq+3:]
-				} else {
-					delim, rest = `'''`, rest[sq+3:]
-				}
-			} else {
-				idx := strings.Index(rest, delim)
-				if idx < 0 {
-					break
-				}
-				rest = rest[idx+3:]
-				delim = ""
-			}
-		}
-	}
-	return mask
-}
-
 // pyClassMethods extracts defs directly inside a class body as
 // "Class.method" entities. The shallowest def indent in the body defines
 // the method indent (a nested class's deeper defs must not lock it);
 // deeper defs are absorbed by their method's span. Contiguous decorator
 // lines belong to the method they decorate. Method spans are clamped to
 // the class end.
-func pyClassMethods(lines []string, classIdx, classEnd int, className string) []Entity {
+func pyClassMethods(lines, raw []string, open []bool, classIdx, classEnd int, className string) []Entity {
 	methodIndent := -1
 	for j := classIdx + 1; j < classEnd && j < len(lines); j++ {
 		if rePyMethod.MatchString(lines[j]) {
@@ -678,7 +625,7 @@ func pyClassMethods(lines []string, classIdx, classEnd int, className string) []
 			strings.HasPrefix(strings.TrimSpace(lines[start-1]), "@") {
 			start--
 		}
-		end := pyBlockEnd(lines, j)
+		end := pyBlockEnd(lines, raw, open, j)
 		if end > classEnd {
 			end = classEnd
 		}
@@ -692,8 +639,9 @@ func pyClassMethods(lines []string, classIdx, classEnd int, className string) []
 // lines) by looking for the bracket-depth-zero ':' that opens the body —
 // a one-liner body after that colon ("def __repr__(self): return x") ends
 // the block on the signature line itself.
-// Then it tracks indentation to find where the body ends.
-func pyBlockEnd(lines []string, startIdx int) int {
+// Then it tracks indentation to find where the body ends. lines are masked;
+// raw holds the source lines, and open marks lines that end inside a string.
+func pyBlockEnd(lines, raw []string, open []bool, startIdx int) int {
 	n := len(lines)
 	baseIndent := indentLen(lines[startIdx])
 
@@ -702,7 +650,7 @@ func pyBlockEnd(lines []string, startIdx int) int {
 	bodyStart := startIdx
 	depth := 0
 	for bodyStart < n {
-		l := stripLineComment(lines[bodyStart], "python")
+		l := lines[bodyStart]
 		colon := -1
 		for k := 0; k < len(l) && colon < 0; k++ {
 			switch l[k] {
@@ -725,15 +673,25 @@ func pyBlockEnd(lines []string, startIdx int) int {
 		}
 	}
 
-	// Step 2: scan body lines. End when we hit a non-empty, non-comment line
-	// at indentation <= baseIndent.
+	// Step 2: scan body lines. End at the first statement line indented at
+	// or left of baseIndent. Blank and comment lines, and lines inside a
+	// multi-line string, never end it. A string-only statement masks to a
+	// blank line but still does, unless it continues a bracket or a \ line.
+	depth = 0
+	cont := false
 	for i := bodyStart; i < n; i++ {
 		l := lines[i]
 		stripped := strings.TrimSpace(l)
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
+		top := depth <= 0 && !cont
+		depth += bracketDelta(l)
+		cont = strings.HasSuffix(stripped, `\`)
+		if i > 0 && open[i-1] {
 			continue
 		}
-		if indentLen(l) <= baseIndent {
+		if r := strings.TrimLeft(raw[i], " \t"); stripped == "" && !(top && r != "" && (r[0] == '"' || r[0] == '\'')) {
+			continue
+		}
+		if indentLen(raw[i]) <= baseIndent {
 			return i // 1-indexed: line i+1 is the first line after the block
 		}
 	}
@@ -828,9 +786,11 @@ var (
 	reRustMod    = regexp.MustCompile(`^(?:pub\s+)?mod\s+(\w+)`)
 	reRustConst  = regexp.MustCompile(`^(?:pub(?:\([^)]*\))?\s+)?(?:const|static(?:\s+mut)?)\s+(\w+)`)
 	reRustWord   = regexp.MustCompile(`\w+`)
+	// a line opening with a string literal: "", r#"", b"", br"", c""
+	reRustStrLead = regexp.MustCompile(`^(?:[bc]?r#*|[bc])?"`)
 )
 
-func extractRust(lines []string) []Entity {
+func extractRust(lines, raw []string) []Entity {
 	var entities []Entity
 	n := len(lines)
 	i := 0
@@ -844,6 +804,12 @@ func extractRust(lines []string) []Entity {
 
 	for i < n {
 		line := strings.TrimSpace(lines[i])
+		if reRustStrLead.MatchString(strings.TrimSpace(raw[i])) {
+			// Macro input such as `"_" pub struct Underscore/1` declares
+			// nothing, though masking leaves the words after the literal
+			// at the start of the line.
+			line = ""
+		}
 		switch {
 		case reRustUse.MatchString(line):
 			if importStart < 0 {
