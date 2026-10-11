@@ -143,8 +143,7 @@ func fileSnippets(f *FileDiff) []*Snippet {
 //  1. Split every hunk at entity boundaries; each piece belongs to the
 //     smallest entity enclosing its lines, or to none.
 //  2. Pieces outside every entity go into a "preamble" bucket (one per file,
-//     so all uncovered pieces collapse together). Preamble groups with no
-//     substantive change are dropped entirely.
+//     so all uncovered pieces collapse together).
 //  3. Group pieces by entity identity — never by name, so Go methods on two
 //     receivers, Java overloads and property getter/setter pairs stay apart
 //     — then build one Snippet per group from its diff lines in hunk order.
@@ -202,17 +201,6 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	sourceLines := splitLines(src)
 	snippets := make([]*Snippet, 0, len(order))
 	for _, g := range order {
-		// Blank-line-only fragments between entities would otherwise become
-		// empty preamble snippets — pure noise. Entity snippets are kept even
-		// when their only change is whitespace, but dropped when the fragment
-		// is pure context spill (no +/- lines at all) from a neighboring hunk.
-		if g.entity == nil && !substantiveChange(g.hunkLines) {
-			continue
-		}
-		if g.entity != nil && !hasChangedLine(g.hunkLines) {
-			continue
-		}
-
 		symbolPath := ""
 		nodeType := "hunk"
 		startLine := g.startLine
@@ -286,21 +274,6 @@ func trimRedundantHunkHeaders(lines []string) []string {
 		lastWasHeader = isHeader
 	}
 	return out
-}
-
-// substantiveChange reports whether diff lines carry a real change: at least
-// one added or removed line with non-whitespace content after the sigil.
-// Hunk headers and context lines never count.
-func substantiveChange(lines []string) bool {
-	for _, l := range lines {
-		if len(l) == 0 || strings.HasPrefix(l, "@@") {
-			continue
-		}
-		if (l[0] == '+' || l[0] == '-') && strings.TrimSpace(l[1:]) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // hasChangedLine reports whether any diff line is an addition or removal.

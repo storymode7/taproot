@@ -178,10 +178,10 @@ func Foo() {}
 }
 
 // ---------------------------------------------------------------------------
-// Blank-only preambles are dropped; real preambles and entity snippets survive
+// Blank lines join the entity they lead into; real preambles survive
 // ---------------------------------------------------------------------------
 
-func TestBuildSnippets_BlankPreambleDropped(t *testing.T) {
+func TestBuildSnippets_BlankLinesJoinTheEntityTheyLeadInto(t *testing.T) {
 	src := []byte(`package foo
 
 
@@ -205,8 +205,11 @@ func Foo() {}
 	files[0].Source = src
 	snippets := BuildSnippets(files)
 
-	if len(snippets) != 0 {
-		t.Fatalf("expected blank-only preamble to be dropped, got %d snippets: %v", len(snippets), symbolPaths(snippets))
+	if len(snippets) != 1 || snippets[0].SymbolPath != "Foo" {
+		t.Fatalf("expected the blank lines in Foo's snippet, got %v", symbolPaths(snippets))
+	}
+	if got := strings.Join(snippets[0].DiffLines, "|"); got != "@@ -1,0 +2,2 @@|+|+" {
+		t.Errorf("DiffLines = %q", got)
 	}
 }
 

@@ -31,7 +31,8 @@
       "endLine": 5,
       "depth": 1,
       "diffLines": [
-        "@@ -0,0 +3,3 @@",
+        "@@ -0,0 +2,4 @@",
+        "+",
         "+func handle(cfg int) {",
         "+\tparse(cfg)",
         "+}"
@@ -49,7 +50,8 @@
       "endLine": 7,
       "depth": 2,
       "diffLines": [
-        "@@ -0,0 +7,1 @@",
+        "@@ -0,0 +6,2 @@",
+        "+",
         "+func parse(cfg int) {}"
       ]
     },
@@ -81,14 +83,11 @@
       "nodeType": "hunk",
       "isNew": true,
       "startLine": 1,
-      "endLine": 2,
+      "endLine": 1,
       "depth": 0,
       "diffLines": [
-        "@@ -0,0 +1,2 @@",
-        "+package api",
-        "+",
-        "@@ -0,0 +6,1 @@",
-        "+"
+        "@@ -0,0 +1,1 @@",
+        "+package api"
       ]
     }
   ],

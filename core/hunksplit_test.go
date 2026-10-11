@@ -296,3 +296,67 @@ func TestSplitHunk_AppendAfterLastLineWithoutNewline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) { runNoEOLCase(t, tc) })
 	}
 }
+
+// stagingCase is one file's diff, as git prints it, and the snippets it
+// must split into.
+type stagingCase struct {
+	name, path, lang, oldText, newText string
+	hunk                               []string // the hunk, header first
+	symbols                            []string // snippets expected, in order
+	alone                              map[string]string
+}
+
+func runStagingCase(t *testing.T, tc stagingCase) {
+	t.Helper()
+	frags, err := fragments(tc.hunk)
+	if err != nil || len(frags) != 1 {
+		t.Fatalf("bad test hunk: %v", err)
+	}
+	f := frags[0]
+	files := []*FileDiff{{Path: tc.path, OldPath: tc.path, Language: tc.lang, Source: []byte(tc.newText),
+		Hunks: []Hunk{{OldStart: f.oldStart, OldLines: f.oldCount, NewStart: f.newStart, NewLines: f.newCount, Lines: tc.hunk}}}}
+	snippets := BuildSnippets(files)
+	if got := symbolPaths(snippets); strings.Join(got, ",") != strings.Join(tc.symbols, ",") {
+		t.Fatalf("snippets %q, want %q", got, tc.symbols)
+	}
+	checkStaging(t, tc.oldText, tc.newText, snippets, tc.alone)
+}
+
+func TestSplitHunk_BlankLinesBelongToTheCodeTheyTouch(t *testing.T) {
+	cases := []stagingCase{{
+		// The blank after the new function leads into unchanged c(); it
+		// must go with d(), not turn c() into a blank-only snippet.
+		name: "function inserted between two", path: "ins.go", lang: "go",
+		oldText: "package p\n\nfunc a() {\n}\n\nfunc c() {\n}\n",
+		newText: "package p\n\nfunc a() {\n}\n\nfunc d() {\n}\n\nfunc c() {\n}\n",
+		hunk:    []string{"@@ -3,5 +3,8 @@ package p", " func a() {", " }", " ", "+func d() {", "+}", "+", " func c() {", " }"},
+		symbols: []string{"d"},
+	}, {
+		name: "python function appended", path: "app.py", lang: "python",
+		oldText: "def f():\n    return 1\n",
+		newText: "def f():\n    return 1\n\n\ndef g():\n    return 2\n",
+		hunk:    []string{"@@ -1,2 +1,6 @@", " def f():", "     return 1", "+", "+", "+def g():", "+    return 2"},
+		symbols: []string{"g"},
+	}, {
+		name: "blank line added between two", path: "addblank.go", lang: "go",
+		oldText: "package p\n\nfunc a() {\n}\n\nfunc c() {\n}\n",
+		newText: "package p\n\nfunc a() {\n}\n\n\nfunc c() {\n}\n",
+		hunk:    []string{"@@ -3,5 +3,6 @@ package p", " func a() {", " }", " ", "+", " func c() {", " }"},
+		symbols: []string{"c"},
+	}, {
+		name: "blank line removed between two", path: "rmblank.go", lang: "go",
+		oldText: "package p\n\nfunc a() {\n}\n\n\nfunc c() {\n}\n",
+		newText: "package p\n\nfunc a() {\n}\n\nfunc c() {\n}\n",
+		hunk:    []string{"@@ -3,6 +3,5 @@ package p", " func a() {", " }", " ", "-", " func c() {", " }"},
+		symbols: []string{"c"},
+	}, {
+		name: "blank line added at the end", path: "trail.go", lang: "go",
+		oldText: "package p\n\nfunc a() {\n}\n",
+		newText: "package p\n\nfunc a() {\n}\n\n",
+		hunk:    []string{"@@ -2,3 +2,4 @@ package p", " ", " func a() {", " }", "+"},
+		symbols: []string{"a"},
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { runStagingCase(t, tc) })
+	}
+}

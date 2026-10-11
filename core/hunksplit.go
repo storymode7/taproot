@@ -15,8 +15,9 @@ import (
 // that is open where they occur — except when they are immediately followed
 // by added lines: such a -/+ pair is a replacement and must stay together,
 // or accepting only one snippet would stage a deletion the reviewer never
-// saw. A "\ No newline at end of file" marker stays with the line it
-// annotates.
+// saw. A blank changed line goes with the code it touches, so blank
+// separators stage with the function they belong to. A "\ No newline at
+// end of file" marker stays with the line it annotates.
 //
 // Every changed line lands in exactly one piece, so applying any set of
 // pieces to the old file is well defined. Sub-hunk headers carry each
@@ -98,6 +99,37 @@ type hunkSplit struct {
 	lines    []diffLine
 }
 
+// leadInto returns the entity that a line at post-image position p, outside
+// every entity, leads into: the nearest one starting at or after p, else
+// (at the end of the file) the nearest one ending before it.
+func (s *hunkSplit) leadInto(p int) *Entity {
+	var next, prev *Entity
+	for i := range s.entities {
+		e := &s.entities[i]
+		size := e.EndLine - e.StartLine
+		switch {
+		case e.StartLine >= p:
+			if next == nil || e.StartLine < next.StartLine ||
+				e.StartLine == next.StartLine && size < next.EndLine-next.StartLine {
+				next = e
+			}
+		case e.EndLine < p:
+			if prev == nil || e.EndLine > prev.EndLine ||
+				e.EndLine == prev.EndLine && size < prev.EndLine-prev.StartLine {
+				prev = e
+			}
+		}
+	}
+	if next != nil {
+		return next
+	}
+	return prev
+}
+
+func blank(l diffLine) bool {
+	return l.kind != ' ' && strings.TrimSpace(l.text[1:]) == ""
+}
+
 // entityAt returns the smallest entity containing a post-image line.
 func (s *hunkSplit) entityAt(line int) *Entity {
 	var best *Entity
@@ -170,12 +202,25 @@ func (s *hunkSplit) assignOwners(tail int, same bool) {
 			L[i].owner = s.entityAt(L[i].new)
 		}
 	}
-	// A run of deletions goes with the added line right after it (a
-	// replacement stays together), else with the line before it.
 	end := len(L)
 	if same {
 		end = tail
 	}
+	for b := 0; b < end; {
+		if L[b].kind == ' ' {
+			b++
+			continue
+		}
+		e := b
+		for e < end && L[e].kind != ' ' {
+			e++
+		}
+		s.blankOwners(L[b:e])
+		b = e
+	}
+	// A run of deletions goes with the added line right after it (a
+	// replacement stays together), else with the line before it. Deleted
+	// blank lines alone go where a blank line there would.
 	for i := 0; i < end; {
 		if L[i].kind != '-' {
 			i++
@@ -189,6 +234,10 @@ func (s *hunkSplit) assignOwners(tail int, same bool) {
 		switch {
 		case j < end && L[j].kind == '+':
 			owner = L[j].owner
+		case allBlank(L[i:j]):
+			if owner = s.entityAt(L[i].new); owner == nil {
+				owner = s.leadInto(L[i].new)
+			}
 		case i > 0:
 			owner = L[i-1].owner
 		default:
@@ -221,6 +270,50 @@ func (s *hunkSplit) assignOwners(tail int, same bool) {
 			L[i].owner = L[i-1].owner
 		}
 	}
+}
+
+// blankOwners gives the blank lines added in one run of changed lines the
+// owner of the next non-blank line added in the run, else of the one before
+// it: a separator stages with the code it separates, and the blank after a
+// new function never turns the unchanged function below into a snippet.
+// A run of nothing but blank lines keeps the entity it sits in, else joins
+// the entity it leads into.
+func (s *hunkSplit) blankOwners(run []diffLine) {
+	var prev *Entity
+	seen := false
+	for i := range run {
+		if run[i].kind != '+' {
+			continue
+		}
+		if !blank(run[i]) {
+			prev, seen = run[i].owner, true
+			continue
+		}
+		next := -1
+		for j := i + 1; j < len(run); j++ {
+			if run[j].kind == '+' && !blank(run[j]) {
+				next = j
+				break
+			}
+		}
+		switch {
+		case next >= 0:
+			run[i].owner = run[next].owner
+		case seen:
+			run[i].owner = prev
+		case run[i].owner == nil:
+			run[i].owner = s.leadInto(run[i].new)
+		}
+	}
+}
+
+func allBlank(run []diffLine) bool {
+	for _, l := range run {
+		if l.kind == '-' && !blank(l) {
+			return false
+		}
+	}
+	return true
 }
 
 // segment is a maximal run of lines with one owner.
