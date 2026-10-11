@@ -3,9 +3,12 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/storymode7/astra/apps/cli/internal/state"
 	"github.com/storymode7/astra/core"
 )
 
@@ -69,5 +72,31 @@ func TestRender_StageErrorStaysOnOneLine(t *testing.T) {
 	want := "could not stage: git apply --cached: exit status 1: error: patch failed: m.go:3 error: m.go: patch does not apply"
 	if last := stripANSI(lines[len(lines)-1]); last != want {
 		t.Errorf("status line = %q, want %q", last, want)
+	}
+}
+
+func TestSetStatus_ReportsUnsavedState(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	gitDir := t.TempDir()
+	store, err := state.Open(gitDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviews := filepath.Join(gitDir, "astra", "reviews")
+	if err := os.Chmod(reviews, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(reviews, 0o755) })
+
+	r := NewRunner(core.BuildForest(manySnippets(3, 2), nil), store, true, false, nil)
+	fixedSize(t, 24, 80)
+	captureStdout(t, func() { r.setStatus("reviewed") })
+	if r.status != "review state not saved: permission denied" {
+		t.Errorf("status = %q, want the save error", r.status)
+	}
+	if r.cursor != 0 {
+		t.Errorf("cursor moved to row %d although the verdict was not saved", r.cursor)
 	}
 }

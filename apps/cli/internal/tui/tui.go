@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -555,7 +556,15 @@ func (r *Runner) setStatus(status string) {
 			return
 		}
 	}
-	_ = r.store.Set(n.Snippet.ID, status, st.Comment)
+	if err := r.store.Set(n.Snippet.ID, status, st.Comment); err != nil {
+		// Lead with the cause; the full error is mostly the file's path.
+		for u := errors.Unwrap(err); u != nil; u = errors.Unwrap(u) {
+			err = u
+		}
+		r.status = "review state not saved: " + err.Error()
+		r.render()
+		return
+	}
 	if r.autoAdvance {
 		r.gotoPending(1)
 		return
