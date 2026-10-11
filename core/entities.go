@@ -403,35 +403,76 @@ func jsBraceEnd(lines []string, startIdx int) int {
 // but only a truly blank line ends a brace-less arrow body.
 func jsFuncEnd(lines, raw []string, startIdx int) int {
 	line := strings.TrimSpace(lines[startIdx])
-	// Arrow function assigned to const: const foo = (...) => { ... }
-	// or naked: function foo() { ... }
-	if strings.Contains(line, "{") {
+	k := strings.LastIndex(line, "=>")
+	if k < 0 {
+		return jsBlockEnd(lines, startIdx) // function foo() { ... }, methods
+	}
+	// An arrow's body decides: a block, an expression such as ( <jsx/> ) that
+	// ends where its brackets close, or nothing yet when the body starts on
+	// the next line. Braces before the => belong to destructured parameters.
+	switch body := strings.TrimSpace(line[k+2:]); {
+	case strings.HasPrefix(body, "{"):
 		return jsBraceEnd(lines, startIdx)
+	case body != "":
+		end := jsVarEnd(lines, startIdx)
+		for i := startIdx + 1; i < end; i++ {
+			if indentLen(lines[i]) == 0 && reJSDeclStart.MatchString(lines[i]) {
+				return i // a stray ( in JSX text never swallows the next declaration
+			}
+		}
+		return end
 	}
 	// Arrow without braces: single expression, end at semicolon or next blank.
 	// In semicolon-less code no terminator ever comes, so also stop before a
 	// line that starts a new declaration or method — never merge two entities.
-	// When the arrow line ends in "=>" the next line is the expression body
-	// and is exempt from the method check (a call like `wrap(x)` looks like
-	// a method signature).
-	firstBody := startIdx
-	if strings.HasSuffix(line, "=>") {
-		firstBody = startIdx + 1
-	}
+	// The first body line is exempt from the method check (a call like
+	// `wrap(x)` looks like a method signature).
 	n := len(lines)
+	depth := 0
 	for i := startIdx + 1; i < n; i++ {
 		tl := strings.TrimSpace(lines[i])
-		if strings.TrimSpace(raw[i]) == "" || strings.HasSuffix(tl, ";") || strings.HasSuffix(tl, ",") {
+		if depth <= 0 && (reJSDeclStart.MatchString(tl) || i > startIdx+1 && jsMethodBoundary(tl)) {
+			return i
+		}
+		depth += bracketDelta(lines[i])
+		if strings.TrimSpace(raw[i]) == "" || depth <= 0 && (strings.HasSuffix(tl, ";") || strings.HasSuffix(tl, ",")) {
 			return i + 1
-		}
-		if reJSDeclStart.MatchString(tl) {
-			return i
-		}
-		if i > firstBody && jsMethodBoundary(tl) {
-			return i
 		}
 	}
 	return n
+}
+
+// jsBlockEnd returns the 1-indexed last line of a function whose body is a
+// block. Braces inside the parameter list (destructuring, defaults) are
+// skipped; once it closes, the body runs until its braces balance, wherever
+// the opening brace sits. A ';' before any brace means an overload or a
+// declaration with no body.
+func jsBlockEnd(lines []string, startIdx int) int {
+	paren, closed := 0, false
+	depth, opened := 0, false
+	for i := startIdx; i < len(lines); i++ {
+		for _, c := range lines[i] {
+			switch {
+			case !closed && c == '(':
+				paren++
+			case !closed && c == ')':
+				paren--
+				closed = paren == 0
+			case !closed:
+			case c == '{':
+				depth++
+				opened = true
+			case c == '}':
+				depth--
+			case c == ';' && depth == 0:
+				return i + 1
+			}
+		}
+		if opened && depth <= 0 {
+			return i + 1
+		}
+	}
+	return len(lines)
 }
 
 // jsMethodBoundary reports whether a trimmed line begins a new class member:

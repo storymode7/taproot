@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -1276,6 +1277,128 @@ interface UserRepository {
 		if e.Name == "UserRepository.findActiveByEmail" {
 			t.Errorf("bodiless interface method extracted as %d-%d", e.StartLine, e.EndLine)
 		}
+	}
+}
+
+func TestExtractEntities_TSX_ArrowBodies(t *testing.T) {
+	checkSpans(t, "typescript", `export const Row = ({ item }: RowProps) => (
+  <li>
+    {formatName(item)}
+  </li>
+);
+
+export const label = ({ first, last }: Name) =>
+  first + last;
+
+const Typed = (p: { item: Item }) => (
+  <li>{p.item}</li>
+);
+
+export const Fc: React.FC<RowProps> = ({ item }) => (
+  <li>{item}</li>
+);
+
+export const useThing = ({ id }: P) =>
+  useQuery({
+    queryKey: ['thing', id],
+    queryFn: () => fetchThing(id),
+  });
+
+const Note = ({ a }) => (
+  <p>Note (see below</p>
+);
+export function After() {
+  return null;
+}
+
+class List {
+  renderRow = ({ item }: P) => (
+    <li>{item}</li>
+  );
+  braced = ({ a }) => {
+    return a;
+  };
+}
+`, map[string][2]int{
+		"Row": {1, 5}, "label": {7, 8}, "Typed": {10, 12}, "Fc": {14, 16}, "useThing": {18, 22},
+		"Note": {24, 26}, "After": {27, 29}, "List.renderRow": {32, 34}, "List.braced": {35, 37},
+	})
+}
+
+func TestExtractEntities_JS_FunctionBlocks(t *testing.T) {
+	// A function declaration's body is the block after its parameter list,
+	// however the signature wraps; an overload has no body.
+	src := `export function merge<T>(a: T): T;
+export function merge<T>(a: T, b: T): T;
+/** Merges its arguments. */
+export function merge(...args: any[]): any {
+  return args[0];
+}
+
+async function getTrustedRoot(
+/* istanbul ignore next */
+options = {}) {
+  const client = createClient(options);
+  return client;
+}
+
+function defer(fn)
+{
+  run(fn);
+}
+
+function build(
+  a,
+  b = {},
+) {
+  return a;
+}
+
+function shape(): { a: string } {
+  return { a: "" };
+}
+`
+	checkSpans(t, "typescript", src, map[string][2]int{
+		"getTrustedRoot": {8, 13}, "defer": {15, 18}, "build": {20, 25}, "shape": {27, 29},
+	})
+	var merges [][2]int
+	for _, e := range ExtractEntities([]byte(src), "typescript") {
+		if e.Name == "merge" {
+			merges = append(merges, [2]int{e.StartLine, e.EndLine})
+		}
+		if e.Name == "client" {
+			t.Errorf("function body line extracted as %s %q", e.Kind, e.Name)
+		}
+	}
+	if len(merges) != 3 || merges[0] != [2]int{1, 1} || merges[1] != [2]int{2, 2} || merges[2][1] != 6 {
+		t.Errorf("merge spans = %v, want 1-1, 2-2 and the implementation ending at 6", merges)
+	}
+}
+
+func TestBuildSnippets_TSX_ComponentsKeepTheirBodies(t *testing.T) {
+	// Edits inside two arrow components' JSX bodies stay in two named
+	// snippets, and their calls make edges.
+	src := "export const Row = ({ item }: P) => (\n  <li>{formatName(item)}</li>\n);\n\nexport const Footer = ({ count }: Q) => (\n  <p>{formatCount(count)}</p>\n);\n\nexport function formatName(i: Item) {\n  return i.name;\n}\n\nexport function formatCount(n: number) {\n  return String(n);\n}\n"
+	f := &FileDiff{Path: "src/List.tsx", OldPath: "src/List.tsx", Language: "typescript", Source: []byte(src), Hunks: []Hunk{
+		{OldStart: 2, OldLines: 1, NewStart: 2, NewLines: 1, Lines: []string{"@@ -2,1 +2,1 @@", "-  <li>{item.name}</li>", "+  <li>{formatName(item)}</li>"}},
+		{OldStart: 6, OldLines: 1, NewStart: 6, NewLines: 1, Lines: []string{"@@ -6,1 +6,1 @@", "-  <p>{count}</p>", "+  <p>{formatCount(count)}</p>"}},
+		{OldStart: 10, OldLines: 1, NewStart: 10, NewLines: 1, Lines: []string{"@@ -10,1 +10,1 @@", "-  return i.title;", "+  return i.name;"}},
+		{OldStart: 14, OldLines: 1, NewStart: 14, NewLines: 1, Lines: []string{"@@ -14,1 +14,1 @@", "-  return `${n}`;", "+  return String(n);"}},
+	}}
+	snippets := BuildSnippets([]*FileDiff{f})
+	byID := make(map[string]string)
+	for _, s := range snippets {
+		byID[s.ID] = s.SymbolPath
+	}
+	var edges []string
+	for _, e := range BuildCallEdges(snippets) {
+		edges = append(edges, byID[e.From]+"->"+byID[e.To])
+	}
+	if got := strings.Join(symbolPaths(snippets), " "); got != "Row Footer formatName formatCount" {
+		t.Errorf("snippets = %s, want Row Footer formatName formatCount", got)
+	}
+	if got := strings.Join(edges, " "); got != "Row->formatName Footer->formatCount" && got != "Footer->formatCount Row->formatName" {
+		t.Errorf("edges = %s, want Row->formatName and Footer->formatCount", got)
 	}
 }
 
