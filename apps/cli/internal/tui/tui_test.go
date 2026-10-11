@@ -32,6 +32,15 @@ func TestFirstChangedLine(t *testing.T) {
 	}
 }
 
+func TestFirstChangedLine_SkipsBlankLineAboveNewEntity(t *testing.T) {
+	// A new function's sub-hunk opens with the blank line that separates it
+	// from the one above; the title and o must name the declaration.
+	s := &core.Snippet{StartLine: 5, DiffLines: []string{"@@ -4,0 +4,2 @@", "+", "+func B() {}"}}
+	if got := firstChangedLine(s); got != 5 {
+		t.Errorf("firstChangedLine = %d, want 5 (func B, not the blank line above it)", got)
+	}
+}
+
 func TestWithLineNumbers(t *testing.T) {
 	diff := []string{"@@ -3,2 +3,2 @@", " keep", "-old", "+new"}
 	got := withLineNumbers(diff, diff)

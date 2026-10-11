@@ -121,7 +121,8 @@ func firstChangedLine(s *core.Snippet) int {
 			}
 		case strings.HasPrefix(l, "+"), strings.HasPrefix(l, "-"):
 			if newN > 0 {
-				return newN
+				// A new entity's sub-hunk opens with the blank line above it.
+				return max(newN, s.StartLine)
 			}
 		case strings.HasPrefix(l, `\`): // "\ No newline at end of file"
 		default:
