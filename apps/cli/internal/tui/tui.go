@@ -60,14 +60,14 @@ func printSnippetHeader(idx, total int, s *core.Snippet, status, indent string) 
 	fmt.Printf("\n%s%s─── %d/%d%s  %s%s%s  %s%s%s  %s%s%s\n",
 		indent,
 		dim, idx, total, reset,
-		bold+cyan, fmt.Sprintf("%s:%d", s.FilePath, firstChangedLine(s)), reset,
+		bold+cyan, fmt.Sprintf("%s:%d", displaySafe(s.FilePath), firstChangedLine(s)), reset,
 		dim, depth, reset,
 		dim, s.Language, reset,
 	)
 	fmt.Printf("%s    %s%s\n", indent, statusBadge, reset)
 
 	if s.SymbolPath != "" {
-		fmt.Printf("%s%s  ∷ %s%s\n", indent, dim, s.SymbolPath, reset)
+		fmt.Printf("%s%s  ∷ %s%s\n", indent, dim, displaySafe(s.SymbolPath), reset)
 	}
 	for _, note := range snippetNotes(s, nil) {
 		fmt.Printf("%s%s  %s%s\n", indent, dim, note, reset)
@@ -78,16 +78,16 @@ func printSnippetHeader(idx, total int, s *core.Snippet, status, indent string) 
 func plainView(snippets []*core.Snippet, store *state.Store) {
 	for i, s := range snippets {
 		indent := strings.Repeat("  ", s.Depth)
-		title := fmt.Sprintf("%s:%d", s.FilePath, firstChangedLine(s))
+		title := fmt.Sprintf("%s:%d", displaySafe(s.FilePath), firstChangedLine(s))
 		if s.SymbolPath != "" {
-			title += " :: " + s.SymbolPath
+			title += " :: " + displaySafe(s.SymbolPath)
 		}
 		fmt.Printf("%s--- %d/%d  %s  [%s]\n", indent, i+1, len(snippets), title, store.Get(s.ID).Status)
 		for _, note := range snippetNotes(s, nil) {
 			fmt.Printf("%s    %s\n", indent, note)
 		}
 		for _, l := range s.DiffLines {
-			fmt.Println(l)
+			fmt.Println(displaySafe(l))
 		}
 		fmt.Println()
 	}
@@ -106,7 +106,7 @@ func snippetNotes(s *core.Snippet, alsoCalledBy []string) []string {
 	if len(s.TestedBy) > 0 {
 		notes = append(notes, "tested by "+strings.Join(s.TestedBy, ", "))
 	}
-	return notes
+	return displaySafeLines(notes)
 }
 
 // firstChangedLine is the post-image line of the snippet's first change,
@@ -566,8 +566,11 @@ func (r *Runner) renderedDiff(s *core.Snippet, width int) []string {
 	return lines
 }
 
+// termSize is terminalSize; tests swap it for a fixed size.
+var termSize = terminalSize
+
 func (r *Runner) render() {
-	rows, cols := terminalSize()
+	rows, cols := termSize()
 	if rows <= 0 {
 		rows = 40
 	}
@@ -641,9 +644,9 @@ func (r *Runner) render() {
 		s := n.Snippet
 		title := ""
 		if s.SymbolPath != "" {
-			title = s.SymbolPath + "  "
+			title = displaySafe(s.SymbolPath) + "  "
 		}
-		loc := fmt.Sprintf("%s:%d · %s ", s.FilePath, firstChangedLine(s), r.store.Get(s.ID).Status)
+		loc := fmt.Sprintf("%s:%d · %s ", displaySafe(s.FilePath), firstChangedLine(s), r.store.Get(s.ID).Status)
 		rule := ""
 		if pad := cols - len([]rune("── "+title+loc)); pad > 0 {
 			rule = strings.Repeat("─", pad)
@@ -693,9 +696,9 @@ func (r *Runner) render() {
 	// Hint line (truncated so it can never wrap and push the header off).
 	switch {
 	case r.prompting:
-		fmt.Print(ansiTruncate("/"+r.input, cols-1) + "\033[?25h")
+		fmt.Print(ansiTruncate("/"+displaySafe(r.input), cols-1) + "\033[?25h")
 	case r.status != "":
-		fmt.Print(yellow + ansiTruncate(r.status, cols-1) + reset)
+		fmt.Print(yellow + ansiTruncate(displaySafe(r.status), cols-1) + reset)
 	default:
 		hints := "J/K move · l/h drill in/out · y/x/r judge · ]/[ pending · j/k scroll · / search · o open · E/C fold · tab auto · ? help · q quit"
 		fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)

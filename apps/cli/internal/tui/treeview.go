@@ -180,7 +180,7 @@ func renderSegments(segs []segment, width int, plainOnly bool) string {
 		if left <= 0 {
 			break
 		}
-		text := sg.text
+		text := displaySafe(sg.text)
 		if r := []rune(text); len(r) > left {
 			text = string(r[:left-1]) + "…"
 		}

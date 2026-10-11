@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // Highlighter is the active syntax-highlighting backend, detected at startup.
@@ -70,6 +71,7 @@ func terminalWidth() int {
 // Note: delta is NOT handled here — it writes directly to stdout via
 // printDiffLines to preserve TTY semantics.
 func highlightLines(filePath string, diffLines []string) []string {
+	diffLines = displaySafeLines(diffLines)
 	var out []string
 	switch activeHighlighter {
 	case HighlightBat, HighlightDelta:
@@ -119,6 +121,33 @@ func withLineNumbers(diffLines, rendered []string) []string {
 }
 
 var reHunk = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)`)
+
+// displaySafe turns control characters in reviewed text into glyphs (␍, ␛,
+// ␡, and � for C1 and bidi controls), so a diff line cannot move the cursor
+// or restyle the terminal. A trailing CR is a CRLF line end and is dropped.
+func displaySafe(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t':
+			return r
+		case r < 0x20:
+			return 0x2400 + r
+		case r == 0x7f:
+			return '␡'
+		case r >= 0x80 && r <= 0x9f, r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+			return utf8.RuneError
+		}
+		return r
+	}, strings.TrimSuffix(s, "\r"))
+}
+
+func displaySafeLines(lines []string) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = displaySafe(l)
+	}
+	return out
+}
 
 // hexFg turns "#rrggbb" into a truecolor foreground escape.
 func hexFg(hex string) string {
@@ -239,9 +268,10 @@ func githubDeltaStyle() []string {
 }
 
 func deltaInput(filePath string, diffLines []string) string {
+	filePath = displaySafe(filePath)
 	header := fmt.Sprintf("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n",
 		filePath, filePath, filePath, filePath)
-	return header + strings.Join(diffLines, "\n") + "\n"
+	return header + strings.Join(displaySafeLines(diffLines), "\n") + "\n"
 }
 
 // runDeltaDirect pipes diff lines through delta writing directly to w (usually
