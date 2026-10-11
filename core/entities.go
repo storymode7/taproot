@@ -96,7 +96,7 @@ func extractGo(lines []string) []Entity {
 			// func [(*Receiver)] Name( ...
 			name := goFuncName(stripped)
 			start := i + 1
-			end := goBlockEnd(lines, i)
+			end := declEnd(lines, i, "go")
 			entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
 			i = end
 
@@ -104,7 +104,7 @@ func extractGo(lines []string) []Entity {
 			// type Name struct { ... } or type Name interface { ... } or type Name = ...
 			name := goTypeName(stripped)
 			start := i + 1
-			end := goBlockEnd(lines, i)
+			end := declEnd(lines, i, "go")
 			entities = append(entities, Entity{Name: name, Kind: "type", StartLine: start, EndLine: end})
 			i = end
 
@@ -137,18 +137,47 @@ func extractGo(lines []string) []Entity {
 // goBlockEnd finds the line where the brace-delimited block starting at or
 // after startIdx ends. Returns 1-indexed line number.
 func goBlockEnd(lines []string, startIdx int) int {
+	return declEnd(lines, startIdx, "")
+}
+
+// declEnd is goBlockEnd for a declaration that may have no brace body.
+// Until a '{' opens, Go ends one on the first line where its ()/[] balance
+// closes (type ID string, a bodyless func), and Rust at a ';' outside
+// brackets (struct Unit;, type A = B;, mod m;).
+func declEnd(lines []string, startIdx int, lang string) int {
 	n := len(lines)
-	depth := 0
+	depth, paren := 0, 0
 	opened := false
 	for i := startIdx; i < n; i++ {
 		d, o := braceDelta(lines[i])
 		depth += d
 		opened = opened || o
-		if opened && depth == 0 {
-			return i + 1 // 1-indexed
+		if opened {
+			if depth == 0 {
+				return i + 1 // 1-indexed
+			}
+			continue
+		}
+		paren += parenDelta(lines[i])
+		if paren <= 0 && (lang == "go" || lang == "rust" && strings.HasSuffix(strings.TrimSpace(lines[i]), ";")) {
+			return i + 1
 		}
 	}
 	return n // fallback: rest of file
+}
+
+// parenDelta counts one line's net ()/[] balance.
+func parenDelta(line string) int {
+	d := 0
+	for _, c := range line {
+		switch c {
+		case '(', '[':
+			d++
+		case ')', ']':
+			d--
+		}
+	}
+	return d
 }
 
 // braceDelta counts one line's net {/} balance, ignoring braces inside
@@ -792,12 +821,12 @@ func extractJava(lines []string) []Entity {
 // ---------------------------------------------------------------------------
 
 var (
-	reRustFn     = regexp.MustCompile(`^(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)`)
-	reRustStruct = regexp.MustCompile(`^(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait|impl|type)\s+(\w+)`)
-	reRustImpl   = regexp.MustCompile(`^impl\b`)
+	reRustFn     = regexp.MustCompile(`^(?:pub(?:\([^)]*\))?\s+)?(?:(?:const|async|unsafe|extern(?:\s+"[^"]*")?)\s+)*fn\s+(\w+)`)
+	reRustStruct = regexp.MustCompile(`^(?:pub(?:\([^)]*\))?\s+)?(?:unsafe\s+)?(?:struct|enum|trait|impl|type)\s+(\w+)`)
+	reRustImpl   = regexp.MustCompile(`^(?:unsafe\s+)?impl\b`)
 	reRustUse    = regexp.MustCompile(`^use\s`)
 	reRustMod    = regexp.MustCompile(`^(?:pub\s+)?mod\s+(\w+)`)
-	reRustConst  = regexp.MustCompile(`^(?:pub(?:\([^)]*\))?\s+)?(?:const|static)\s+(\w+)`)
+	reRustConst  = regexp.MustCompile(`^(?:pub(?:\([^)]*\))?\s+)?(?:const|static(?:\s+mut)?)\s+(\w+)`)
 	reRustWord   = regexp.MustCompile(`\w+`)
 )
 
@@ -825,7 +854,7 @@ func extractRust(lines []string) []Entity {
 			flushImports(i)
 			name := reRustFn.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := goBlockEnd(lines, i)
+			end := declEnd(lines, i, "rust")
 			entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
 			i = end
 		case reRustImpl.MatchString(line):
@@ -856,23 +885,23 @@ func extractRust(lines []string) []Entity {
 			flushImports(i)
 			name := reRustStruct.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := goBlockEnd(lines, i)
+			end := declEnd(lines, i, "rust")
 			entities = append(entities, Entity{Name: name, Kind: "type", StartLine: start, EndLine: end})
 			i = end
 		case reRustMod.MatchString(line):
 			flushImports(i)
 			name := reRustMod.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := goBlockEnd(lines, i)
+			end := declEnd(lines, i, "rust")
 			entities = append(entities, Entity{Name: name, Kind: "type", StartLine: start, EndLine: end})
 			i = end
 		case reRustConst.MatchString(line):
 			flushImports(i)
 			name := reRustConst.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := i + 2
+			end := i + 1
 			// find semicolon end
-			for end <= n && !strings.HasSuffix(strings.TrimSpace(lines[end-1]), ";") {
+			for end < n && !strings.HasSuffix(strings.TrimSpace(lines[end-1]), ";") {
 				end++
 			}
 			entities = append(entities, Entity{Name: name, Kind: "const", StartLine: start, EndLine: end})
@@ -890,7 +919,7 @@ func extractRust(lines []string) []Entity {
 // "for" in trait impls (impl Trait for Type), else the first type name
 // after "impl" (skipping <generics>).
 func rustImplName(line string) string {
-	rest := strings.TrimPrefix(line, "impl")
+	rest := strings.TrimPrefix(strings.TrimPrefix(line, "unsafe "), "impl")
 	if idx := strings.Index(rest, " for "); idx >= 0 {
 		rest = rest[idx+5:]
 	} else if strings.HasPrefix(rest, "<") {

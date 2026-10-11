@@ -829,6 +829,138 @@ impl Display for Foo {
 	}
 }
 
+func TestExtractEntities_Go_BracelessDeclarations(t *testing.T) {
+	// A declaration with no brace body ends on its own line; it must not
+	// run on to the next brace block and swallow the item there.
+	checkSpans(t, "go", `package p
+
+type Celsius float64
+
+func (c Celsius) String() string {
+	return "c"
+}
+
+type Option func(*Config)
+
+func WithHost(h string) Option {
+	return nil
+}
+
+type Handler = http.Handler
+
+func nanotime() int64
+
+func Now() int64 {
+	return nanotime()
+}
+
+func Long(
+	a int,
+	b int,
+) error {
+	return nil
+}
+
+type Set[
+	T comparable,
+] struct {
+	m map[T]bool
+}
+
+type Pair[K comparable, V any] []V
+`, map[string][2]int{
+		"Celsius": {3, 3}, "String": {5, 7}, "Option": {9, 9}, "WithHost": {11, 13},
+		"Handler": {15, 15}, "nanotime": {17, 17}, "Now": {19, 21},
+		"Long": {23, 28}, "Set": {30, 34}, "Pair": {36, 36},
+	})
+}
+
+func TestExtractEntities_Rust_BracelessDeclarations(t *testing.T) {
+	checkSpans(t, "rust", `mod config;
+
+pub struct Parser;
+
+impl Parser {
+    pub fn parse(&self) {}
+}
+
+pub struct Meters(pub f64);
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub struct Pair(
+    pub u32,
+    pub u32,
+);
+
+extern "C" {
+    fn abs(x: i32) -> i32;
+}
+
+pub struct Wrapper<T>
+where
+    T: Clone,
+{
+    inner: T,
+}
+
+fn measure<T>(x: T) -> T
+where
+    T: Clone,
+{
+    x
+}
+`, map[string][2]int{
+		"config": {1, 1}, "Parser": {3, 3}, "impl Parser": {5, 7}, "Parser.parse": {6, 6},
+		"Meters": {9, 9}, "Result": {11, 11}, "Pair": {13, 16}, "abs": {19, 19},
+		"Wrapper": {22, 27}, "measure": {29, 34},
+	})
+}
+
+func TestExtractEntities_Rust_ConstsAndQualifiedFns(t *testing.T) {
+	checkSpans(t, "rust", `const A: u8 = 1;
+const B: u8 = 2;
+static GREETING: &str = "hi";
+
+fn greet() {
+    println!("{}", GREETING);
+}
+
+pub const fn new_id() -> Id {
+    Id(0)
+}
+
+impl Id {
+    pub const fn zero() -> Self {
+        Id(0)
+    }
+    pub fn get(&self) -> u32 {
+        self.0
+    }
+}
+
+pub unsafe fn raw() {}
+pub extern "C" fn cb() {}
+async unsafe fn both() {}
+
+const TABLE: [u8; 3] = [
+    1,
+    2,
+    3,
+];
+static mut COUNTER: u32 = 0;
+
+unsafe impl Send for Id {
+    fn helper(&self) {}
+}
+const LAST: u8 = 9;`, map[string][2]int{
+		"A": {1, 1}, "B": {2, 2}, "GREETING": {3, 3}, "greet": {5, 7},
+		"new_id": {9, 11}, "Id.zero": {14, 16}, "Id.get": {17, 19},
+		"raw": {22, 22}, "cb": {23, 23}, "both": {24, 24},
+		"TABLE": {26, 30}, "COUNTER": {31, 31}, "Id.helper": {34, 34}, "LAST": {36, 36},
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Unsupported language returns nil
 // ---------------------------------------------------------------------------
@@ -849,4 +981,22 @@ func entityNames(entities []Entity) []string {
 		names[i] = e.Kind + ":" + e.Name
 	}
 	return names
+}
+
+// checkSpans asserts that src yields each named entity with exactly the
+// given [start, end] lines.
+func checkSpans(t *testing.T, lang, src string, want map[string][2]int) {
+	t.Helper()
+	entities := ExtractEntities([]byte(src), lang)
+	got := make(map[string][2]int, len(entities))
+	for _, e := range entities {
+		got[e.Name] = [2]int{e.StartLine, e.EndLine}
+	}
+	for name, span := range want {
+		if g, ok := got[name]; !ok {
+			t.Errorf("%s: entity %q missing (got %v)", lang, name, entityNames(entities))
+		} else if g != span {
+			t.Errorf("%s: %q spans %d-%d, want %d-%d", lang, name, g[0], g[1], span[0], span[1])
+		}
+	}
 }
