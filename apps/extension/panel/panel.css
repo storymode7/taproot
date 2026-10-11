@@ -26,10 +26,5 @@ body {
   background: transparent; border: none; color: var(--text-dim);
   font-size: 16px; cursor: pointer; padding: 2px 6px;
 }
-.btn-submit {
-  background: var(--primary); border: 1px solid var(--primary); color: #fff;
-  border-radius: 6px; font: 600 12px var(--sans); cursor: pointer; padding: 3px 10px;
-}
-.btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 #panel-status { padding: 8px 12px; color: var(--text-dim); font-size: 13px; }
 #snippet-list { padding: 12px; }

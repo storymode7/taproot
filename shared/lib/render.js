@@ -24,7 +24,6 @@ const STATUS_LABEL = {
  * @param {object} [opts]
  * @param {(code: string, language: string) => string|null} [opts.highlight]
  *        returns HTML for one line of code, or null to render it plain
- * @param {(snippet: object) => void} [opts.onStateChange] — status changes only
  * @param {string} [opts.commentHint] — shown under the comment box
  */
 export function renderReview(container, review, store, opts = {}) {
@@ -94,7 +93,6 @@ export function renderReview(container, review, store, opts = {}) {
     nav.querySelectorAll(`[data-id="${snippet.id}"] > .astra-tree-row:not(.ref) .astra-dot`)
       .forEach((d) => { d.className = `astra-dot status-${status}`; });
     updateProgress();
-    opts.onStateChange?.(snippet);
   }
 
   function updateProgress() {
