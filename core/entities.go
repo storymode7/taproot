@@ -45,7 +45,7 @@ func ExtractEntities(src []byte, lang string) []Entity {
 	case "go":
 		return extractGo(lines, open)
 	case "javascript", "typescript":
-		return extractJS(lines, raw)
+		return extractJS(lines, raw, open)
 	case "python":
 		return extractPython(lines, raw, open)
 	case "java":
@@ -270,7 +270,7 @@ var (
 	reJSRequire = regexp.MustCompile(`\brequire\s*\(`)
 )
 
-func extractJS(lines, raw []string) []Entity {
+func extractJS(lines, raw []string, open []bool) []Entity {
 	var entities []Entity
 	n := len(lines)
 	i := 0
@@ -301,7 +301,7 @@ func extractJS(lines, raw []string) []Entity {
 			start := i + 1
 			end := jsBraceEnd(lines, i)
 			entities = append(entities, Entity{Name: name, Kind: "class", StartLine: start, EndLine: end})
-			entities = append(entities, jsClassMethods(lines, raw, i, end, name)...)
+			entities = append(entities, jsClassMethods(lines, raw, open, i, end, name)...)
 			i = end
 
 		case reJSInterface.MatchString(line):
@@ -332,7 +332,7 @@ func extractJS(lines, raw []string) []Entity {
 			flushImports(i)
 			name := reJSFunc.FindStringSubmatch(line)[1]
 			start := i + 1
-			end := jsFuncEnd(lines, raw, i)
+			end := jsFuncEnd(lines, raw, open, i)
 			entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
 			i = end
 
@@ -342,14 +342,14 @@ func extractJS(lines, raw []string) []Entity {
 			start := i + 1
 			if reJSFuncVal.MatchString(line) {
 				// function-valued const/let/var: arrow or function expression
-				end := jsVarEnd(lines, i)
+				end := jsVarEnd(lines, open, i)
 				if strings.Contains(line, "{") || strings.HasSuffix(line, "=>") {
-					end = jsFuncEnd(lines, raw, i)
+					end = jsFuncEnd(lines, raw, open, i)
 				}
 				entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
 				i = end
 			} else {
-				end := jsVarEnd(lines, i)
+				end := jsVarEnd(lines, open, i)
 				entities = append(entities, Entity{Name: name, Kind: "var", StartLine: start, EndLine: end})
 				i = end
 			}
@@ -400,21 +400,23 @@ func jsBraceEnd(lines []string, startIdx int) int {
 
 // jsFuncEnd handles both brace-delimited and arrow functions (multi-line).
 // raw holds the unmasked lines: a comment or template line masks to blank,
-// but only a truly blank line ends a brace-less arrow body.
-func jsFuncEnd(lines, raw []string, startIdx int) int {
+// but only a truly blank line ends a brace-less arrow body. open marks lines
+// that end inside a template literal.
+func jsFuncEnd(lines, raw []string, open []bool, startIdx int) int {
 	line := strings.TrimSpace(lines[startIdx])
 	k := strings.LastIndex(line, "=>")
 	if k < 0 {
 		return jsBlockEnd(lines, startIdx) // function foo() { ... }, methods
 	}
-	// An arrow's body decides: a block, an expression such as ( <jsx/> ) that
-	// ends where its brackets close, or nothing yet when the body starts on
-	// the next line. Braces before the => belong to destructured parameters.
+	// An arrow's body decides: a block, an expression such as ( <jsx/> ) or
+	// a template literal that ends where its brackets and literal close, or
+	// nothing yet when the body starts on the next line. Braces before the
+	// => belong to destructured parameters.
 	switch body := strings.TrimSpace(line[k+2:]); {
 	case strings.HasPrefix(body, "{"):
 		return jsBraceEnd(lines, startIdx)
-	case body != "":
-		end := jsVarEnd(lines, startIdx)
+	case body != "" || !strings.HasSuffix(strings.TrimSpace(raw[startIdx]), "=>"):
+		end := jsVarEnd(lines, open, startIdx)
 		for i := startIdx + 1; i < end; i++ {
 			if indentLen(lines[i]) == 0 && reJSDeclStart.MatchString(lines[i]) {
 				return i // a stray ( in JSX text never swallows the next declaration
@@ -485,8 +487,10 @@ func jsMethodBoundary(tl string) bool {
 	return reJSMethod.MatchString(tl) && strings.HasSuffix(tl, "{")
 }
 
-// jsVarEnd finds the end of a const/let/var declaration (may be multi-line object/array).
-func jsVarEnd(lines []string, startIdx int) int {
+// jsVarEnd finds the end of a const/let/var declaration (may be multi-line
+// object/array). It never ends on a line that leaves a string open, such as
+// the first line of styled.div`...` or of a Python """ docstring.
+func jsVarEnd(lines []string, open []bool, startIdx int) int {
 	line := lines[startIdx]
 	// Count opening brackets/parens/braces to decide if multi-line
 	depth := 0
@@ -498,7 +502,7 @@ func jsVarEnd(lines []string, startIdx int) int {
 			depth--
 		}
 	}
-	if depth == 0 {
+	if depth == 0 && !open[startIdx] {
 		return startIdx + 1
 	}
 	n := len(lines)
@@ -511,7 +515,7 @@ func jsVarEnd(lines []string, startIdx int) int {
 				depth--
 			}
 		}
-		if depth <= 0 {
+		if depth <= 0 && !open[i] {
 			return i + 1
 		}
 	}
@@ -539,7 +543,7 @@ func classBodyLines(lines []string, startIdx, endLine int, fn func(j int)) {
 // jsClassMethods extracts methods (and class-property arrows) declared
 // directly inside a class body as "Class.method" entities. Method spans are
 // clamped to the class end so they never leak past it.
-func jsClassMethods(lines, raw []string, classIdx, classEnd int, className string) []Entity {
+func jsClassMethods(lines, raw []string, open []bool, classIdx, classEnd int, className string) []Entity {
 	var methods []Entity
 	classBodyLines(lines, classIdx, classEnd, func(j int) {
 		tl := strings.TrimSpace(lines[j])
@@ -556,7 +560,7 @@ func jsClassMethods(lines, raw []string, classIdx, classEnd int, className strin
 		} else {
 			return
 		}
-		end := jsFuncEnd(lines, raw, j)
+		end := jsFuncEnd(lines, raw, open, j)
 		if multiLineSig {
 			end = jsBraceEnd(lines, j)
 		}
@@ -635,7 +639,7 @@ func extractPython(lines, raw []string, open []bool) []Entity {
 				kind = "const"
 			}
 			start := i + 1
-			end := jsVarEnd(lines, i) // bracket-balance handles multi-line values
+			end := jsVarEnd(lines, open, i) // bracket-balance handles multi-line values
 			entities = append(entities, Entity{Name: name, Kind: kind, StartLine: start, EndLine: end})
 			i = end
 

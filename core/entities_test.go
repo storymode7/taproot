@@ -1375,6 +1375,67 @@ function shape(): { a: string } {
 	}
 }
 
+func TestExtractEntities_TemplateLiteralDeclarations(t *testing.T) {
+	bt := "`"
+	checkSpans(t, "typescript", `export const Pill = styled.span`+bt+`
+  padding: 2px;
+  color: ${(p) => darken(p.theme.fg)};
+`+bt+`;
+
+export const GET_USER = gql`+bt+`
+  query GetUser($id: ID!) {
+    user(id: $id) { name }
+  }
+`+bt+`;
+
+const Box = styled(Button)<{ on: boolean }>`+bt+`
+  ${({ on }) => on && css`+bt+`
+    border: 1px solid ${border(on)};
+  `+bt+`}
+`+bt+`;
+
+export const Quote = styled.blockquote`+bt+`
+  &::before { content: "("; }
+`+bt+`;
+
+const greeting = `+bt+`hi`+bt+`;
+const usage = (message = '') => `+bt+`Usage
+${message}
+`+bt+`
+
+class A {
+  render = () => `+bt+`x`+bt+`
+  other() {
+    return 1
+  }
+}
+`, map[string][2]int{
+		"Pill": {1, 4}, "GET_USER": {6, 10}, "Box": {12, 16}, "Quote": {18, 20},
+		"greeting": {22, 22}, "usage": {23, 25}, "A.render": {28, 28}, "A.other": {29, 31},
+	})
+	checkSpans(t, "typescript", "function A() {\n  return <kbd>`</kbd>;\n}\nconst B = 1;\n\nconst C = 2;\n",
+		map[string][2]int{"A": {1, 3}, "B": {4, 4}, "C": {6, 6}})
+	checkSpans(t, "python", "USAGE = \"\"\"\nusage: x\n\"\"\"\n\ndef main():\n    pass\n",
+		map[string][2]int{"USAGE": {1, 3}, "main": {5, 7}})
+}
+
+func TestBuildSnippets_TSX_StyledComponentsStaySeparate(t *testing.T) {
+	src := "export const Pill = styled.span`\n  padding: 4px;\n  color: ${(p) => darken(p.fg)};\n`;\n\nexport const Dot = styled.span`\n  width: 6px;\n`;\n\nexport function darken(c: string) {\n  return c;\n}\n"
+	f := &FileDiff{Path: "src/Badge.tsx", OldPath: "src/Badge.tsx", Language: "typescript", Source: []byte(src), Hunks: []Hunk{
+		{OldStart: 2, OldLines: 1, NewStart: 2, NewLines: 1, Lines: []string{"@@ -2,1 +2,1 @@", "-  padding: 2px;", "+  padding: 4px;"}},
+		{OldStart: 7, OldLines: 1, NewStart: 7, NewLines: 1, Lines: []string{"@@ -7,1 +7,1 @@", "-  width: 4px;", "+  width: 6px;"}},
+		{OldStart: 11, OldLines: 1, NewStart: 11, NewLines: 1, Lines: []string{"@@ -11,1 +11,1 @@", "-  return c + '';", "+  return c;"}},
+	}}
+	snippets := BuildSnippets([]*FileDiff{f})
+	if got := strings.Join(symbolPaths(snippets), " "); got != "Pill Dot darken" {
+		t.Fatalf("snippets = %s, want Pill Dot darken", got)
+	}
+	edges := BuildCallEdges(snippets)
+	if len(edges) != 1 || edges[0].From != snippets[0].ID || edges[0].To != snippets[2].ID {
+		t.Errorf("edges = %v, want Pill -> darken", edges)
+	}
+}
+
 func TestBuildSnippets_TSX_ComponentsKeepTheirBodies(t *testing.T) {
 	// Edits inside two arrow components' JSX bodies stay in two named
 	// snippets, and their calls make edges.
