@@ -133,6 +133,6 @@ func importCandidates(imp string) []string {
 			candidates = append(candidates, imp+ext)
 		}
 	}
-	candidates = append(candidates, imp+"/index.ts", imp+"/index.js")
+	candidates = append(candidates, imp+"/index.ts", imp+"/index.tsx", imp+"/index.js", imp+"/index.jsx")
 	return candidates
 }
