@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/storymode7/astra/apps/cli/internal/state"
 	"github.com/storymode7/astra/core"
@@ -220,7 +222,28 @@ func (r *Runner) Run() error {
 		return nil
 	}
 	r.raw = raw
-	defer func() { r.raw.restore() }()
+	// The alternate screen keeps frames out of the scrollback and gives the
+	// shell its screen back on exit.
+	fmt.Print("\033[?1049h")
+	leave := func() {
+		raw.restore()
+		fmt.Print("\r\n\033[?25h\033[?1049l")
+	}
+	defer leave()
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(sigs)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case s := <-sigs:
+			leave()
+			os.Exit(128 + int(s.(syscall.Signal)))
+		case <-done:
+		}
+	}()
 
 	r.render()
 
@@ -232,8 +255,7 @@ func (r *Runner) Run() error {
 		r.status = ""
 
 		switch key {
-		case "q", "Q":
-			fmt.Print("\033[?25h") // show cursor
+		case "q", "Q", "\x03":
 			return nil
 		case "J", "\033[B":
 			r.moveCursor(1)
@@ -309,18 +331,20 @@ func (r *Runner) openInEditor() {
 	path := filepath.Join(r.RepoRoot, n.Snippet.FilePath)
 	name, args := editorArgs(editor, path, firstChangedLine(n.Snippet))
 
+	// Editors that use the alternate screen leave it on exit, so step out first.
 	r.raw.restore()
-	fmt.Print("\033[?25h\033[2J\033[H")
+	fmt.Print("\033[?25h\033[?1049l")
 	cmd := exec.Command(name, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	err := cmd.Run()
 	if raw, rerr := enableRawMode(); rerr == nil {
 		r.raw = raw
 	}
-	r.render()
+	fmt.Print("\033[?1049h")
 	if err != nil {
-		fmt.Printf("\r%sastra: %s: %v%s", red, editor, err, reset)
+		r.status = fmt.Sprintf("%s: %v", editor, err)
 	}
+	r.render()
 }
 
 // editorArgs builds the command that opens path at line, using the syntax
@@ -746,45 +770,58 @@ func (r *Runner) render() {
 		status := strings.Join(strings.Fields(r.status), " ") // git errors span lines
 		fmt.Print(yellow + ansiTruncate(displaySafe(status), cols-1) + reset)
 	default:
-		hints := "J/K move · l/h drill in/out · y/x/r judge · ]/[ pending · j/k scroll · / search · o open · E/C fold · tab auto · ? help · q quit"
+		hints := "? help · q quit · J/K move · l/h drill in/out · y/x/r judge · ]/[ pending · j/k scroll · / search · o open · E/C fold · tab auto"
 		fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
 	}
 }
 
 func (r *Runner) renderHelp() {
+	lines := []string{
+		bold + "⭐ Astra keyboard shortcuts" + reset,
+		"",
+		"  J / ↓       Move down the tree",
+		"  K / ↑       Move up the tree",
+		"  l / → / ⏎   Expand node; if expanded, move to first callee;",
+		"              on a → reference, jump to where it's shown",
+		"  h / ←       Collapse node; if collapsed, jump to caller",
+		"  y / a       Accept snippet",
+		"  x           Reject snippet",
+		"  r           Mark as reviewed (no judgement)",
+		"  ] / [       Next / previous pending snippet",
+		"  j / k       Scroll the diff pane; at its end, next / previous snippet",
+		"  gg / G      Scroll the diff pane to its top / bottom",
+		"  Home / End  First / last row of the tree",
+		"  /           Search path, symbol, and diff text (regexp; case-insensitive",
+		"              unless the pattern has an uppercase letter)",
+		"  n / N       Next / previous search hit",
+		"  o           Open the snippet in $VISUAL / $EDITOR at its first change",
+		"  E / C       Expand / collapse the whole tree",
+		"  tab         Toggle auto-advance (jump to next pending after judging)",
+		"  q / Ctrl-C  Quit",
+		"  ?           Show this help",
+		"",
+		dim + "The tree is the call graph of changed code: children are the" + reset,
+		dim + "functions/types the focused snippet calls. Roots are entry points" + reset,
+		dim + "nothing else in the diff calls. Tests follow the code they test." + reset,
+		"",
+		dim + "Note: accept/reject records state locally under .git/astra/reviews/, per diff." + reset,
+		dim + "      In working tree mode y also stages the snippet and x/r unstages it;" + reset,
+		dim + "      pass --no-apply to leave the index alone." + reset,
+	}
+	rows, cols := termSize()
+	if rows <= 0 {
+		rows = 40
+	}
+	if cols <= 0 {
+		cols = 80
+	}
+	// On a short screen the notes at the end give way so the keys stay.
+	lines = lines[:min(len(lines), max(1, rows-2))]
 	fmt.Print("\033[2J\033[H")
-	fmt.Println(bold + "⭐ Astra keyboard shortcuts" + reset)
-	fmt.Println()
-	fmt.Println("  J / ↓       Move down the tree")
-	fmt.Println("  K / ↑       Move up the tree")
-	fmt.Println("  l / → / ⏎   Expand node; if expanded, move to first callee;")
-	fmt.Println("              on a → reference, jump to where it's shown")
-	fmt.Println("  h / ←       Collapse node; if collapsed, jump to caller")
-	fmt.Println("  y / a       Accept snippet")
-	fmt.Println("  x           Reject snippet")
-	fmt.Println("  r           Mark as reviewed (no judgement)")
-	fmt.Println("  ] / [       Next / previous pending snippet")
-	fmt.Println("  j / k       Scroll the diff pane; at its end, next / previous snippet")
-	fmt.Println("  gg / G      Scroll the diff pane to its top / bottom")
-	fmt.Println("  Home / End  First / last row of the tree")
-	fmt.Println("  /           Search path, symbol, and diff text (regexp; case-insensitive")
-	fmt.Println("              unless the pattern has an uppercase letter)")
-	fmt.Println("  n / N       Next / previous search hit")
-	fmt.Println("  o           Open the snippet in $VISUAL / $EDITOR at its first change")
-	fmt.Println("  E / C       Expand / collapse the whole tree")
-	fmt.Println("  tab         Toggle auto-advance (jump to next pending after judging)")
-	fmt.Println("  q           Quit")
-	fmt.Println("  ?           Show this help")
-	fmt.Println()
-	fmt.Println(dim + "The tree is the call graph of changed code: children are the" + reset)
-	fmt.Println(dim + "functions/types the focused snippet calls. Roots are entry points" + reset)
-	fmt.Println(dim + "nothing else in the diff calls. Tests follow the code they test." + reset)
-	fmt.Println()
-	fmt.Println(dim + "Note: accept/reject records state locally under .git/astra/reviews/, per diff." + reset)
-	fmt.Println(dim + "      In working tree mode y also stages the snippet and x/r unstages it;" + reset)
-	fmt.Println(dim + "      pass --no-apply to leave the index alone." + reset)
-	fmt.Println()
-	fmt.Println("Press any key to continue…")
+	for _, l := range lines {
+		fmt.Println(ansiTruncate(l, cols-1))
+	}
+	fmt.Print("\n" + ansiTruncate("Press any key to continue…", cols-1))
 	readKey()
 	r.render()
 }

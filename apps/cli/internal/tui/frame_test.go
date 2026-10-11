@@ -100,3 +100,31 @@ func TestSetStatus_ReportsUnsavedState(t *testing.T) {
 		t.Errorf("cursor moved to row %d although the verdict was not saved", r.cursor)
 	}
 }
+
+func TestRender_HintShowsHowToQuit(t *testing.T) {
+	r := testRunner(t, manySnippets(3, 5)...)
+	lines := frame(t, r, 24, 80)
+	if hint := stripANSI(lines[len(lines)-1]); !strings.Contains(hint, "? help") || !strings.Contains(hint, "q quit") {
+		t.Errorf("hint line at 80 columns = %q, want ? help and q quit on it", hint)
+	}
+}
+
+func TestRenderHelp_FitsTerminal(t *testing.T) {
+	r := testRunner(t, manySnippets(3, 5)...)
+	for _, size := range [][2]int{{24, 80}, {12, 60}, {6, 20}} {
+		rows, cols := size[0], size[1]
+		fixedSize(t, rows, cols)
+		feedStdin(t, " ").Close()
+		out := captureStdout(t, r.renderHelp)
+		// The help screen is followed by the frame drawn when it closes.
+		help := strings.TrimPrefix(out[:strings.Index(out, "\033[?25l")], "\033[2J\033[H")
+		lines := strings.Split(help, "\n")
+		assertFits(t, lines, rows, cols)
+		if !strings.Contains(lines[0], "keyboard shortcuts") && !strings.Contains(lines[0], "Astra") {
+			t.Errorf("%dx%d: first help row = %q, want the title", rows, cols, stripANSI(lines[0]))
+		}
+		if rows >= 24 && (!strings.Contains(help, "Move down the tree") || !strings.Contains(help, "Reject snippet") || !strings.Contains(help, "Quit")) {
+			t.Errorf("%dx%d: help lost key lines:\n%s", rows, cols, stripANSI(help))
+		}
+	}
+}
