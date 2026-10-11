@@ -41,7 +41,7 @@ const files = [{ filename: "notes.txt", status: "modified", patch: "@@ -1 +1 @@\
 test("a review after a failed wasm_exec.js load loads it again", async () => {
   const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
   fail.script = true;
-  await assert.rejects(astra.buildReview(files), /Failed to load vendor\/core\/wasm_exec\.js/);
+  await assert.rejects(astra.buildReview(files), /^Error: Couldn't load the review engine: Failed to load vendor\/core\/wasm_exec\.js$/);
   const review = await astra.buildReview(files);
   assert.equal(review.snippets.length, 1);
 });
@@ -49,7 +49,7 @@ test("a review after a failed wasm_exec.js load loads it again", async () => {
 test("a review after a failed engine download downloads it again", async () => {
   const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
   fail.wasm = true;
-  await assert.rejects(astra.buildReview(files), /Failed to fetch/);
+  await assert.rejects(astra.buildReview(files), /^Error: Couldn't load the review engine: Failed to fetch$/);
   const review = await astra.buildReview(files);
   assert.equal(review.snippets.length, 1);
 });

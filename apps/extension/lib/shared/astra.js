@@ -54,7 +54,7 @@ export function initAstra(adapter) {
       return globalThis.astraCore;
     })().catch((e) => {
       corePromise = null;
-      throw e;
+      throw new Error(`Couldn't load the review engine: ${e.message}`, { cause: e });
     });
     return corePromise;
   }
