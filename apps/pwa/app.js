@@ -7,7 +7,7 @@
  * Flow:
  *   1. User pastes a public GH PR URL → parsePRUrl()
  *   2. Fetch diff from api.github.com (unauthenticated)
- *   3. Load tree-sitter WASM + grammar WASM for each changed language
+ *   3. Fetch each changed file's full source (raw.githubusercontent.com)
  *   4. Build snippets (hunk → AST node) + symbol graph
  *   5. Order snippets by selected preset
  *   6. Render the call-tree sidebar and diff cards

@@ -8,26 +8,10 @@
  * shared/astra.js (a synced copy of /shared/lib/astra.js).
  */
 
-import { Parser, Language } from "../vendor/web-tree-sitter.js";
 import { initAstra } from "./shared/astra.js";
 
 function vendorUrl(path) {
   return chrome.runtime.getURL(`vendor/${path}`);
-}
-
-let parserInit = null;
-
-async function initParser() {
-  if (!parserInit) {
-    parserInit = Parser.init({
-      locateFile: () => vendorUrl("tree-sitter.wasm"),
-    });
-  }
-  await parserInit;
-  return {
-    newParser: () => new Parser(),
-    loadLanguage: (url) => Language.load(url),
-  };
 }
 
 // content.js fetches each file's source on github.com (the user's session)
@@ -38,7 +22,5 @@ async function fetchSource(file) {
 
 export const { buildReview, reorderReview } = initAstra({
   coreBase: vendorUrl("core"),
-  grammarURL: (wasm) => vendorUrl(wasm),
-  initParser,
   fetchSource,
 });

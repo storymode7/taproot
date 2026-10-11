@@ -34,16 +34,7 @@
         "lib/shared/review.css",
         "vendor/core/astra-core.wasm",
         "vendor/core/wasm_exec.js",
-        "vendor/tree-sitter.wasm",
-        "vendor/web-tree-sitter.js",
-        "vendor/tree-sitter-javascript.wasm",
-        "vendor/tree-sitter-typescript.wasm",
-        "vendor/tree-sitter-python.wasm",
-        "vendor/tree-sitter-go.wasm",
-        "vendor/tree-sitter-java.wasm",
-        "vendor/tree-sitter-rust.wasm",
-        "vendor/highlight.min.js",
-        "queries/*"
+        "vendor/highlight.min.js"
       ],
       "matches": ["https://github.com/*"]
     }

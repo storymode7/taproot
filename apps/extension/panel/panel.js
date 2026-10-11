@@ -3,9 +3,6 @@
  *
  * Receives diff data from content.js via postMessage, then runs the same
  * AST + ordering + rendering pipeline as the PWA.
- *
- * Vendored WASM files are referenced via chrome.runtime.getURL() so
- * web-tree-sitter can locate them in the extension's resource space.
  */
 
 import { buildReview, reorderReview } from "../lib/ast-ext.js";
