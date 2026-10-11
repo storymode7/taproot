@@ -89,7 +89,7 @@ func maskCode(lines []string, lang string) []string {
 				case c == '`' && jsLike:
 					rs[i] = ' '
 					st = stTmpl
-				case c == '"' || (c == '\'' && !isLifetime(rs, i, lang)):
+				case (c == '"' || (c == '\'' && !isLifetime(rs, i, lang))) && (!jsLike || jsQuoteOpens(rs, i)):
 					quote = c
 					fstring = python && isFPrefix(rs, i)
 					rs[i] = ' '
@@ -238,6 +238,37 @@ func regexCanStart(rs []rune, i int, prev rune) bool {
 		}
 		switch string(rs[j+1 : end]) {
 		case "return", "typeof", "case", "in", "of", "yield", "await", "void", "delete":
+			return true
+		}
+	}
+	return false
+}
+
+// jsQuoteOpens reports whether a quote at rs[i] in JS/TS code opens a string
+// literal. A JS string closes on its own line (or continues with a trailing
+// \), and nothing but a keyword sits directly before one, so an apostrophe or
+// inch mark in JSX text (Can't, 12") is text.
+func jsQuoteOpens(rs []rune, i int) bool {
+	if i > 0 && isIdentPart(rs[i-1]) {
+		j := i - 1
+		for j >= 0 && isIdentPart(rs[j]) {
+			j--
+		}
+		switch string(rs[j+1 : i]) {
+		case "return", "typeof", "case", "in", "of", "yield", "await", "void", "delete",
+			"throw", "else", "do", "instanceof", "from", "import", "export", "default":
+		default:
+			return false
+		}
+	}
+	for j := i + 1; j < len(rs); j++ {
+		switch rs[j] {
+		case '\\':
+			if j+1 == len(rs) {
+				return true
+			}
+			j++
+		case rs[i]:
 			return true
 		}
 	}
