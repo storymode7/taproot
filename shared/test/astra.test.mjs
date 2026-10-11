@@ -127,3 +127,32 @@ test("an aborted build stops before the core runs", async () => {
   core.process = process;
   assert.equal(calls, 0);
 });
+
+test("sources are fetched six at a time, and the core gets the files in PR order", async () => {
+  let inFlight = 0, most = 0;
+  const astra = initAstra({
+    coreBase: "vendor/core",
+    fetchSource: async (f) => {
+      most = Math.max(most, ++inFlight);
+      await new Promise((r) => setTimeout(r, f.filename === "f00.go" ? 60 : 10));
+      inFlight--;
+      return `package p\n\nfunc F() int {\n\treturn ${f.filename.slice(1, 3)}\n}\n`;
+    },
+  });
+  const core = await astra.loadCore();
+  const process = core.process;
+  const sent = [];
+  core.process = (req) => { sent.push(JSON.parse(req)); return process(req); };
+  const files = Array.from({ length: 20 }, (_, i) => ({
+    filename: `f${String(i).padStart(2, "0")}.go`, status: "modified",
+    patch: "@@ -1,5 +1,5 @@\n package p\n \n func F() int {\n-\treturn 0\n+\treturn 1\n }",
+  }));
+  const progress = [];
+  await astra.buildReview(files, "pre", { onProgress: (done, total) => progress.push(`${done}/${total}`) });
+  core.process = process;
+
+  assert.equal(most, 6);
+  assert.deepEqual(sent[0].files.map((f) => f.path), files.map((f) => f.filename));
+  assert.ok(sent[0].files.every((f) => f.source.startsWith("package p")));
+  assert.deepEqual(progress, Array.from({ length: 21 }, (_, i) => `${i}/20`));
+});

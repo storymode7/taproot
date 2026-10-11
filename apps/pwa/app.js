@@ -46,6 +46,7 @@ let navigation = null;
 const store = new StateStore("astra-pwa");
 const urlInput = document.getElementById("pr-url");
 const errEl = document.getElementById("input-error");
+const loadingMsg = document.querySelector(".loading-msg");
 
 // ---------------------------------------------------------------------------
 // Navigation: the PR under review lives in the page URL (?pr=…)
@@ -80,8 +81,10 @@ async function route() {
   try {
     let next = shown?.url === url ? shown : null;
     if (!next) {
+      const say = (text) => { if (navigation === nav) loadingMsg.textContent = text; };
+      say("Fetching the PR…");
       showScreen("loading");
-      next = await loadReview(url, parsePRUrl(url), nav.signal);
+      next = await loadReview(url, parsePRUrl(url), nav.signal, say);
       if (navigation !== nav) return;
     }
     // Another PR's load may have switched the store since this one showed.
@@ -118,12 +121,19 @@ function presetToOrder(preset) {
   return preset === "bottom-up" ? "post" : "pre";
 }
 
-async function loadReview(url, { owner, repo, prNumber }, signal) {
-  const { meta, files } = await fetchPRFiles(owner, repo, prNumber, { signal });
+async function loadReview(url, { owner, repo, prNumber }, signal, say) {
+  const { meta, files } = await fetchPRFiles(owner, repo, prNumber, {
+    signal,
+    onPage: (n, pages) => say(`Fetching the file list (page ${n} of ${pages})…`),
+  });
 
   // The Go core (WASM) builds snippets, call edges, and the review tree.
   const preset = document.getElementById("preset-select").value;
-  const review = await buildReview(files, presetToOrder(preset), { signal });
+  const review = await buildReview(files, presetToOrder(preset), {
+    signal,
+    onProgress: (done, total) =>
+      say(done < total ? `Fetching sources (${done} of ${total})…` : "Building the review…"),
+  });
   return {
     url,
     title: `${owner}/${repo} #${prNumber}`,
@@ -156,10 +166,11 @@ function render() {
 }
 
 // ---------------------------------------------------------------------------
-// Back buttons
+// Back and Cancel buttons
 // ---------------------------------------------------------------------------
 document.getElementById("btn-back-review").addEventListener("click", () => navigate(null));
 document.getElementById("btn-back-ratelimit").addEventListener("click", () => navigate(null));
+document.getElementById("btn-cancel-loading").addEventListener("click", () => navigate(null));
 
 window.addEventListener("popstate", route);
 route();

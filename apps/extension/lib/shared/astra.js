@@ -23,6 +23,9 @@
  *   })
  */
 
+// Source fetches in flight at once, as many as a browser opens to one host.
+const SOURCE_FETCHES = 6;
+
 export function initAstra(adapter) {
   let corePromise = null;
   const builtFrom = new WeakMap();
@@ -64,11 +67,16 @@ export function initAstra(adapter) {
    * files whose full source could not be fetched (they fall back to plain
    * hunks with no call structure). `skipped` lists the changed files the
    * review cannot show, by path: { path, oldPath?, reason }.
-   * Aborting `signal` stops the source fetches and rejects with AbortError.
+   * `onProgress(done, total)` follows the source fetches. Aborting `signal`
+   * stops them and rejects with AbortError.
    */
-  async function buildReview(files, order = "pre", { signal } = {}) {
+  async function buildReview(files, order = "pre", { onProgress, signal } = {}) {
+    // The engine downloads while the sources load; a failure is reported
+    // once they are in.
+    const core = loadCore();
+    core.catch(() => {});
     const wireFiles = [];
-    const missing = [];
+    const wanted = []; // [file, wire file] pairs that need the full source
     const skipped = [];
     for (const file of files) {
       // GitHub sends no patch for binary files, very large diffs, pure
@@ -82,39 +90,46 @@ export function initAstra(adapter) {
       }
       // REST says "removed"; GitHub's page data says "deleted".
       const isDeleted = file.status === "removed" || file.status === "deleted";
-      const lang = detectLanguage(file.filename);
-
-      let source = "";
-      if (lang && !isDeleted) {
-        source = (await adapter.fetchSource(file, signal)) ?? "";
-        if (!source) missing.push(file.filename);
-      }
-
-      wireFiles.push({
+      const wire = {
         path: file.filename,
         oldPath: file.previous_filename ?? file.filename,
-        language: lang ?? "",
+        language: detectLanguage(file.filename) ?? "",
         isNew: file.status === "added",
         isDeleted,
         isBinary: false,
         hunks,
-        source,
+        source: "",
         entities: [],
-      });
+      };
+      wireFiles.push(wire);
+      if (wire.language && !isDeleted) wanted.push([file, wire]);
     }
+
+    let next = 0;
+    let done = 0;
+    onProgress?.(0, wanted.length);
+    async function fetchSources() {
+      while (next < wanted.length && !signal?.aborted) {
+        const [file, wire] = wanted[next++];
+        wire.source = (await adapter.fetchSource(file, signal)) ?? "";
+        onProgress?.(++done, wanted.length);
+      }
+    }
+    await Promise.all(Array.from({ length: SOURCE_FETCHES }, fetchSources));
     signal?.throwIfAborted();
-    return processFiles({ wireFiles, missing, skipped }, order);
+
+    const missing = wanted.filter(([, wire]) => !wire.source).map(([file]) => file.filename);
+    return processFiles(await core, { wireFiles, missing, skipped }, order);
   }
 
   /** Re-run ordering on a built review without re-fetching. */
   async function reorderReview(review, order) {
     const input = builtFrom.get(review);
     if (!input) throw new Error("not a review built by this pipeline");
-    return processFiles(input, order);
+    return processFiles(await loadCore(), input, order);
   }
 
-  async function processFiles(input, order) {
-    const core = await loadCore();
+  function processFiles(core, input, order) {
     const resp = JSON.parse(
       core.process(JSON.stringify({ files: input.wireFiles, options: { order } })),
     );

@@ -39,10 +39,12 @@ const MAX_FILES = 3000;
  * meta.changedFiles is the PR's own count, which exceeds files.length when
  * GitHub's list stops short.
  *
+ * `onPage(n, pages)` runs before each page after the first.
+ *
  * Throws an object with { status, message } on HTTP errors, and an
  * AbortError once `signal` aborts.
  */
-export async function fetchPRFiles(owner, repo, prNumber, { signal } = {}) {
+export async function fetchPRFiles(owner, repo, prNumber, { signal, onPage } = {}) {
   const pr = `/repos/${owner}/${repo}/pulls/${prNumber}`;
   const page = (n) => ghFetch(`${pr}/files?per_page=${PER_PAGE}&page=${n}`, signal);
   const [metaResp, first] = await Promise.all([ghFetch(pr, signal), page(1)]);
@@ -58,6 +60,7 @@ export async function fetchPRFiles(owner, repo, prNumber, { signal } = {}) {
   const files = [...first];
   const pages = Math.ceil(Math.min(meta.changedFiles, MAX_FILES) / PER_PAGE);
   for (let n = 2; n <= pages && files.length === (n - 1) * PER_PAGE; n++) {
+    onPage?.(n, pages);
     files.push(...(await page(n)));
   }
   return { meta, files };

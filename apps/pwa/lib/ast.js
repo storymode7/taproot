@@ -12,11 +12,16 @@ import { initAstra } from "./shared/astra.js";
 // Relative to the page: the PWA ships its own copy (scripts/sync-extension-lib.sh).
 const CORE = "vendor/core";
 
+// A source that takes longer is left out, so one stalled request cannot
+// hold up the review; the file then shows as plain hunks.
+const SOURCE_TIMEOUT_MS = 15000;
+
 async function fetchSource(file, signal) {
   try {
     const url = rawContentURL(file.raw_url);
     if (!url) return null;
-    const resp = await fetch(url, { signal });
+    const timeout = AbortSignal.timeout(SOURCE_TIMEOUT_MS);
+    const resp = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     return resp.ok ? await resp.text() : null;
   } catch {
     return null;
