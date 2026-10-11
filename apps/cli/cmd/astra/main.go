@@ -146,6 +146,7 @@ func run(args []string) error {
 			}
 		}
 	}
+	tui.DetectHighlighter()
 
 	preset, err := parsePreset(presetName)
 	if err != nil {

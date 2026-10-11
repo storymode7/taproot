@@ -18,11 +18,6 @@ const (
 	HighlightDelta                      // https://github.com/dandavison/delta
 )
 
-// UseDelta is kept for backwards compat but no longer changes behaviour —
-// delta is now the default when installed.  Set NoDelta=true (--no-delta flag)
-// to skip delta and use bat/builtin instead.
-var UseDelta bool
-
 // NoDelta forces bat/builtin even when delta is installed.
 var NoDelta bool
 
@@ -31,10 +26,9 @@ var NoDeltaConfig bool
 
 var activeHighlighter Highlighter
 
-func init() {
-	if os.Getenv("ASTRA_HIGHLIGHTER") == "delta" {
-		UseDelta = true
-	}
+// DetectHighlighter picks delta, bat or the built-in colouring, whichever is
+// installed first. Call it after NoDelta is set.
+func DetectHighlighter() {
 	activeHighlighter = detectHighlighter()
 }
 
