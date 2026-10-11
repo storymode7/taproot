@@ -1,8 +1,9 @@
 /**
- * content.js — injected into github.com/.../pull/.../files pages
+ * content.js — injected into github.com pages
  *
  * Responsibilities:
- *   1. Detect that we're on a PR files page.
+ *   1. Detect that we're on a PR files page, including after GitHub's
+ *      in-page navigation.
  *   2. Inject the Astra side panel into the DOM.
  *   3. Fetch the PR diff via same-origin fetch (user's existing GH session).
  *   4. Post messages to the panel iframe with diff data.
@@ -16,78 +17,93 @@
 (function () {
   "use strict";
 
-  // Only activate on the PR files tab.
-  if (!location.pathname.match(/\/pull\/\d+\/changes/)) return;
+  // The page data embedded in the document describes the path it was
+  // loaded at; after an in-page navigation it can belong to another page.
+  const loadedPath = location.pathname;
 
-  // Avoid double-injection on turbo/pushstate navigations.
-  if (document.getElementById("astra-panel-root")) return;
+  // The PR files page in view: its coordinates, toggle and panel.
+  let view = null;
 
-  // ---------------------------------------------------------------------------
-  // Parse PR coords from the URL
-  // ---------------------------------------------------------------------------
-  const [, owner, repo, , prNumber] = location.pathname.split("/");
+  // GitHub switches pages without a new document (Turbo, React routes), so
+  // the script re-checks the URL on every navigation. Turbo can also swap
+  // <body> after the URL changes, removing the toggle and the panel.
+  function sync() {
+    const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/changes/);
+    const path = m ? location.pathname : null;
+    if (view && (view.path !== path || !view.toggle.isConnected || !view.container.isConnected)) {
+      view.toggle.remove();
+      view.container.remove();
+      view = null;
+    }
+    if (path && !view) view = mount({ path, owner: m[1], repo: m[2], prNumber: Number(m[3]) });
+  }
 
-  // ---------------------------------------------------------------------------
-  // Build the side panel container
-  // ---------------------------------------------------------------------------
-  const container = document.createElement("div");
-  container.id = "astra-panel-root";
-  container.style.cssText = [
-    "position: fixed",
-    "top: 0",
-    "right: 0",
-    "width: 480px",
-    "height: 100vh",
-    "z-index: 9999",
-    "box-shadow: -2px 0 8px rgba(0,0,0,0.15)",
-    "display: none",          // hidden until user toggles on
-  ].join(";");
+  function mount(pr) {
+    // A restored page snapshot can bring back copies without listeners.
+    document.querySelectorAll("#astra-toggle, #astra-panel-root").forEach((el) => el.remove());
 
-  const iframe = document.createElement("iframe");
-  iframe.src = chrome.runtime.getURL("panel/panel.html");
-  iframe.style.cssText = "width:100%;height:100%;border:none;";
-  iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
-  container.appendChild(iframe);
-  document.body.appendChild(container);
+    // -------------------------------------------------------------------------
+    // Build the side panel container
+    // -------------------------------------------------------------------------
+    const container = document.createElement("div");
+    container.id = "astra-panel-root";
+    container.style.cssText = [
+      "position: fixed",
+      "top: 0",
+      "right: 0",
+      "width: 480px",
+      "height: 100vh",
+      "z-index: 9999",
+      "box-shadow: -2px 0 8px rgba(0,0,0,0.15)",
+      "display: none",          // hidden until user toggles on
+    ].join(";");
 
-  // ---------------------------------------------------------------------------
-  // Toggle button
-  // ---------------------------------------------------------------------------
-  const toggle = document.createElement("button");
-  toggle.id = "astra-toggle";
-  toggle.textContent = "⭐ Astra";
-  toggle.title = "Toggle Astra AST review panel";
-  toggle.style.cssText = [
-    "position: fixed",
-    "top: 64px",
-    "right: 0",
-    "z-index: 10000",
-    "background: #0969da",
-    "color: #fff",
-    "border: none",
-    "padding: 6px 12px",
-    "cursor: pointer",
-    "font-size: 13px",
-    "border-radius: 4px 0 0 4px",
-    "font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-  ].join(";");
+    const iframe = document.createElement("iframe");
+    const loaded = new Promise((resolve) => iframe.addEventListener("load", resolve, { once: true }));
+    iframe.src = chrome.runtime.getURL("panel/panel.html");
+    iframe.style.cssText = "width:100%;height:100%;border:none;";
+    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+    container.appendChild(iframe);
+    document.body.appendChild(container);
 
-  let panelOpen = false;
-  toggle.addEventListener("click", () => {
-    panelOpen = !panelOpen;
-    container.style.display = panelOpen ? "block" : "none";
-    toggle.style.right = panelOpen ? "480px" : "0";
-    if (panelOpen) fetchAndSend();
-  });
-  document.body.appendChild(toggle);
+    // -------------------------------------------------------------------------
+    // Toggle button
+    // -------------------------------------------------------------------------
+    const toggle = document.createElement("button");
+    toggle.id = "astra-toggle";
+    toggle.textContent = "⭐ Astra";
+    toggle.title = "Toggle Astra AST review panel";
+    toggle.style.cssText = [
+      "position: fixed",
+      "top: 64px",
+      "right: 0",
+      "z-index: 10000",
+      "background: #0969da",
+      "color: #fff",
+      "border: none",
+      "padding: 6px 12px",
+      "cursor: pointer",
+      "font-size: 13px",
+      "border-radius: 4px 0 0 4px",
+      "font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    ].join(";");
+    document.body.appendChild(toggle);
+
+    const v = { ...pr, container, iframe, loaded, toggle, open: false, sent: false };
+    toggle.addEventListener("click", () => setOpen(v, !v.open));
+    return v;
+  }
+
+  function setOpen(v, open) {
+    v.open = open;
+    v.container.style.display = open ? "block" : "none";
+    v.toggle.style.right = open ? "480px" : "0";
+    if (open) fetchAndSend(v);
+  }
 
   // Handle close from inside the panel iframe.
   window.addEventListener("message", (e) => {
-    if (e.data?.type === "astra-close") {
-      panelOpen = false;
-      container.style.display = "none";
-      toggle.style.right = "0";
-    }
+    if (view && e.data?.type === "astra-close") setOpen(view, false);
   });
 
   // ---------------------------------------------------------------------------
@@ -96,29 +112,23 @@
   // No CORS issues, no API tokens needed — the user's session cookie is
   // automatically included because these are same-origin requests.
   // ---------------------------------------------------------------------------
-  let sent = false;
-
-  async function fetchAndSend() {
-    if (sent) return;
+  async function fetchAndSend(v) {
+    if (v.sent) return;
 
     try {
-      const files = await fetchAllDiffContents();
-      await attachSources(files);
-      postToPanel({ type: "files", owner, repo, prNumber: Number(prNumber), files });
-      sent = true;
+      const { files, headOid } = await fetchAllDiffContents(v);
+      await attachSources(v, files, headOid);
+      await postToPanel(v, { type: "files", owner: v.owner, repo: v.repo, prNumber: v.prNumber, files });
+      v.sent = true;
     } catch (err) {
-      postToPanel({ type: "error", message: err.message });
+      await postToPanel(v, { type: "error", message: err.message });
     }
   }
 
   // Extract diff data already embedded in the page, then fetch any remaining
   // files that GitHub lazy-loads via page_data/diff_entries.
-  async function fetchAllDiffContents() {
-    const script = Array.from(document.querySelectorAll('script[type="application/json"]'))
-      .find(s => s.textContent.includes("pullRequestsChangesRoute"));
-    if (!script) throw new Error("Could not find PR data in page. Try reloading.");
-
-    const route = JSON.parse(script.textContent).payload.pullRequestsChangesRoute;
+  async function fetchAllDiffContents(v) {
+    const route = await pageRoute(v.path);
     const summaries = route.diffSummaries || [];
     const loadedContents = route.diffContents || [];
     const commitOid = loadedContents[0]?.newCommitOid || "";
@@ -136,7 +146,7 @@
     for (let i = 0; i < missingPaths.length; i += BATCH) {
       const batch = missingPaths.slice(i, i + BATCH);
       const encodedPaths = batch.map(p => encodeURIComponent(encodeURIComponent(p))).join(",");
-      const url = `/${owner}/${repo}/pull/${prNumber}/page_data/diff_entries?paths=${encodedPaths}&ctx=%3A%3A&w=0&range=${commitOid}`;
+      const url = `/${v.owner}/${v.repo}/pull/${v.prNumber}/page_data/diff_entries?paths=${encodedPaths}&ctx=%3A%3A&w=0&range=${commitOid}`;
       const resp = await fetch(url, {
         headers: {
           Accept: "application/json",
@@ -153,11 +163,9 @@
       }
     }
 
-    headOid = commitOid;
-
     // Convert GitHub's internal format to the shape Astra's panel expects
     // (mirrors the GitHub REST API response for /pulls/:number/files).
-    return summaries.map(summary => {
+    const files = summaries.map(summary => {
       const content = contentsByPath.get(summary.path);
       const patch = content
         ? diffLinesToPatch(content.diffLines || [])
@@ -171,15 +179,30 @@
         patch,
       };
     });
+    return { files, headOid: commitOid };
+  }
+
+  // The live document holds the route data only when it was loaded at this
+  // path; otherwise read it from a fresh copy of the page.
+  async function pageRoute(path) {
+    let doc = document;
+    if (path !== loadedPath) {
+      const resp = await fetch(path, { credentials: "same-origin" });
+      if (!resp.ok) throw new Error(`Failed to load the PR page: ${resp.status}`);
+      doc = new DOMParser().parseFromString(await resp.text(), "text/html");
+    }
+    const script = Array.from(doc.querySelectorAll('script[type="application/json"]'))
+      .find(s => s.textContent.includes("pullRequestsChangesRoute"));
+    if (!script) throw new Error("Could not find PR data in page. Try reloading.");
+    return JSON.parse(script.textContent).payload.pullRequestsChangesRoute;
   }
 
   // Full post-image source per file, so the core can find entities and call
   // edges. Fetched here (github.com origin, same session) because the raw
   // redirect target does not allow the extension's own origin.
-  let headOid = "";
   const SOURCE_EXT = /\.(m?[jt]sx?|cjs|py|go|java|rs)$/i;
 
-  async function attachSources(files) {
+  async function attachSources(v, files, headOid) {
     const wanted = files.filter((f) => !isRemoved(f) && SOURCE_EXT.test(f.filename));
     let next = 0;
     async function worker() {
@@ -187,7 +210,7 @@
         const f = wanted[next++];
         const path = f.filename.split("/").map(encodeURIComponent).join("/");
         try {
-          const resp = await fetch(`/${owner}/${repo}/raw/${headOid}/${path}`, { credentials: "same-origin" });
+          const resp = await fetch(`/${v.owner}/${v.repo}/raw/${headOid}/${path}`, { credentials: "same-origin" });
           if (resp.ok) f.source = await resp.text();
         } catch {
           // Left without source: the panel reports it and shows plain hunks.
@@ -213,7 +236,13 @@
     return f.status === "removed" || f.status === "deleted";
   }
 
-  function postToPanel(msg) {
-    iframe.contentWindow?.postMessage(msg, "*");
+  // A message posted before the panel's script runs is lost.
+  async function postToPanel(v, msg) {
+    await v.loaded;
+    v.iframe.contentWindow?.postMessage(msg, "*");
   }
+
+  sync();
+  globalThis.navigation?.addEventListener("navigatesuccess", sync);
+  document.addEventListener("turbo:load", sync);
 })();
