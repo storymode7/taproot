@@ -28,30 +28,37 @@ export function parsePRUrl(raw) {
   return { owner: match[1], repo: match[2], prNumber: Number(match[3]) };
 }
 
+// GitHub's files endpoint serves 100 files per page and lists no more than
+// 3000 files in all.
+const PER_PAGE = 100;
+const MAX_FILES = 3000;
+
 /**
- * Fetch all changed files for a PR (max 300 files via pagination).
- * Returns { meta, files } where files matches the GitHub REST shape.
+ * Fetch the changed files of a PR, page by page (one API call per page).
+ * Returns { meta, files } where files matches the GitHub REST shape and
+ * meta.changedFiles is the PR's own count, which exceeds files.length when
+ * GitHub's list stops short.
  *
  * Throws an object with { status, message } on HTTP errors.
  */
 export async function fetchPRFiles(owner, repo, prNumber) {
-  // Fetch PR metadata and files in parallel
-  const [metaResp, filesResp] = await Promise.all([
-    ghFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`),
-    ghFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`),
-  ]);
+  const pr = `/repos/${owner}/${repo}/pulls/${prNumber}`;
+  const page = (n) => ghFetch(`${pr}/files?per_page=${PER_PAGE}&page=${n}`);
+  const [metaResp, first] = await Promise.all([ghFetch(pr), page(1)]);
 
   const meta = {
     owner, repo, number: prNumber,
     title: metaResp.title,
     headSHA: metaResp.head?.sha ?? "",
     baseSHA: metaResp.base?.sha ?? "",
+    changedFiles: metaResp.changed_files ?? first.length,
   };
 
-  // Paginate if >100 files
-  let files = filesResp;
-  // (full pagination left as a future improvement; 100 covers most PRs)
-
+  const files = [...first];
+  const pages = Math.ceil(Math.min(meta.changedFiles, MAX_FILES) / PER_PAGE);
+  for (let n = 2; n <= pages && files.length === (n - 1) * PER_PAGE; n++) {
+    files.push(...(await page(n)));
+  }
   return { meta, files };
 }
 

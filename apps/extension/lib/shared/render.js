@@ -25,6 +25,8 @@ const STATUS_LABEL = {
  * @param {(code: string, language: string) => string|null} [opts.highlight]
  *        returns HTML for one line of code, or null to render it plain
  * @param {string} [opts.commentHint] — shown under the comment box
+ * @param {string} [opts.notice] — shown above the cards, e.g. that the file
+ *        list is incomplete
  */
 export function renderReview(container, review, store, opts = {}) {
   container.innerHTML = "";
@@ -55,6 +57,7 @@ export function renderReview(container, review, store, opts = {}) {
   nav.appendChild(renderTree(roots, byId, store, focusSnippet));
 
   const main = el("div", "astra-files");
+  if (opts.notice) main.appendChild(el("div", "astra-banner", opts.notice));
   if (review.missingSource?.length) {
     const warn = el("div", "astra-banner");
     warn.textContent =
