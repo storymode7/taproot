@@ -46,7 +46,7 @@
   const iframe = document.createElement("iframe");
   iframe.src = chrome.runtime.getURL("panel/panel.html");
   iframe.style.cssText = "width:100%;height:100%;border:none;";
-  iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+  iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
   container.appendChild(iframe);
   document.body.appendChild(container);
 
