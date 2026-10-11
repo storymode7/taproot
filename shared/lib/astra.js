@@ -50,7 +50,10 @@ export function initAstra(adapter) {
       }
       if (!globalThis.astraCore) throw new Error("astra-core.wasm did not install astraCore");
       return globalThis.astraCore;
-    })();
+    })().catch((e) => {
+      corePromise = null;
+      throw e;
+    });
     return corePromise;
   }
 
@@ -171,7 +174,10 @@ export function loadClassicScript(src) {
     const s = document.createElement("script");
     s.src = src;
     s.onload = resolve;
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
+    s.onerror = () => {
+      s.remove(); // a tag left behind would count as loaded next time
+      reject(new Error(`Failed to load ${src}`));
+    };
     document.head.appendChild(s);
   });
 }
