@@ -244,6 +244,8 @@ func (r *Runner) Run() error {
 		case <-done:
 		}
 	}()
+	notifyResize(resized)
+	defer signal.Stop(resized)
 
 	r.render()
 
@@ -251,6 +253,10 @@ func (r *Runner) Run() error {
 		key := readKey()
 		if key == "" {
 			break
+		}
+		if key == keyResize {
+			r.render()
+			continue
 		}
 		r.status = ""
 
@@ -282,8 +288,8 @@ func (r *Runner) Run() error {
 		case "g":
 			if readKey() == "g" {
 				r.diffScroll = 0
-				r.render()
 			}
+			r.render()
 		case "G":
 			r.diffScroll = r.diffMax
 			r.render()
@@ -366,11 +372,25 @@ func editorArgs(editor, path string, line int) (string, []string) {
 	}
 }
 
-// readKey reads one keypress. Reading byte-by-byte (instead of a 3-byte
-// buffer) keeps rapid keystrokes from batching into one unrecognized chunk;
-// an ESC byte pulls the rest of its escape sequence, if one follows within
-// 50ms, so a bare Esc is reported as "\033".
+// keyResize is what readKey returns when the terminal was resized.
+const keyResize = "\x00resize"
+
+// resized gets SIGWINCH while the TUI runs.
+var resized = make(chan os.Signal, 1)
+
+// readKey reads one keypress, or returns keyResize if the terminal is
+// resized first. Reading byte-by-byte (instead of a 3-byte buffer) keeps
+// rapid keystrokes from batching into one unrecognized chunk; an ESC byte
+// pulls the rest of its escape sequence, if one follows within 50ms, so a
+// bare Esc is reported as "\033".
 func readKey() string {
+	for !stdinReadable(100) {
+		select {
+		case <-resized:
+			return keyResize
+		default:
+		}
+	}
 	var b [1]byte
 	n, err := os.Stdin.Read(b[:])
 	if err != nil || n == 0 {
@@ -808,20 +828,23 @@ func (r *Runner) renderHelp() {
 		dim + "      In working tree mode y also stages the snippet and x/r unstages it;" + reset,
 		dim + "      pass --no-apply to leave the index alone." + reset,
 	}
-	rows, cols := termSize()
-	if rows <= 0 {
-		rows = 40
+	for {
+		rows, cols := termSize()
+		if rows <= 0 {
+			rows = 40
+		}
+		if cols <= 0 {
+			cols = 80
+		}
+		fmt.Print("\033[2J\033[H")
+		// On a short screen the notes at the end give way so the keys stay.
+		for _, l := range lines[:min(len(lines), max(1, rows-2))] {
+			fmt.Println(ansiTruncate(l, cols-1))
+		}
+		fmt.Print("\n" + ansiTruncate("Press any key to continue…", cols-1))
+		if readKey() != keyResize {
+			break
+		}
 	}
-	if cols <= 0 {
-		cols = 80
-	}
-	// On a short screen the notes at the end give way so the keys stay.
-	lines = lines[:min(len(lines), max(1, rows-2))]
-	fmt.Print("\033[2J\033[H")
-	for _, l := range lines {
-		fmt.Println(ansiTruncate(l, cols-1))
-	}
-	fmt.Print("\n" + ansiTruncate("Press any key to continue…", cols-1))
-	readKey()
 	r.render()
 }

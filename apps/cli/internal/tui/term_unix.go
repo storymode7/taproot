@@ -4,6 +4,7 @@ package tui
 
 import (
 	"os"
+	"os/signal"
 	"syscall"
 	"unsafe"
 )
@@ -44,4 +45,9 @@ func enableRawMode() (*rawMode, error) {
 func (r *rawMode) restore() {
 	syscall.Syscall(syscall.SYS_IOCTL, //nolint:errcheck
 		uintptr(r.fd), ioctlSetTermios, uintptr(unsafe.Pointer(&r.saved)))
+}
+
+// notifyResize sends a signal on c whenever the terminal is resized.
+func notifyResize(c chan<- os.Signal) {
+	signal.Notify(c, syscall.SIGWINCH)
 }

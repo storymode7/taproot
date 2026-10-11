@@ -94,12 +94,12 @@ func (p *ptyTerm) output() string {
 }
 
 // waitFor waits until the output after offset from contains s, and returns
-// the output's length.
+// the offset just past it.
 func (p *ptyTerm) waitFor(t *testing.T, from int, s string) int {
 	t.Helper()
 	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
-		if out := p.output(); strings.Contains(out[from:], s) {
-			return len(out)
+		if i := strings.Index(p.output()[from:], s); i >= 0 {
+			return from + i + len(s)
 		}
 	}
 	t.Fatalf("timed out waiting for %q; output:\n%q", s, p.output()[from:])
@@ -181,4 +181,41 @@ func TestRun_PanicRestoresTerminal(t *testing.T) {
 		t.Fatalf("Run = %v, want the panic", v)
 	}
 	assertRestored(t, p, before)
+}
+
+func TestRun_ResizeRedraws(t *testing.T) {
+	p := openPTY(t, 24, 80)
+	done := runTUI(testRunner(t, manySnippets(3, 5)...))
+	resize := func(rows, cols int) {
+		p.resize(t, rows, cols)
+		syscall.Kill(os.Getpid(), syscall.SIGWINCH)
+	}
+	rule := func(cols int) string { return dim + strings.Repeat("─", cols) + reset }
+
+	off := p.waitFor(t, 0, "quit")
+	resize(16, 60)
+	off = p.waitFor(t, off, rule(60))
+
+	p.ctl.Write([]byte("?"))
+	off = p.waitFor(t, off, "Press any key")
+	resize(20, 70)
+	off = p.waitFor(t, off, "Press any key")
+	p.ctl.Write([]byte("x"))
+	off = p.waitFor(t, off, rule(70))
+
+	p.ctl.Write([]byte("/ab"))
+	off = p.waitFor(t, off, "/ab")
+	resize(18, 72)
+	off = p.waitFor(t, off, rule(72))
+	off = p.waitFor(t, off, "/ab")
+
+	p.ctl.Write([]byte("\x1b"))
+	p.waitFor(t, off, "quit")
+	p.ctl.Write([]byte("\x03"))
+	if v := waitDone(t, done); v != nil {
+		t.Fatalf("Run = %v", v)
+	}
+	if strings.Contains(p.output(), "rejected") {
+		t.Error("the key that closed the help screen was run as a command")
+	}
 }

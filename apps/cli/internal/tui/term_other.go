@@ -2,7 +2,10 @@
 
 package tui
 
-import "errors"
+import (
+	"errors"
+	"os"
+)
 
 // rawMode is not available here, so Run falls back to the plain View.
 type rawMode struct{}
@@ -14,3 +17,5 @@ func enableRawMode() (*rawMode, error) {
 func (*rawMode) restore() {}
 
 func stdinReadable(int) bool { return true }
+
+func notifyResize(chan<- os.Signal) {}
