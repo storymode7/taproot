@@ -546,7 +546,11 @@ func (r *Runner) setStatus(status string) {
 	st := r.store.Get(n.Snippet.ID)
 	if r.applyMode && r.stage != nil && (status == "accepted" || st.Status == "accepted") {
 		if err := r.stage(n.Snippet, status != "accepted"); err != nil {
-			r.status = err.Error()
+			verb := "stage"
+			if status != "accepted" {
+				verb = "unstage"
+			}
+			r.status = "could not " + verb + ": " + err.Error()
 			r.render()
 			return
 		}
@@ -626,22 +630,11 @@ func (r *Runner) render() {
 	}
 
 	// Layout: header(1) + rule(1) + tree(treeH) + focus rule(1) + diff + hints(1).
-	treeH := rows / 3
-	if treeH < 8 {
-		treeH = 8
-	}
-	if len(r.tree.visible) < treeH {
-		treeH = len(r.tree.visible)
-	}
-	if max := rows - 10; treeH > max && max >= 3 {
-		treeH = max
-	}
+	// The tree takes a third of the rows, at least 8, but leaves the diff 5.
+	treeH := min(max(8, rows/3), len(r.tree.visible), max(1, rows-10))
 	// Budget: header(1) + rule(1) + tree + focus rule(1) + diff +
 	// more-indicator(1) + hint(1, no trailing newline).
-	diffH := rows - treeH - 5
-	if diffH < 3 {
-		diffH = 3
-	}
+	diffH := max(0, rows-treeH-5)
 
 	// Hide cursor during redraw, clear screen, move to top.
 	fmt.Print("\033[?25l\033[2J\033[H")
@@ -658,8 +651,6 @@ func (r *Runner) render() {
 	if total > 0 {
 		pct = done * 100 / total
 	}
-	filled := pct * 20 / 100
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
 	autoLabel := "auto:on"
 	if !r.autoAdvance {
 		autoLabel = "auto:off"
@@ -668,9 +659,13 @@ func (r *Runner) render() {
 	if r.applyMode {
 		applyLabel = "  " + yellow + "[staging]" + reset
 	}
-	fmt.Printf("%s Astra%s  %d/%d reviewed %s%s%s %d%%  %s%s%s%s\n",
-		bold+blue+"⭐", reset, done, total, dim, bar, reset, pct,
-		dim, autoLabel, reset, applyLabel)
+	head := fmt.Sprintf("%s Astra%s  %d/%d reviewed ", bold+blue+"⭐", reset, done, total)
+	tail := fmt.Sprintf(" %d%%  %s%s%s%s", pct, dim, autoLabel, reset, applyLabel)
+	// In a narrow terminal the bar shrinks before the labels are cut.
+	barW := min(20, max(0, cols-1-strWidth(stripANSI(head+tail))))
+	filled := pct * barW / 100
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
+	fmt.Println(ansiTruncate(head+dim+bar+reset+tail, cols-1))
 	fmt.Println(dim + strings.Repeat("─", cols) + reset)
 
 	// Tree pane.
@@ -700,7 +695,7 @@ func (r *Runner) render() {
 				also = append(also, c.Snippet.SymbolPath)
 			}
 		}
-		if notes := snippetNotes(s, also); len(notes) > 0 {
+		if notes := snippetNotes(s, also); len(notes) > 0 && diffH > 0 {
 			fmt.Println(dim + ansiTruncate(strings.Join(notes, " · "), cols-1) + reset)
 			diffH--
 		}
@@ -730,7 +725,7 @@ func (r *Runner) render() {
 			fmt.Println(ansiTruncate(l, cols))
 		}
 		if end < len(lines) {
-			fmt.Printf("%s… %d more lines (j/k to scroll)%s\n", dim, len(lines)-end, reset)
+			fmt.Println(dim + ansiTruncate(fmt.Sprintf("… %d more lines (j/k to scroll)", len(lines)-end), cols-1) + reset)
 		}
 	}
 
@@ -739,7 +734,8 @@ func (r *Runner) render() {
 	case r.prompting:
 		fmt.Print(ansiTruncate("/"+displaySafe(r.input), cols-1) + "\033[?25h")
 	case r.status != "":
-		fmt.Print(yellow + ansiTruncate(displaySafe(r.status), cols-1) + reset)
+		status := strings.Join(strings.Fields(r.status), " ") // git errors span lines
+		fmt.Print(yellow + ansiTruncate(displaySafe(status), cols-1) + reset)
 	default:
 		hints := "J/K move · l/h drill in/out · y/x/r judge · ]/[ pending · j/k scroll · / search · o open · E/C fold · tab auto · ? help · q quit"
 		fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
