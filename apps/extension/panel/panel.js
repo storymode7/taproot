@@ -8,7 +8,7 @@
 import { buildReview, reorderReview } from "../lib/ast-ext.js";
 import { renderReview } from "../lib/shared/render.js";
 import hljs from "../vendor/highlight.min.js";
-import { StateStore } from "../lib/state.js";
+import { StateStore } from "../lib/shared/state.js";
 
 const store = new StateStore("astra-ext");
 let currentReview = null;
@@ -31,14 +31,14 @@ function presetToOrder(preset) {
   return preset === "bottom-up" ? "post" : "pre";
 }
 
-async function handleFiles({ files }) {
+async function handleFiles({ owner, repo, prNumber, files }) {
   setStatus("Parsing AST & ordering…");
   try {
     const preset = document.getElementById("preset-select").value;
     // The Go core (WASM) builds snippets, call edges, and the review tree.
     currentReview = await buildReview(files, presetToOrder(preset));
     currentSnippets = currentReview.snippets ?? [];
-    await store.warmCache(currentSnippets.map((s) => s.id));
+    await store.load(`${owner}/${repo}#${prNumber}`, currentSnippets);
     render();
     setStatus("");
   } catch (err) {

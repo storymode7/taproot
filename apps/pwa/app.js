@@ -16,7 +16,7 @@
 import { parsePRUrl, fetchPRFiles } from "./lib/github.js";
 import { buildReview, reorderReview } from "./lib/ast.js";
 import { renderReview } from "./lib/shared/render.js";
-import { StateStore } from "./lib/state.js";
+import { StateStore } from "./lib/shared/state.js";
 
 // ---------------------------------------------------------------------------
 // Screen management
@@ -92,7 +92,7 @@ async function loadReview({ owner, repo, prNumber }) {
   // The Go core (WASM) builds snippets, call edges, and the review tree.
   const preset = document.getElementById("preset-select").value;
   currentReview = await buildReview(files, presetToOrder(preset));
-  await store.warmCache((currentReview.snippets ?? []).map((s) => s.id));
+  await store.load(`${owner}/${repo}#${prNumber}`, currentReview.snippets ?? []);
   render();
   showScreen("review");
 }
