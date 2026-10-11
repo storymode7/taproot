@@ -39,12 +39,13 @@ const MAX_FILES = 3000;
  * meta.changedFiles is the PR's own count, which exceeds files.length when
  * GitHub's list stops short.
  *
- * Throws an object with { status, message } on HTTP errors.
+ * Throws an object with { status, message } on HTTP errors, and an
+ * AbortError once `signal` aborts.
  */
-export async function fetchPRFiles(owner, repo, prNumber) {
+export async function fetchPRFiles(owner, repo, prNumber, { signal } = {}) {
   const pr = `/repos/${owner}/${repo}/pulls/${prNumber}`;
-  const page = (n) => ghFetch(`${pr}/files?per_page=${PER_PAGE}&page=${n}`);
-  const [metaResp, first] = await Promise.all([ghFetch(pr), page(1)]);
+  const page = (n) => ghFetch(`${pr}/files?per_page=${PER_PAGE}&page=${n}`, signal);
+  const [metaResp, first] = await Promise.all([ghFetch(pr, signal), page(1)]);
 
   const meta = {
     owner, repo, number: prNumber,
@@ -62,9 +63,10 @@ export async function fetchPRFiles(owner, repo, prNumber) {
   return { meta, files };
 }
 
-async function ghFetch(path) {
+async function ghFetch(path, signal) {
   const resp = await fetch(`${GH_API}${path}`, {
     headers: { Accept: "application/vnd.github+json" },
+    signal,
   });
   if (!resp.ok) {
     const err = new Error(`GitHub API error: ${resp.status} ${resp.statusText}`);

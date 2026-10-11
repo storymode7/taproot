@@ -62,7 +62,7 @@ function highlight(code, language) {
 
 document.getElementById("preset-select").addEventListener("change", async (e) => {
   if (!currentSnippets.length) return;
-  currentReview = await reorderReview(presetToOrder(e.target.value));
+  currentReview = await reorderReview(currentReview, presetToOrder(e.target.value));
   currentSnippets = currentReview.snippets ?? [];
   render();
 });

@@ -18,16 +18,14 @@
  *
  * Environment differences are injected through an adapter:
  *   initAstra({
- *     coreBase,            // base URL for vendor/core (wasm_exec.js, astra-core.wasm)
- *     fetchSource(file),   // → full post-image source string or null
+ *     coreBase,                  // base URL for vendor/core (wasm_exec.js, astra-core.wasm)
+ *     fetchSource(file, signal), // → full post-image source string or null
  *   })
  */
 
 export function initAstra(adapter) {
   let corePromise = null;
-  let lastFiles = null;
-  let lastMissing = [];
-  let lastSkipped = [];
+  const builtFrom = new WeakMap();
 
   async function loadCore() {
     if (corePromise) return corePromise;
@@ -66,8 +64,9 @@ export function initAstra(adapter) {
    * files whose full source could not be fetched (they fall back to plain
    * hunks with no call structure). `skipped` lists the changed files the
    * review cannot show, by path: { path, oldPath?, reason }.
+   * Aborting `signal` stops the source fetches and rejects with AbortError.
    */
-  async function buildReview(files, order = "pre") {
+  async function buildReview(files, order = "pre", { signal } = {}) {
     const wireFiles = [];
     const missing = [];
     const skipped = [];
@@ -87,7 +86,7 @@ export function initAstra(adapter) {
 
       let source = "";
       if (lang && !isDeleted) {
-        source = (await adapter.fetchSource(file)) ?? "";
+        source = (await adapter.fetchSource(file, signal)) ?? "";
         if (!source) missing.push(file.filename);
       }
 
@@ -103,28 +102,28 @@ export function initAstra(adapter) {
         entities: [],
       });
     }
-    lastFiles = wireFiles;
-    lastMissing = missing;
-    lastSkipped = skipped;
-    return processFiles(wireFiles, order);
+    signal?.throwIfAborted();
+    return processFiles({ wireFiles, missing, skipped }, order);
   }
 
-  /** Re-run ordering on the last built review without re-fetching. */
-  async function reorderReview(order) {
-    if (!lastFiles) throw new Error("no review built yet");
-    return processFiles(lastFiles, order);
+  /** Re-run ordering on a built review without re-fetching. */
+  async function reorderReview(review, order) {
+    const input = builtFrom.get(review);
+    if (!input) throw new Error("not a review built by this pipeline");
+    return processFiles(input, order);
   }
 
-  async function processFiles(wireFiles, order) {
+  async function processFiles(input, order) {
     const core = await loadCore();
     const resp = JSON.parse(
-      core.process(JSON.stringify({ files: wireFiles, options: { order } })),
+      core.process(JSON.stringify({ files: input.wireFiles, options: { order } })),
     );
     if (resp.error) throw new Error(`astra core: ${resp.error}`);
     for (const s of resp.snippets ?? []) s.status = "pending";
-    resp.missingSource = lastMissing;
-    resp.skipped = [...lastSkipped, ...(resp.skipped ?? [])]
+    resp.missingSource = input.missing;
+    resp.skipped = [...input.skipped, ...(resp.skipped ?? [])]
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    builtFrom.set(resp, input);
     return resp;
   }
 

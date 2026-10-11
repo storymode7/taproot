@@ -83,7 +83,7 @@ test("files without a diff are listed, deleted files go to the core", async () =
   core.process = (req) => { sent.push(JSON.parse(req)); return process(req); };
 
   const review = await astra.buildReview([removed, ...noDiff, edit]);
-  const reordered = await astra.reorderReview("post");
+  const reordered = await astra.reorderReview(review, "post");
   core.process = process;
 
   const skipped = [
@@ -106,4 +106,24 @@ test("files the core skips are listed with the ones the browser skips", async ()
   const review = await astra.buildReview([{ filename: "c.png", status: "added" }, edit]);
   core.process = process;
   assert.deepEqual(review.skipped, [{ path: "b.bin", reason: "binary" }, { path: "c.png", reason: "no-diff" }]);
+});
+
+test("a reorder uses the files of the review it is given", async () => {
+  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
+  const first = await astra.buildReview([edit]);
+  await astra.buildReview([{ filename: "other.txt", status: "modified", patch: "@@ -1 +1 @@\n-a\n+b" }]);
+  const reordered = await astra.reorderReview(first, "post");
+  assert.deepEqual(reordered.snippets.map((s) => s.filePath), ["src/app.js"]);
+});
+
+test("an aborted build stops before the core runs", async () => {
+  const ctrl = new AbortController();
+  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => (ctrl.abort(), null) });
+  const core = await astra.loadCore();
+  const process = core.process;
+  let calls = 0;
+  core.process = (req) => (calls++, process(req));
+  await assert.rejects(astra.buildReview([edit], "pre", { signal: ctrl.signal }), { name: "AbortError" });
+  core.process = process;
+  assert.equal(calls, 0);
 });

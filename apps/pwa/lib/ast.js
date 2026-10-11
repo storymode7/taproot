@@ -12,11 +12,11 @@ import { initAstra } from "./shared/astra.js";
 // Relative to the page: the PWA ships its own copy (scripts/sync-extension-lib.sh).
 const CORE = "vendor/core";
 
-async function fetchSource(file) {
+async function fetchSource(file, signal) {
   try {
     const url = rawContentURL(file.raw_url);
     if (!url) return null;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal });
     return resp.ok ? await resp.text() : null;
   } catch {
     return null;

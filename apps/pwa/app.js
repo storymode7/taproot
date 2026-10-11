@@ -5,7 +5,8 @@
  * The review engine is vendored WASM in vendor/core/, next to this file.
  *
  * Flow:
- *   1. User pastes a public GH PR URL → parsePRUrl()
+ *   1. User pastes a public GH PR URL → parsePRUrl(); the PR goes into the
+ *      page URL (?pr=…), so Back, Forward and reload stay in the app
  *   2. Fetch diff from api.github.com (unauthenticated)
  *   3. Fetch each changed file's full source (raw.githubusercontent.com)
  *   4. Build snippets (hunk → AST node) + symbol graph
@@ -37,42 +38,76 @@ function showScreen(name) {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let currentReview = null;
-let currentMeta = null;
-let currentNotice = "";
+// The review on the review screen: { url, title, scope, review, notice }.
+let shown = null;
+// The review whose state the store holds, and the navigation in progress.
+let storeScope = null;
+let navigation = null;
 const store = new StateStore("astra-pwa");
+const urlInput = document.getElementById("pr-url");
+const errEl = document.getElementById("input-error");
 
 // ---------------------------------------------------------------------------
-// PR form submit
+// Navigation: the PR under review lives in the page URL (?pr=…)
 // ---------------------------------------------------------------------------
-document.getElementById("pr-form").addEventListener("submit", async (e) => {
+document.getElementById("pr-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  const raw = document.getElementById("pr-url").value.trim();
-  const errEl = document.getElementById("input-error");
-  errEl.hidden = true;
-
   let coords;
   try {
-    coords = parsePRUrl(raw);
+    coords = parsePRUrl(urlInput.value.trim());
   } catch (err) {
-    errEl.textContent = err.message;
-    errEl.hidden = false;
+    showInput(err.message);
     return;
   }
+  const { owner, repo, prNumber } = coords;
+  navigate(`https://github.com/${owner}/${repo}/pull/${prNumber}`);
+});
 
-  showScreen("loading");
+function navigate(pr) {
+  history.pushState(null, "", pr ? `?${new URLSearchParams({ pr })}` : location.pathname);
+  route();
+}
+
+async function route() {
+  navigation?.abort();
+  const nav = (navigation = new AbortController());
+  const url = new URLSearchParams(location.search).get("pr");
+  if (!url) {
+    showInput();
+    return;
+  }
+  urlInput.value = url;
   try {
-    await loadReview(coords);
+    let next = shown?.url === url ? shown : null;
+    if (!next) {
+      showScreen("loading");
+      next = await loadReview(url, parsePRUrl(url), nav.signal);
+      if (navigation !== nav) return;
+    }
+    // Another PR's load may have switched the store since this one showed.
+    if (next !== shown || storeScope !== next.scope) {
+      storeScope = next.scope;
+      await store.load(next.scope, next.review.snippets ?? []);
+      if (navigation !== nav) return;
+      shown = next;
+      render();
+    }
+    showScreen("review");
   } catch (err) {
+    if (navigation !== nav) return;
     if (err.status === 403 || err.status === 429) {
       showScreen("ratelimit");
     } else {
-      errEl.textContent = `Error: ${err.message}`;
-      errEl.hidden = false;
-      showScreen("input");
+      showInput(`Error: ${err.message}`);
     }
   }
-});
+}
+
+function showInput(error = "") {
+  errEl.textContent = error;
+  errEl.hidden = !error;
+  showScreen("input");
+}
 
 // ---------------------------------------------------------------------------
 // Core review flow
@@ -83,42 +118,48 @@ function presetToOrder(preset) {
   return preset === "bottom-up" ? "post" : "pre";
 }
 
-async function loadReview({ owner, repo, prNumber }) {
-  const { meta, files } = await fetchPRFiles(owner, repo, prNumber);
-  currentMeta = meta;
-  currentNotice = files.length < meta.changedFiles
-    ? `Showing the first ${files.length} of ${meta.changedFiles} changed files, as many as GitHub lists. Review the rest on GitHub.`
-    : "";
-
-  document.getElementById("review-title").textContent =
-    `${owner}/${repo} #${prNumber}`;
+async function loadReview(url, { owner, repo, prNumber }, signal) {
+  const { meta, files } = await fetchPRFiles(owner, repo, prNumber, { signal });
 
   // The Go core (WASM) builds snippets, call edges, and the review tree.
   const preset = document.getElementById("preset-select").value;
-  currentReview = await buildReview(files, presetToOrder(preset));
-  await store.load(`${owner}/${repo}#${prNumber}`, currentReview.snippets ?? []);
-  render();
-  showScreen("review");
+  const review = await buildReview(files, presetToOrder(preset), { signal });
+  return {
+    url,
+    title: `${owner}/${repo} #${prNumber}`,
+    scope: `${owner}/${repo}#${prNumber}`,
+    review,
+    notice: files.length < meta.changedFiles
+      ? `Showing the first ${files.length} of ${meta.changedFiles} changed files, as many as GitHub lists. Review the rest on GitHub.`
+      : "",
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Preset change → re-order without re-fetching
 // ---------------------------------------------------------------------------
 document.getElementById("preset-select").addEventListener("change", async (e) => {
-  if (!currentReview) return;
-  currentReview = await reorderReview(presetToOrder(e.target.value));
+  const was = shown;
+  if (!was) return;
+  const review = await reorderReview(was.review, presetToOrder(e.target.value));
+  if (shown !== was) return;
+  was.review = review;
   render();
 });
 
 function render() {
-  renderReview(document.getElementById("snippet-list"), currentReview, store, {
+  document.getElementById("review-title").textContent = shown.title;
+  renderReview(document.getElementById("snippet-list"), shown.review, store, {
     commentHint: "Saved in this browser only — the PWA can't post to GitHub.",
-    notice: currentNotice,
+    notice: shown.notice,
   });
 }
 
 // ---------------------------------------------------------------------------
 // Back buttons
 // ---------------------------------------------------------------------------
-document.getElementById("btn-back-review").addEventListener("click", () => showScreen("input"));
-document.getElementById("btn-back-ratelimit").addEventListener("click", () => showScreen("input"));
+document.getElementById("btn-back-review").addEventListener("click", () => navigate(null));
+document.getElementById("btn-back-ratelimit").addEventListener("click", () => navigate(null));
+
+window.addEventListener("popstate", route);
+route();
