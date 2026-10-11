@@ -121,22 +121,23 @@ func TestBuildSnippets_IsNew(t *testing.T) {
 }
 
 func TestSnippetID_Stable(t *testing.T) {
-	id1 := entitySnippetID("foo.go", "function", "MyFunc")
-	id2 := entitySnippetID("foo.go", "function", "MyFunc")
+	id1 := entitySnippetID("foo.go", "function", "MyFunc", 1)
+	id2 := entitySnippetID("foo.go", "function", "MyFunc", 1)
 	if id1 != id2 {
 		t.Errorf("entitySnippetID not stable: %q != %q", id1, id2)
 	}
 }
 
 func TestSnippetID_DifferentInputs(t *testing.T) {
-	base := entitySnippetID("foo.go", "function", "MyFunc")
+	base := entitySnippetID("foo.go", "function", "MyFunc", 1)
 	cases := []struct {
 		name string
 		id   string
 	}{
-		{"different file", entitySnippetID("bar.go", "function", "MyFunc")},
-		{"different kind", entitySnippetID("foo.go", "type", "MyFunc")},
-		{"different symbol", entitySnippetID("foo.go", "function", "OtherFunc")},
+		{"different file", entitySnippetID("bar.go", "function", "MyFunc", 1)},
+		{"different kind", entitySnippetID("foo.go", "type", "MyFunc", 1)},
+		{"different symbol", entitySnippetID("foo.go", "function", "OtherFunc", 1)},
+		{"second same-named entity", entitySnippetID("foo.go", "function", "MyFunc", 2)},
 		{"nameless", snippetID("foo.go", "", 10)},
 	}
 	for _, tc := range cases {

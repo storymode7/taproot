@@ -137,3 +137,37 @@ func TestAnnotateUnchangedCallers_MethodResolution(t *testing.T) {
 		t.Errorf("UnchangedCallers = %v, want %v", parse.UnchangedCallers, want)
 	}
 }
+
+func TestAnnotateUnchangedCallers_UnchangedSameNamedSibling(t *testing.T) {
+	// Circle.String changed; Square.String did not but calls describe. A
+	// changed entity's name must not hide its unchanged namesake.
+	src := `package shapes
+
+func (c Circle) String() string {
+	return "circle"
+}
+
+func (s Square) String() string {
+	return describe(s.Side)
+}
+
+func describe(x float64) string {
+	return "side"
+}
+`
+	f := ucFile("shapes.go", "go", src,
+		Hunk{OldStart: 4, OldLines: 1, NewStart: 4, NewLines: 1,
+			Lines: []string{`-	return "c"`, `+	return "circle"`}},
+		Hunk{OldStart: 12, OldLines: 1, NewStart: 12, NewLines: 1,
+			Lines: []string{`-	return "s"`, `+	return "side"`}})
+
+	files := []*FileDiff{f}
+	snippets := BuildSnippets(files)
+	AnnotateUnchangedCallers(files, snippets)
+
+	describe := ucSnippet(t, snippets, "shapes.go", "describe")
+	want := []string{"shapes.go::String"}
+	if !reflect.DeepEqual(describe.UnchangedCallers, want) {
+		t.Errorf("UnchangedCallers = %v, want %v", describe.UnchangedCallers, want)
+	}
+}

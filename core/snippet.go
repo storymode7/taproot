@@ -140,15 +140,16 @@ func fileSnippets(f *FileDiff) []*Snippet {
 // share an entity into a single Snippet.
 //
 // Algorithm:
-//  1. For every hunk, find the entity whose [StartLine, EndLine] contains the
-//     hunk's [NewStart, NewStart+NewLines-1]. If multiple entities overlap
-//     (shouldn't happen with well-formed source), pick the smallest span.
-//  2. Hunks that don't fall inside any entity go into a "preamble" bucket
-//     (keyed on the file path so all uncovered hunks collapse together).
-//     Preamble groups with no substantive change are dropped entirely.
-//  3. Group hunks by entity, then build one Snippet per group from the merged
-//     diff lines in hunk order. Entity groups whose fragments carry no +/-
-//     lines at all (pure context spill) are dropped.
+//  1. Split every hunk at entity boundaries; each piece belongs to the
+//     smallest entity enclosing its lines, or to none.
+//  2. Pieces outside every entity go into a "preamble" bucket (one per file,
+//     so all uncovered pieces collapse together). Preamble groups with no
+//     substantive change are dropped entirely.
+//  3. Group pieces by entity identity — never by name, so Go methods on two
+//     receivers, Java overloads and property getter/setter pairs stay apart
+//     — then build one Snippet per group from its diff lines in hunk order.
+//     The file's import blocks share one group. Pieces with no +/- lines at
+//     all (pure context spill) are dropped.
 func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	type group struct {
 		entity    *Entity // nil == preamble
@@ -157,54 +158,50 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 		endLine   int
 	}
 
-	// ordered list of groups, keyed by entity name for deduplication.
-	var order []string
-	groups := make(map[string]*group)
-
-	addHunk := func(key string, ent *Entity, h Hunk) {
-		if _, ok := groups[key]; !ok {
-			order = append(order, key)
-			sl, el := h.NewStart, h.NewStart+h.NewLines-1
-			if ent != nil {
-				sl, el = ent.StartLine, ent.EndLine
-			}
-			groups[key] = &group{entity: ent, startLine: sl, endLine: el}
-		}
-		groups[key].hunkLines = append(groups[key].hunkLines, h.Lines...)
-	}
+	// ordered list of groups, keyed by entity (or "imports") for dedup.
+	var order []*group
+	groups := make(map[any]*group)
 
 	for i := range f.Hunks {
 		// Split hunks that straddle entity boundaries (context overlap,
 		// whole-new-file hunks) so each piece maps to exactly one entity.
-		for _, h := range splitHunkAtEntities(f.Hunks[i], entities) {
+		for _, p := range splitHunkAtEntities(f.Hunks[i], entities) {
 			// A piece with no +/- lines is context spilled across an entity
 			// boundary; git apply rejects such a hunk as corrupt.
-			if !hasChangedLine(h.Lines) {
+			if !hasChangedLine(p.Lines) {
 				continue
 			}
-			hStart := h.NewStart
-			hEnd := h.NewStart + h.NewLines - 1
-			if hEnd < hStart {
-				hEnd = hStart
+			key := any(p.entity)
+			if p.entity != nil && p.entity.Kind == "imports" {
+				key = "imports"
 			}
-
-			best := findEnclosingEntity(entities, hStart, hEnd)
-			if best != nil {
-				key := best.Kind + "::" + best.Name
-				addHunk(key, best, h)
-			} else {
-				// Preamble: lines not inside any named entity.
-				// Group all such hunks under a single preamble snippet.
-				addHunk("__preamble__", nil, h)
+			g := groups[key]
+			if g == nil {
+				sl, el := p.NewStart, p.NewStart+p.NewLines-1
+				if p.entity != nil {
+					sl, el = p.entity.StartLine, p.entity.EndLine
+				}
+				g = &group{entity: p.entity, startLine: sl, endLine: el}
+				groups[key] = g
+				order = append(order, g)
 			}
+			g.hunkLines = append(g.hunkLines, p.Lines...)
 		}
+	}
+
+	// ordinal numbers same-kind same-name entities in source order; the
+	// 2nd and later get it in their ID.
+	ordinal := make(map[*Entity]int, len(entities))
+	seen := make(map[string]int)
+	for i := range entities {
+		e := &entities[i]
+		seen[e.Kind+"::"+e.Name]++
+		ordinal[e] = seen[e.Kind+"::"+e.Name]
 	}
 
 	sourceLines := splitLines(src)
 	snippets := make([]*Snippet, 0, len(order))
-	for _, key := range order {
-		g := groups[key]
-
+	for _, g := range order {
 		// Blank-line-only fragments between entities would otherwise become
 		// empty preamble snippets — pure noise. Entity snippets are kept even
 		// when their only change is whitespace, but dropped when the fragment
@@ -257,56 +254,17 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 			Status:     StatusPending,
 		}
 		if g.entity != nil {
-			s.ID = entitySnippetID(f.Path, s.NodeType, s.SymbolPath)
+			ord := ordinal[g.entity]
+			if g.entity.Kind == "imports" {
+				ord = 1
+			}
+			s.ID = entitySnippetID(f.Path, s.NodeType, s.SymbolPath, ord)
 		} else {
 			s.ID = snippetID(f.Path, s.SymbolPath, s.StartLine)
 		}
 		snippets = append(snippets, s)
 	}
 	return snippets
-}
-
-// findEnclosingEntity returns the entity that best matches the line range
-// [hStart, hEnd]. It prefers the smallest entity that fully contains the
-// range; if none fully contains it, it falls back to the entity with the
-// greatest line overlap (e.g. when a diff adds lines that push past the
-// current entity boundary, or when a hunk straddles two entities).
-func findEnclosingEntity(entities []Entity, hStart, hEnd int) *Entity {
-	// First pass: exact containment — smallest entity that fully wraps the hunk.
-	var best *Entity
-	for i := range entities {
-		e := &entities[i]
-		if e.StartLine <= hStart && e.EndLine >= hEnd {
-			if best == nil || (e.EndLine-e.StartLine) < (best.EndLine-best.StartLine) {
-				best = e
-			}
-		}
-	}
-	if best != nil {
-		return best
-	}
-
-	// Second pass: maximum overlap — for hunks that extend past entity
-	// boundaries (e.g. new lines added at end of a function).
-	bestOverlap := 0
-	for i := range entities {
-		e := &entities[i]
-		// Overlap = intersection length
-		overlapStart := hStart
-		if e.StartLine > overlapStart {
-			overlapStart = e.StartLine
-		}
-		overlapEnd := hEnd
-		if e.EndLine < overlapEnd {
-			overlapEnd = e.EndLine
-		}
-		overlap := overlapEnd - overlapStart + 1
-		if overlap > bestOverlap {
-			bestOverlap = overlap
-			best = e
-		}
-	}
-	return best
 }
 
 // trimRedundantHunkHeaders removes duplicate @@ headers when multiple hunks
@@ -397,9 +355,15 @@ func snippetID(filePath, symbolPath string, startLine int) string {
 // entitySnippetID computes a stable ID for an entity snippet. It is keyed
 // by (file, kind, name), not by line, so review state survives when lines
 // shift above the entity; the kind keeps a const and a type that share a
-// name (the zod schema pattern) apart.
-func entitySnippetID(filePath, kind, name string) string {
-	return hashID(fmt.Sprintf("%s::%s::%s", filePath, kind, name))
+// name (the zod schema pattern) apart. ordinal is the entity's place among
+// the file's same-kind same-name entities (Go methods on two receivers,
+// Java overloads); the first keeps the plain key.
+func entitySnippetID(filePath, kind, name string, ordinal int) string {
+	key := fmt.Sprintf("%s::%s::%s", filePath, kind, name)
+	if ordinal > 1 {
+		key = fmt.Sprintf("%s#%d", key, ordinal)
+	}
+	return hashID(key)
 }
 
 func hashID(key string) string {

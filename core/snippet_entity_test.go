@@ -501,3 +501,158 @@ export type User = z.infer<typeof User> & { createdAt: Date };
 		t.Errorf("forest has %d nodes, want 2", len(f.ByID))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Same-named entities in one file stay separate snippets
+// ---------------------------------------------------------------------------
+
+// snippetsNamed returns the snippets with the given symbol path, in order.
+func snippetsNamed(snippets []*Snippet, symbol string) []*Snippet {
+	var out []*Snippet
+	for _, s := range snippets {
+		if s.SymbolPath == symbol {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func TestBuildSnippets_SameNamedGoMethodsStaySeparate(t *testing.T) {
+	src := `package shapes
+
+type Circle struct{ R float64 }
+
+func (c Circle) String() string {
+	return "circle"
+}
+
+type Square struct{ Side float64 }
+
+func (s Square) String() string {
+	return describe(s.Side)
+}
+
+func describe(x float64) string { return "" }
+`
+	files := []*FileDiff{{
+		Path: "shapes.go", OldPath: "shapes.go", Language: "go", Source: []byte(src),
+		Hunks: []Hunk{
+			{OldStart: 6, OldLines: 1, NewStart: 6, NewLines: 1,
+				Lines: []string{"@@ -6,1 +6,1 @@", `-	return "c"`, `+	return "circle"`}},
+			{OldStart: 12, OldLines: 1, NewStart: 12, NewLines: 1,
+				Lines: []string{"@@ -12,1 +12,1 @@", `-	return "s"`, `+	return describe(s.Side)`}},
+			{OldStart: 15, OldLines: 0, NewStart: 15, NewLines: 1,
+				Lines: []string{"@@ -14,0 +15,1 @@", `+func describe(x float64) string { return "" }`}},
+		},
+	}}
+
+	snippets := BuildSnippets(files)
+	str := snippetsNamed(snippets, "String")
+	if len(str) != 2 {
+		t.Fatalf("want 2 String snippets, got %d of %v", len(str), symbolPaths(snippets))
+	}
+	if str[0].StartLine != 5 || str[1].StartLine != 11 {
+		t.Errorf("String spans start at %d and %d, want 5 and 11", str[0].StartLine, str[1].StartLine)
+	}
+	if strings.Contains(strings.Join(str[0].DiffLines, "\n"), "describe") {
+		t.Errorf("Circle.String carries Square.String's change:\n%s", strings.Join(str[0].DiffLines, "\n"))
+	}
+	if str[0].ID == str[1].ID {
+		t.Errorf("both String snippets have ID %s", str[0].ID)
+	}
+	if str[0].ID != entitySnippetID("shapes.go", "function", "String", 1) {
+		t.Error("the first String must keep the plain entity ID so saved state survives")
+	}
+	if len(str[1].Body) == 0 || !strings.Contains(str[1].Body[0], "Square") {
+		t.Errorf("second String's body is not Square.String's: %q", str[1].Body)
+	}
+	desc := snippetsNamed(snippets, "describe")
+	if len(desc) != 1 {
+		t.Fatalf("no describe snippet in %v", symbolPaths(snippets))
+	}
+	got := edgeSet(BuildCallEdges(snippets))
+	if _, ok := got[str[1].ID+"->"+desc[0].ID]; !ok {
+		t.Errorf("Square.String's call to describe made no edge: %v", got)
+	}
+	if f := BuildForest(snippets, BuildCallEdges(snippets)); len(f.ByID) != len(snippets) {
+		t.Errorf("forest has %d nodes for %d snippets", len(f.ByID), len(snippets))
+	}
+}
+
+func TestBuildSnippets_SameNamedMembersStaySeparate(t *testing.T) {
+	cases := []struct {
+		name, path, lang, symbol, src string
+		hunks                         []Hunk
+	}{
+		{"java overloads", "Calc.java", "java", "Calc.add", `public class Calc {
+    int add(int a, int b) {
+        return a + b + 0;
+    }
+
+    double add(double a, double b) {
+        return a + b + 0.0;
+    }
+}
+`, []Hunk{
+			{OldStart: 3, OldLines: 1, NewStart: 3, NewLines: 1,
+				Lines: []string{"@@ -3,1 +3,1 @@", "-        return a + b;", "+        return a + b + 0;"}},
+			{OldStart: 7, OldLines: 1, NewStart: 7, NewLines: 1,
+				Lines: []string{"@@ -7,1 +7,1 @@", "-        return a + b;", "+        return a + b + 0.0;"}},
+		}},
+		{"python property pair", "acct.py", "python", "Account.balance", `class Account:
+    @property
+    def balance(self):
+        return self._b + 0
+
+    @balance.setter
+    def balance(self, v):
+        self._b = v + 0
+`, []Hunk{
+			{OldStart: 4, OldLines: 1, NewStart: 4, NewLines: 1,
+				Lines: []string{"@@ -4,1 +4,1 @@", "-        return self._b", "+        return self._b + 0"}},
+			{OldStart: 8, OldLines: 1, NewStart: 8, NewLines: 1,
+				Lines: []string{"@@ -8,1 +8,1 @@", "-        self._b = v", "+        self._b = v + 0"}},
+		}},
+		{"rust trait impls", "p.rs", "rust", "P.fmt", `struct P;
+
+impl fmt::Display for P {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "p!")
+    }
+}
+
+impl fmt::Debug for P {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "P!")
+    }
+}
+`, []Hunk{
+			{OldStart: 5, OldLines: 1, NewStart: 5, NewLines: 1,
+				Lines: []string{"@@ -5,1 +5,1 @@", `-        write!(f, "p")`, `+        write!(f, "p!")`}},
+			{OldStart: 11, OldLines: 1, NewStart: 11, NewLines: 1,
+				Lines: []string{"@@ -11,1 +11,1 @@", `-        write!(f, "P")`, `+        write!(f, "P!")`}},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			files := []*FileDiff{{Path: tc.path, OldPath: tc.path, Language: tc.lang,
+				Source: []byte(tc.src), Hunks: tc.hunks}}
+			snippets := BuildSnippets(files)
+			got := snippetsNamed(snippets, tc.symbol)
+			if len(got) != 2 {
+				t.Fatalf("want 2 %s snippets, got %d of %v", tc.symbol, len(got), symbolPaths(snippets))
+			}
+			if got[0].ID == got[1].ID {
+				t.Errorf("both %s snippets have ID %s", tc.symbol, got[0].ID)
+			}
+			if got[0].StartLine == got[1].StartLine {
+				t.Errorf("both %s snippets start at line %d", tc.symbol, got[0].StartLine)
+			}
+			for i, s := range got {
+				if n := strings.Count(strings.Join(s.DiffLines, "\n"), "\n+"); n != 1 {
+					t.Errorf("%s #%d holds %d added lines, want its own 1:\n%s", tc.symbol, i+1, n, strings.Join(s.DiffLines, "\n"))
+				}
+			}
+		})
+	}
+}

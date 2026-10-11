@@ -23,13 +23,19 @@ import "sort"
 func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 	// Call-site targets: last dotted segment → changed snippets declaring it.
 	table := make(map[string][]*Snippet)
-	// Changed symbol paths per file, to tell unchanged entities apart.
-	changed := make(map[string]map[string]bool)
+	// Changed entities per file, to tell unchanged entities apart. They are
+	// keyed by span as well as name: an unchanged entity can share its name
+	// with a changed one (Go methods on two receivers).
+	type span struct {
+		name       string
+		start, end int
+	}
+	changed := make(map[string]map[span]bool)
 	for _, s := range snippets {
 		if changed[s.FilePath] == nil {
-			changed[s.FilePath] = make(map[string]bool)
+			changed[s.FilePath] = make(map[span]bool)
 		}
-		changed[s.FilePath][s.SymbolPath] = true
+		changed[s.FilePath][span{s.SymbolPath, s.StartLine, s.EndLine}] = true
 		name := lastSegment(s.SymbolPath)
 		if len(name) < 2 {
 			continue
@@ -63,7 +69,7 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 
 		for i := range entities {
 			e := &entities[i]
-			if e.Kind == "imports" || changed[f.Path][e.Name] {
+			if e.Kind == "imports" || changed[f.Path][span{e.Name, e.StartLine, e.EndLine}] {
 				continue
 			}
 			nested := entityNestedSpans(entities, i)

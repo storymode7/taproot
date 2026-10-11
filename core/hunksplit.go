@@ -15,13 +15,16 @@ import "fmt"
 // deletion the reviewer never saw. Sub-hunk headers are regenerated with
 // correct old/new starts and counts, so each sub-hunk remains a valid patch
 // fragment for git apply.
-func splitHunkAtEntities(h Hunk, entities []Entity) []Hunk {
+//
+// Each piece reports the entity it was cut for (nil outside every entity),
+// so callers group pieces by entity identity rather than by name.
+func splitHunkAtEntities(h Hunk, entities []Entity) []piece {
 	lines := h.Lines
 	if len(lines) > 0 && len(lines[0]) >= 2 && lines[0][0] == '@' {
 		lines = lines[1:]
 	}
 	if len(lines) == 0 {
-		return []Hunk{h}
+		return []piece{{Hunk: h}}
 	}
 
 	entityAt := func(line int) *Entity {
@@ -107,18 +110,28 @@ func splitHunkAtEntities(h Hunk, entities []Entity) []Hunk {
 		flushDel()
 	}
 
-	if len(segs) <= 1 {
-		return []Hunk{h}
+	if len(segs) == 0 {
+		return []piece{{Hunk: h}}
+	}
+	if len(segs) == 1 {
+		return []piece{{Hunk: h, entity: segs[0].entity}}
 	}
 
-	out := make([]Hunk, 0, len(segs))
+	out := make([]piece, 0, len(segs))
 	for _, s := range segs {
 		header := fmt.Sprintf("@@ -%d,%d +%d,%d @@", s.oldStart, s.oldCount, s.newStart, s.newCount)
-		out = append(out, Hunk{
+		out = append(out, piece{Hunk: Hunk{
 			OldStart: s.oldStart, OldLines: s.oldCount,
 			NewStart: s.newStart, NewLines: s.newCount,
 			Lines: append([]string{header}, s.lines...),
-		})
+		}, entity: s.entity})
 	}
 	return out
+}
+
+// piece is one sub-hunk of a split hunk and the entity it belongs to (nil
+// when it lies outside every entity).
+type piece struct {
+	Hunk
+	entity *Entity
 }
