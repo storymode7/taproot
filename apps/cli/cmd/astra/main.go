@@ -14,10 +14,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/astra-review/astra/apps/cli/internal/diff"
-	"github.com/astra-review/astra/apps/cli/internal/state"
-	"github.com/astra-review/astra/apps/cli/internal/tui"
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/apps/cli/internal/diff"
+	"github.com/storymode7/astra/apps/cli/internal/state"
+	"github.com/storymode7/astra/apps/cli/internal/tui"
+	"github.com/storymode7/astra/core"
 )
 
 const usage = `astra — AST-aware PR diff reviewer

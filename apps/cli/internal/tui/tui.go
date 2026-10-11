@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/astra-review/astra/apps/cli/internal/state"
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/apps/cli/internal/state"
+	"github.com/storymode7/astra/core"
 )
 
 // Colors (ANSI escape codes, reset-safe)

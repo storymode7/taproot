@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"syscall/js"
 
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/core"
 )
 
 func main() {

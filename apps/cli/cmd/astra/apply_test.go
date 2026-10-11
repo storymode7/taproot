@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/astra-review/astra/apps/cli/internal/diff"
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/apps/cli/internal/diff"
+	"github.com/storymode7/astra/core"
 )
 
 func snippet(filePath, oldPath string, isNew bool, startLine int, diffLines ...string) *core.Snippet {

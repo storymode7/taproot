@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/core"
 )
 
 func TestCompileSearch_Smartcase(t *testing.T) {

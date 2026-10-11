@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/core"
 )
 
 // searchHit is one match: a snippet (index into Runner.flat) and the rendered

@@ -20,7 +20,7 @@ No Node.js. No npm. No Docker.
 ### 1. Clone
 
 ```bash
-git clone https://github.com/astra-review/astra
+git clone https://github.com/storymode7/astra
 cd astra
 ```
 

@@ -1,3 +1,3 @@
-module github.com/astra-review/astra
+module github.com/storymode7/astra
 
 go 1.26.3

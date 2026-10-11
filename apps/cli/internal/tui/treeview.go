@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/astra-review/astra/apps/cli/internal/state"
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/apps/cli/internal/state"
+	"github.com/storymode7/astra/core"
 )
 
 // visRow is one visible row of the tree pane.

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/core"
 )
 
 // buildAcceptedPatch constructs a unified diff patch from the given accepted snippets.

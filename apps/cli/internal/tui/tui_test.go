@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/astra-review/astra/core"
+	"github.com/storymode7/astra/core"
 )
 
 func TestEditorArgs(t *testing.T) {

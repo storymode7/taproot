@@ -2,7 +2,7 @@
 // adapters (local git, GitHub session, GitHub public API) must produce.
 package diff
 
-import "github.com/astra-review/astra/core"
+import "github.com/storymode7/astra/core"
 
 // FileDiff and Hunk are defined in the pure core package (which the WASM
 // build for the browser surfaces also uses); aliased here so adapters keep
