@@ -31,6 +31,9 @@ type Entity struct {
 	// StartLine and EndLine are 1-indexed, inclusive, in the file.
 	StartLine int
 	EndLine   int
+	// Test marks test code its source declares, not its path: a Rust
+	// #[cfg(test)] module or #[test] function.
+	Test bool
 }
 
 // ExtractEntities returns the top-level entity spans for the given source
@@ -997,7 +1000,7 @@ func extractRust(lines, raw []string) []Entity {
 			name := reRustFn.FindStringSubmatch(line)[1]
 			start := i + 1
 			end := declEnd(lines, i, "rust")
-			entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end})
+			entities = append(entities, Entity{Name: name, Kind: "function", StartLine: start, EndLine: end, Test: rustTestItem(raw, i)})
 			i = end
 		case reRustImpl.MatchString(line):
 			flushImports(i)
@@ -1035,7 +1038,7 @@ func extractRust(lines, raw []string) []Entity {
 			name := reRustMod.FindStringSubmatch(line)[1]
 			start := i + 1
 			end := declEnd(lines, i, "rust")
-			entities = append(entities, Entity{Name: name, Kind: "type", StartLine: start, EndLine: end})
+			entities = append(entities, Entity{Name: name, Kind: "type", StartLine: start, EndLine: end, Test: rustTestItem(raw, i)})
 			i = end
 		case reRustConst.MatchString(line):
 			flushImports(i)
@@ -1055,6 +1058,25 @@ func extractRust(lines, raw []string) []Entity {
 	}
 	flushImports(n)
 	return entities
+}
+
+// reRustTestAttr matches #[cfg(test)] (also inside all(...) or any(...))
+// and #[test] (also #[tokio::test]).
+var reRustTestAttr = regexp.MustCompile(`^#\[(?:cfg\((?:all\(|any\()?\s*test\b|(?:\w+::)*test\b)`)
+
+// rustTestItem reports whether the attributes and comments directly above
+// line i mark a test module or function.
+func rustTestItem(raw []string, i int) bool {
+	for k := i - 1; k >= 0; k-- {
+		t := strings.TrimSpace(raw[k])
+		if !strings.HasPrefix(t, "#[") && !strings.HasPrefix(t, "//") {
+			return false
+		}
+		if reRustTestAttr.MatchString(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // rustImplName extracts the type an impl block targets: the type after

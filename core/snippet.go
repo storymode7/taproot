@@ -78,6 +78,10 @@ type Snippet struct {
 	// path (set by BuildForest, which keeps tests out of the code's tree).
 	TestedBy []string
 
+	// IsTest marks test code its source declares, such as a Rust
+	// #[cfg(test)] module; BuildForest treats it like a test file.
+	IsTest bool
+
 	// Status tracks review progress.
 	Status SnippetStatus
 }
@@ -247,6 +251,7 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 			EndLine:    endLine,
 			DiffLines:  diffLines,
 			Body:       body,
+			IsTest:     g.entity != nil && g.entity.Test,
 			Status:     StatusPending,
 		}
 		s.ID = snippetID(f.Path, s.SymbolPath, s.StartLine)

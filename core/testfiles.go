@@ -15,7 +15,7 @@ func isTestPath(p string) bool {
 	case strings.HasSuffix(base, "_test.go"),
 		strings.HasPrefix(base, "test_") && strings.HasSuffix(base, ".py"),
 		strings.HasSuffix(base, "_test.py"),
-		base == "conftest.py", base == "tests.py",
+		base == "conftest.py", base == "tests.py", base == "tests.rs",
 		strings.Contains(base, ".test."), strings.Contains(base, ".spec."),
 		strings.HasSuffix(base, ".java") && (strings.HasPrefix(base, "Test") ||
 			strings.HasSuffix(base, "Test.java") || strings.HasSuffix(base, "Tests.java") ||

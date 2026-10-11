@@ -66,7 +66,7 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 	isTest := make(map[string]bool, len(snippets))
 	for _, s := range snippets {
 		byID[s.ID] = s
-		isTest[s.ID] = isTestPath(s.FilePath)
+		isTest[s.ID] = s.IsTest || isTestPath(s.FilePath)
 		s.TestedBy = nil
 	}
 	// Edges between test and non-test code never shape the tree: a test

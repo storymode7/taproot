@@ -1579,6 +1579,44 @@ func TestBuildSnippets_DecoratorStaysWithItsFunction(t *testing.T) {
 	}
 }
 
+func TestBuildForest_RustInlineTestsFollowCode(t *testing.T) {
+	// An inline #[cfg(test)] module is a test: the code it calls leads the
+	// review and records it in TestedBy.
+	src := "pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn adds() {\n        assert_eq!(add(1, 2), 3);\n    }\n}\n"
+	f := &FileDiff{Path: "src/math.rs", OldPath: "src/math.rs", Language: "rust", Source: []byte(src), Hunks: []Hunk{
+		{OldStart: 2, OldLines: 1, NewStart: 2, NewLines: 1, Lines: []string{"@@ -2,1 +2,1 @@", "-    a - b", "+    a + b"}},
+		{OldStart: 11, OldLines: 1, NewStart: 11, NewLines: 1, Lines: []string{"@@ -11,1 +11,1 @@", "-        assert_eq!(add(1, 1), 2);", "+        assert_eq!(add(1, 2), 3);"}},
+	}}
+	snippets := BuildSnippets([]*FileDiff{f})
+	forest := BuildForest(snippets, BuildCallEdges(snippets))
+	if len(forest.Roots) == 0 || forest.Roots[0].Snippet.SymbolPath != "add" {
+		t.Fatalf("first root = %v, want add", symbolPaths(forest.Flatten(OrderPre)))
+	}
+	if got := forest.Roots[0].Snippet.TestedBy; len(got) != 1 || got[0] != "tests" {
+		t.Errorf("add.TestedBy = %v, want [tests]", got)
+	}
+
+	for _, tc := range []struct {
+		src  string
+		test bool
+	}{
+		{"#[cfg(test)]\n#[allow(dead_code)]\nmod tests {\n}\n", true},
+		{"#[cfg(all(test, feature = \"std\"))]\nmod tests {\n}\n", true},
+		{"#[cfg(test)]\nmod tests;\n", true},
+		{"#[test]\nfn standalone() {}\n", true},
+		{"#[cfg(not(test))]\nmod imp {\n}\n", false},
+		{"mod tests {\n}\n", false},
+	} {
+		entities := ExtractEntities([]byte(tc.src), "rust")
+		if len(entities) != 1 || entities[0].Test != tc.test {
+			t.Errorf("%q: entities %+v, want one with Test=%v", tc.src, entities, tc.test)
+		}
+	}
+	if !isTestPath("src/parser/tests.rs") {
+		t.Error("tests.rs, the file of `mod tests;`, is not a test path")
+	}
+}
+
 func TestBuildSnippets_TSX_ComponentsKeepTheirBodies(t *testing.T) {
 	// Edits inside two arrow components' JSX bodies stay in two named
 	// snippets, and their calls make edges.
