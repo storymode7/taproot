@@ -351,18 +351,59 @@ func readKey() string {
 	if err != nil || n == 0 {
 		return ""
 	}
-	if b[0] != 0x1b || !stdinReadable(50) {
+	if b[0] != 0x1b {
 		return string(b[:1])
 	}
-	var seq [3]byte
-	n, _ = os.Stdin.Read(seq[:2])
-	// "\033[1~"-style keys (Home/End on some terminals) carry a trailing ~.
-	if n == 2 && seq[0] == '[' && seq[1] >= '0' && seq[1] <= '9' {
-		if m, _ := os.Stdin.Read(seq[2:]); m == 1 {
-			n = 3
+	return readEscape()
+}
+
+// readEscape reads the rest of an escape sequence after its ESC. CSI (ESC [)
+// and SS3 (ESC O) sequences are read up to their final byte, so no tail byte
+// is left over to run as a command.
+func readEscape() string {
+	next := func() (byte, bool) {
+		var b [1]byte
+		if !stdinReadable(50) {
+			return 0, false
+		}
+		n, err := os.Stdin.Read(b[:])
+		return b[0], n == 1 && err == nil
+	}
+	c, ok := next()
+	for ok && c == 0x1b { // Alt as an ESC prefix: ESC ESC [ A is Alt+↑
+		c, ok = next()
+	}
+	if !ok {
+		return "\033"
+	}
+	seq := []byte{0x1b, c}
+	if c == '[' || c == 'O' {
+		for len(seq) < 32 {
+			if c, ok = next(); !ok {
+				break
+			}
+			seq = append(seq, c)
+			// The Linux console sends F1-F5 as ESC [ [ A to E.
+			if c >= 0x40 && c <= 0x7e && !(len(seq) == 3 && c == '[') {
+				break
+			}
 		}
 	}
-	return "\033" + string(seq[:n])
+	return normalizeKey(string(seq))
+}
+
+// normalizeKey maps the forms terminals send for an arrow, Home or End key,
+// such as ESC O A in application mode or ESC [ 1 ; 5 A with Ctrl held, to
+// the plain ESC [ A form.
+func normalizeKey(seq string) string {
+	if len(seq) < 3 || seq[1] != '[' && seq[1] != 'O' {
+		return seq
+	}
+	final := seq[len(seq)-1]
+	if strings.IndexByte("ABCDHF", final) < 0 || strings.Trim(seq[2:len(seq)-1], "0123456789;") != "" {
+		return seq
+	}
+	return "\033[" + string(final)
 }
 
 func (r *Runner) currentNode() *core.ReviewNode {
@@ -739,7 +780,6 @@ func (r *Runner) renderHelp() {
 	fmt.Println(dim + "      pass --no-apply to leave the index alone." + reset)
 	fmt.Println()
 	fmt.Println("Press any key to continue…")
-	buf := make([]byte, 1)
-	_, _ = os.Stdin.Read(buf)
+	readKey()
 	r.render()
 }
