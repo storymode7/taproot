@@ -26,8 +26,7 @@ window.addEventListener("message", async (e) => {
   }
 });
 
-// The core orders top-down (tree pre-order) or bottom-up (post-order);
-// clustering is inherent in the tree, so the clusters preset maps to pre.
+// The core orders top-down (tree pre-order) or bottom-up (post-order).
 function presetToOrder(preset) {
   return preset === "bottom-up" ? "post" : "pre";
 }

@@ -143,7 +143,11 @@ export function renderReview(container, review, store, opts = {}) {
     current = id;
     card.classList.add("current");
     card.classList.remove("folded");
-    nav.querySelector(`[data-id="${id}"] > .astra-tree-row`)?.classList.add("current");
+    const row = nav.querySelector(`[data-id="${id}"] > .astra-tree-row`);
+    if (row) {
+      row.classList.add("current");
+      keepInView(nav, row);
+    }
     card.scrollIntoView({ block: "start", behavior: "smooth" });
   }
   if (current) {
@@ -323,7 +327,8 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
       onJudge(now === btn.dataset.status ? "pending" : btn.dataset.status);
     } else if (btn?.hasAttribute("data-comment")) {
       card._comment();
-    } else if (!e.target.closest(".astra-actions")) {
+    } else if (btn || (!e.target.closest(".astra-actions, .astra-crumbs, .astra-symbol, .astra-path") && getSelection().isCollapsed)) {
+      // The chevron or empty header space folds; the names stay selectable.
       card.classList.toggle("folded");
     }
   });
@@ -376,6 +381,14 @@ function diffTable(snippet, highlight) {
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
+// Scrolls only `box`; scrollIntoView would scroll the page as well.
+function keepInView(box, item) {
+  const b = box.getBoundingClientRect();
+  const r = item.getBoundingClientRect();
+  if (r.top < b.top) box.scrollTop -= b.top - r.top;
+  else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+}
+
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;

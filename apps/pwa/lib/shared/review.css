@@ -137,6 +137,7 @@
 .astra-card.folded .astra-fold { transform: rotate(-90deg); }
 .astra-fold { border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 2px; }
 .astra-title { flex: 1; min-width: 0; overflow-wrap: anywhere; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.astra-crumbs, .astra-symbol, .astra-path { cursor: text; }
 .astra-crumbs { color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
 .astra-symbol { font-family: var(--mono); font-size: 13px; }
 .astra-path { color: var(--text-dim); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
