@@ -1,6 +1,10 @@
 package diff
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestParseDiff_Empty(t *testing.T) {
 	files := parseDiff("")
@@ -189,5 +193,23 @@ func TestParseDiff_HunkLineCount_Default(t *testing.T) {
 	h := files[0].Hunks[0]
 	if h.OldLines != 1 || h.NewLines != 1 {
 		t.Errorf("expected OldLines=1, NewLines=1, got %d, %d", h.OldLines, h.NewLines)
+	}
+}
+
+func TestParseDiff_LongLineAndCRLF(t *testing.T) {
+	long := "+var a=" + strings.Repeat("1+", 40000) + "1;"
+	raw := "diff --git a/a.min.js b/a.min.js\n--- a/a.min.js\n+++ b/a.min.js\n@@ -1 +1 @@\n-x\n" + long + "\n" +
+		"diff --git a/w.py b/w.py\n--- a/w.py\n+++ b/w.py\n@@ -1,2 +1,2 @@\n def f():\r\n-    return 1\r\n+    return 2\r\n"
+
+	files := parseDiff(raw)
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2: a line over 64 KB must not end the diff", len(files))
+	}
+	if got := files[0].Hunks[0].Lines; len(got) != 3 || got[2] != long {
+		t.Errorf("a.min.js lost its long line: %d lines", len(got))
+	}
+	want := []string{"@@ -1,2 +1,2 @@", " def f():\r", "-    return 1\r", "+    return 2\r"}
+	if got := files[1].Hunks[0].Lines; !reflect.DeepEqual(got, want) {
+		t.Errorf("CRLF lines = %q, want %q (git apply needs the \\r)", got, want)
 	}
 }

@@ -2,7 +2,6 @@
 package diff
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -212,10 +211,9 @@ func parseDiff(raw string) []*FileDiff {
 	var cur *FileDiff
 	var curHunk *Hunk
 
-	scanner := bufio.NewScanner(strings.NewReader(raw))
-	for scanner.Scan() {
-		line := scanner.Text()
-
+	// Split on "\n" alone: lines have no length limit and keep the "\r" of
+	// a CRLF file, which git apply needs to match the index.
+	for _, line := range strings.Split(strings.TrimSuffix(raw, "\n"), "\n") {
 		if m := reDiffHeader.FindStringSubmatch(line); m != nil {
 			if curHunk != nil && cur != nil {
 				cur.Hunks = append(cur.Hunks, *curHunk)
