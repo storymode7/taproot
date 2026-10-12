@@ -219,7 +219,8 @@ What it can do:
   that GitHub loads later, and the raw source of each changed file in a
   supported language. These are same-origin requests from the page, so the
   browser sends your GitHub session with them, and private repositories
-  you can open work. Astra stores no token.
+  you can open work. GitHub redirects the raw source requests to
+  `raw.githubusercontent.com`. Astra stores no token.
 - It never writes to GitHub. Verdicts and comments stay in the extension's
   storage in this browser.
 

@@ -58,7 +58,10 @@ them:
 - the diff entries that the page has not loaded yet
   (`/<owner>/<repo>/pull/<n>/page_data/diff_entries`);
 - the raw source of each changed file in a supported language
-  (`/<owner>/<repo>/raw/<commit>/<path>`).
+  (`/<owner>/<repo>/raw/<commit>/<path>`). GitHub answers with a redirect
+  to `raw.githubusercontent.com`, and the browser fetches the file from
+  there without your cookies. For a private repository, the redirect URL
+  carries a short-lived token from GitHub.
 
 It sends the result to the panel, an extension page in an iframe, which
 runs the engine. The panel and the content script accept messages only
