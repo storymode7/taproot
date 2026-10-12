@@ -179,3 +179,30 @@ func TestStore_OpenWithoutSetWritesNothing(t *testing.T) {
 		t.Errorf("viewing without marking created %s", s.path)
 	}
 }
+
+// Two sessions on one diff each save their own verdicts: a write changes
+// only its snippet, and leaves no temp file behind.
+func TestStore_TwoSessionsKeepEachOthersVerdicts(t *testing.T) {
+	dir := t.TempDir()
+	a, _ := Open(dir, "worktree@abc")
+	b, _ := Open(dir, "worktree@abc")
+	if err := a.Set("alpha", "accepted", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Set("beta", "reviewed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Set("gamma", "rejected", ""); err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ := Open(dir, "worktree@abc")
+	for id, want := range map[string]string{"alpha": "accepted", "beta": "reviewed", "gamma": "rejected"} {
+		if got := fresh.Get(id).Status; got != want {
+			t.Errorf("%s = %q on disk, want %q", id, got, want)
+		}
+	}
+	files, _ := os.ReadDir(filepath.Join(dir, "astra", "reviews"))
+	if len(files) != 1 {
+		t.Errorf("reviews holds %v, want one state file", files)
+	}
+}

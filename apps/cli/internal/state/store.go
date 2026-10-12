@@ -9,9 +9,12 @@ package state
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 )
 
@@ -45,15 +48,14 @@ func Open(gitDir, scope string) (*Store, error) {
 
 	h := sha256.Sum256([]byte(scope))
 	s := &Store{
-		path:     filepath.Join(dir, fmt.Sprintf("%x.json", h[:8])),
-		scope:    scope,
-		snippets: make(map[string]*SnippetState),
+		path:  filepath.Join(dir, fmt.Sprintf("%x.json", h[:8])),
+		scope: scope,
 	}
-
-	if err := s.load(); err != nil && !os.IsNotExist(err) {
+	saved, err := s.read()
+	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
-
+	s.snippets = saved
 	return s, nil
 }
 
@@ -68,12 +70,20 @@ func (s *Store) Get(id string) *SnippetState {
 	return &SnippetState{ID: id, Status: "pending"}
 }
 
-// Set updates the state for a snippet and flushes to disk.
+// Set updates the state for a snippet and saves it. The file is read again
+// and only this snippet changes, so another astra on the same diff keeps
+// its verdicts.
 func (s *Store) Set(id, status, comment string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.snippets[id] = &SnippetState{ID: id, Status: status, Comment: comment}
-	return s.flush()
+	st := &SnippetState{ID: id, Status: status, Comment: comment}
+	s.snippets[id] = st
+	saved, err := s.read()
+	if err != nil {
+		return err
+	}
+	saved[id] = st
+	return s.write(saved)
 }
 
 // All returns a copy of all stored states.
@@ -98,7 +108,7 @@ func (s *Store) Prune(validIDs map[string]struct{}) error {
 			delete(s.snippets, id)
 		}
 	}
-	return s.flush()
+	return s.write(s.snippets)
 }
 
 // ---------------------------------------------------------------------------
@@ -110,37 +120,52 @@ type storedFile struct {
 	Snippets []*SnippetState `json:"snippets"`
 }
 
-func (s *Store) load() error {
+// read returns the saved states; none when there is no file yet.
+func (s *Store) read() (map[string]*SnippetState, error) {
+	snippets := make(map[string]*SnippetState)
 	data, err := os.ReadFile(s.path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return snippets, nil
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var f storedFile
 	if err := json.Unmarshal(data, &f); err != nil {
-		return fmt.Errorf("parse %s: %w", s.path, err)
+		return nil, fmt.Errorf("parse %s: %w", s.path, err)
 	}
 	for _, st := range f.Snippets {
-		s.snippets[st.ID] = st
+		snippets[st.ID] = st
 	}
-	return nil
+	return snippets, nil
 }
 
-func (s *Store) flush() error {
-	states := make([]*SnippetState, 0, len(s.snippets))
-	for _, v := range s.snippets {
-		states = append(states, v)
+// write saves snippets through a temp file of its own, renamed into place,
+// so a reader never sees half a file and two writers never share one.
+func (s *Store) write(snippets map[string]*SnippetState) error {
+	f := storedFile{Scope: s.scope, Snippets: make([]*SnippetState, 0, len(snippets))}
+	for _, v := range snippets {
+		f.Snippets = append(f.Snippets, v)
 	}
-	data, err := json.MarshalIndent(storedFile{Scope: s.scope, Snippets: states}, "", "  ")
+	sort.Slice(f.Snippets, func(i, j int) bool { return f.Snippets[i].ID < f.Snippets[j].ID })
+	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
-	// Write atomically via a temp file + rename.
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write state tmp: %w", err)
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), "state-*.tmp")
+	if err != nil {
+		return fmt.Errorf("write state: %w", err)
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		return fmt.Errorf("rename state: %w", err)
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), s.path)
+	}
+	if err != nil {
+		os.Remove(tmp.Name())
+		return fmt.Errorf("write state: %w", err)
 	}
 	return nil
 }
