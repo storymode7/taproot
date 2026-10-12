@@ -517,6 +517,15 @@ func TestBuildCallEdges_DelegationToASameNamedMethodLinks(t *testing.T) {
 			"save(x) {", "  this.items.push(x)", "}"),
 		wantEdge: true,
 	}, {
+		// Same-named methods in one file: forwarding to a field's method
+		// links to the other one (accepted ambiguity: it may be a third).
+		name: "go same-file delegation",
+		caller: entitySnippet("c", "shapes.go", "go", "String", "function", 7,
+			"func (c Circle) String() string {", "\treturn \"circle \" + c.border.String()", "}"),
+		callee: entitySnippet("r", "shapes.go", "go", "String", "function", 20,
+			"func (b Border) String() string {", "\treturn b.style", "}"),
+		wantEdge: true,
+	}, {
 		// Recursion through the receiver of a Go method stays a self call.
 		name: "go receiver recursion",
 		caller: entitySnippet("c", "a/parse.go", "go", "parseExpr", "function", 3,
