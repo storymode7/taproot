@@ -81,9 +81,10 @@ export function initAstra(adapter) {
     for (const file of files) {
       // GitHub sends no patch for binary files, very large diffs, pure
       // renames and mode changes; the extension sends "" when it has none.
+      // Only a rename says what it is: a binary file looks like the rest.
       const hunks = hunksFromPatch(file.patch ?? "");
       if (hunks.length === 0) {
-        const entry = { path: file.filename, reason: "no-diff" };
+        const entry = { path: file.filename, reason: file.status === "renamed" ? "renamed" : "no-diff" };
         if (file.previous_filename && file.previous_filename !== file.filename) entry.oldPath = file.previous_filename;
         skipped.push(entry);
         continue;

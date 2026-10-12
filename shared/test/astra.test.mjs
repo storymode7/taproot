@@ -90,7 +90,7 @@ test("files without a diff are listed, deleted files go to the core", async () =
     { path: "assets/logo.png", reason: "no-diff" },
     { path: "dist/app.min.js", reason: "no-diff" },
     { path: "run.sh", reason: "no-diff" },
-    { path: "src/new_name.py", oldPath: "src/old_name.py", reason: "no-diff" },
+    { path: "src/new_name.py", oldPath: "src/old_name.py", reason: "renamed" },
   ];
   assert.deepEqual(review.skipped, skipped);
   assert.deepEqual(reordered.skipped, skipped);
