@@ -127,6 +127,22 @@ func TestRenderHelp_FitsTerminal(t *testing.T) {
 	}
 }
 
+func TestRenderHelp_ListsFilesNotShownOnAShortScreen(t *testing.T) {
+	r := testRunner(t, manySnippets(3, 5)...)
+	r.Skipped = []core.SkippedFile{{Path: "logo.png", Reason: "binary"}, {Path: "b.py", OldPath: "a.py", Reason: "renamed"}}
+	fixedSize(t, 24, 80)
+	feedStdin(t, " ").Close()
+	out := captureStdout(t, r.renderHelp)
+	help := strings.TrimPrefix(out[:strings.Index(out, "\033[?25l")], "\033[2J\033[H")
+	assertFits(t, strings.Split(help, "\n"), 24, 80)
+	plain := stripANSI(help)
+	for _, want := range []string{"Not shown: binary logo.png · renamed a.py → b.py", "Quit", "Press any key"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("24x80 help lacks %q:\n%s", want, plain)
+		}
+	}
+}
+
 func TestRender_HeaderCountsFilesNotShown(t *testing.T) {
 	r := testRunner(t, manySnippets(3, 5)...)
 	r.applyMode = true

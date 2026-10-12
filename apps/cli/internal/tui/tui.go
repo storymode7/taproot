@@ -1011,8 +1011,11 @@ func (r *Runner) renderHelp() {
 		dim + "      when lines above it move. In working tree mode y also stages the" + reset,
 		dim + "      snippet and x/r unstages it; pass --no-apply to leave the index alone." + reset,
 	}
+	// The files not shown go on the line above the prompt, which every
+	// screen keeps.
+	foot := ""
 	if len(r.Skipped) > 0 {
-		lines = append(lines, "", dim+NotShownLine(r.Skipped)+reset)
+		foot = dim + NotShownLine(r.Skipped) + reset
 	}
 	for {
 		rows, cols := termSize()
@@ -1027,7 +1030,8 @@ func (r *Runner) renderHelp() {
 		for _, l := range lines[:min(len(lines), max(1, rows-2))] {
 			fmt.Println(ansiTruncate(l, cols-1))
 		}
-		fmt.Print("\n" + ansiTruncate("Press any key to continue…", cols-1))
+		fmt.Println(ansiTruncate(foot, cols-1))
+		fmt.Print(ansiTruncate("Press any key to continue…", cols-1))
 		if readKey() != keyResize {
 			break
 		}
