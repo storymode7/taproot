@@ -9,9 +9,9 @@ import (
 // from the importing snippet to any snippet in the same diff whose file path
 // matches the import target.
 //
-// This is a fast heuristic pass over the patch text. Full AST-based edge
-// extraction (via wazero + tree-sitter queries) will supersede this when the
-// wazero integration is complete.
+// This is a fast heuristic pass over the patch text. Import edges only
+// group snippets into components; the call edges from BuildCallEdges shape
+// the review tree.
 func BuildEdgesFromDiff(snippets []*Snippet) []SymbolEdge {
 	// Index snippets by file path for fast lookup.
 	byFile := make(map[string][]*Snippet, len(snippets))

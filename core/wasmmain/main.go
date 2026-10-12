@@ -8,10 +8,10 @@
 //
 // On error the returned JSON is {"error": "..."}. Build with:
 //
-//	GOOS=js GOARCH=wasm go build -o vendor/core/astra-core.wasm ./core/wasmmain
+//	make core-wasm
 //
-// (see the core-wasm Makefile target, which also vendors the matching
-// wasm_exec.js from the Go toolchain).
+// The target leaves build paths and VCS data out of the committed WASM,
+// vendors the matching wasm_exec.js and rewrites vendor/core/checksums.txt.
 package main
 
 import (
