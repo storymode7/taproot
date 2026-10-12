@@ -213,6 +213,24 @@ func Foo() {}
 	}
 }
 
+func TestBuildSnippets_StartLineIsTheEntityNotTheBlankAbove(t *testing.T) {
+	// The blank line above a new function stages with it, so its diff
+	// opens with that line; titles and the editor jump use StartLine.
+	src := "package a\n\nfunc main() {\n\tx()\n}\n\nfunc helper() int {\n\treturn 42\n}\n"
+	files := []*FileDiff{{
+		Path: "a.go", OldPath: "a.go", Language: "go", Source: []byte(src),
+		Hunks: []Hunk{{OldStart: 5, OldLines: 0, NewStart: 6, NewLines: 4,
+			Lines: []string{"@@ -5,0 +6,4 @@", "+", "+func helper() int {", "+\treturn 42", "+}"}}},
+	}}
+	snippets := BuildSnippets(files)
+	if len(snippets) != 1 || snippets[0].SymbolPath != "helper" {
+		t.Fatalf("snippets %v", symbolPaths(snippets))
+	}
+	if s := snippets[0]; s.DiffLines[1] != "+" || s.StartLine != 7 || s.EndLine != 9 {
+		t.Errorf("helper: diff opens %q, lines %d-%d, want the blank line staged and lines 7-9", s.DiffLines[1], s.StartLine, s.EndLine)
+	}
+}
+
 func TestBuildSnippets_SubstantivePreambleSurvives(t *testing.T) {
 	src := []byte(`// Package foo does things.
 package foo

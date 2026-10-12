@@ -58,6 +58,9 @@ type Snippet struct {
 	NodeType string
 
 	// StartLine and EndLine are 1-indexed line numbers in the post-image.
+	// For an entity snippet they are the entity's span: StartLine is its
+	// first line even when its diff opens with the blank line above it,
+	// which stages with it.
 	StartLine int
 	EndLine   int
 
