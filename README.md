@@ -175,9 +175,15 @@ changes outside astra during a staging review, the next `y`, `x` or `r`
 reloads the diff instead; press the key again.
 
 Verdicts are saved in `.git/astra/verdicts.json`, keyed by the snippet and
-its exact change. They follow the change across commit, amend and rebase,
-and every mode sees them. If you edit a change after judging it, the
-snippet is pending again. In the staging review, ✓ means staged: an
+its exact change. If you edit a change after judging it, the snippet is
+pending again. A snippet with a name, such as a function, a type or the
+imports, is keyed by that name, so its verdict follows the change across
+commit, amend and rebase, and every mode sees it. A snippet without a
+name, such as a comment between two functions or a hunk in a Markdown
+file, is keyed by the line it starts on. Its verdict resets when lines
+above it are added or removed, for example by a rebase, and
+`astra diff --staged` can show it as pending after `y` staged it, when
+unstaged changes sit above it. In the staging review, ✓ means staged: an
 accepted snippet that is still unstaged shows as pending.
 
 Changed files that give no snippet are listed on a `Not shown:` line with

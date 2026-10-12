@@ -90,9 +90,13 @@ KEYBOARD SHORTCUTS (interactive mode)
 
 STATE
   Verdicts are saved in .git/astra/verdicts.json, each keyed by the
-  snippet and its exact change: they survive commit, amend and rebase,
-  every mode sees them (--staged shows what y staged as accepted), and a
-  snippet whose change is edited is pending again.
+  snippet and its exact change; a snippet whose change is edited is
+  pending again. A snippet with a name (a function, type or the
+  imports) is keyed by it: its verdict survives commit, amend and
+  rebase, and every mode sees it (--staged shows what y staged as
+  accepted). A snippet without a name (a hunk outside any function, or
+  in a file of another language) is keyed by its first line, so lines
+  added or removed above it reset its verdict.
 `
 
 // version is set by a release build: go build -ldflags "-X main.version=v1.2.3".

@@ -28,14 +28,15 @@ func TestVersion_SetAtLinkTime(t *testing.T) {
 }
 
 // TestUsage_MatchesTheTUI pins the --help lines that drifted from the
-// TUI: n searches (x rejects), and y stages in the default review.
+// TUI: n searches (x rejects), y stages in the default review, and only
+// named snippets keep their verdict when lines shift.
 func TestUsage_MatchesTheTUI(t *testing.T) {
-	for _, s := range []string{"x       Reject", "n / N   Next/prev hit", "/       Search", "y also stages", "-h, --help", "-V, --version"} {
+	for _, s := range []string{"x       Reject", "n / N   Next/prev hit", "/       Search", "y also stages", "-h, --help", "-V, --version", "keyed by its first line"} {
 		if !strings.Contains(usage, s) {
 			t.Errorf("usage lacks %q", s)
 		}
 	}
-	for _, s := range []string{"n / x", "does not stage"} {
+	for _, s := range []string{"n / x", "does not stage", "they survive commit"} {
 		if strings.Contains(usage, s) {
 			t.Errorf("usage still says %q", s)
 		}

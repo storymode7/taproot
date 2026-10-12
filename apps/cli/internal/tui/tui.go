@@ -1000,9 +1000,10 @@ func (r *Runner) renderHelp() {
 		dim + "functions/types the focused snippet calls. Roots are entry points" + reset,
 		dim + "nothing else in the diff calls. Tests follow the code they test." + reset,
 		"",
-		dim + "Note: verdicts are saved under .git/astra/, per change, so they survive" + reset,
-		dim + "      commits and rebases. In working tree mode y also stages the snippet" + reset,
-		dim + "      and x/r unstages it; pass --no-apply to leave the index alone." + reset,
+		dim + "Note: verdicts are saved under .git/astra/, per change. A named snippet" + reset,
+		dim + "      keeps its verdict across commits and rebases; an unnamed one resets" + reset,
+		dim + "      when lines above it move. In working tree mode y also stages the" + reset,
+		dim + "      snippet and x/r unstages it; pass --no-apply to leave the index alone." + reset,
 	}
 	if len(r.Skipped) > 0 {
 		lines = append(lines, "", dim+NotShownLine(r.Skipped)+reset)
