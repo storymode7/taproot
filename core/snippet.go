@@ -140,15 +140,16 @@ func fileSnippets(f *FileDiff) []*Snippet {
 // share an entity into a single Snippet.
 //
 // Algorithm:
-//  1. Split every hunk at entity boundaries; each piece belongs to the
-//     smallest entity enclosing its lines, or to none.
+//  1. Split every hunk at entity boundaries (splitHunkAtEntities); each
+//     piece belongs to one entity, or to none.
 //  2. Pieces outside every entity go into a "preamble" bucket (one per file,
 //     so all uncovered pieces collapse together).
 //  3. Group pieces by entity identity — never by name, so Go methods on two
 //     receivers, Java overloads and property getter/setter pairs stay apart
 //     — then build one Snippet per group from its diff lines in hunk order.
-//     The file's import blocks share one group. Pieces with no +/- lines at
-//     all (pure context spill) are dropped.
+//     The file's import blocks share one group, and so do entities whose
+//     changes cannot be staged apart. Pieces with no +/- lines at all (pure
+//     context spill) are dropped.
 func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	type group struct {
 		entity    *Entity // nil == preamble
@@ -161,31 +162,61 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 	var order []*group
 	groups := make(map[any]*group)
 
-	for i := range f.Hunks {
-		// Split hunks that straddle entity boundaries (context overlap,
-		// whole-new-file hunks) so each piece maps to exactly one entity.
-		for _, p := range splitHunkAtEntities(f.Hunks[i], entities) {
-			// A piece with no +/- lines is context spilled across an entity
-			// boundary; git apply rejects such a hunk as corrupt.
-			if !hasChangedLine(p.Lines) {
-				continue
-			}
-			key := any(p.entity)
-			if p.entity != nil && p.entity.Kind == "imports" {
-				key = "imports"
-			}
-			g := groups[key]
-			if g == nil {
-				sl, el := p.NewStart, p.NewStart+p.NewLines-1
-				if p.entity != nil {
-					sl, el = p.entity.StartLine, p.entity.EndLine
-				}
-				g = &group{entity: p.entity, startLine: sl, endLine: el}
-				groups[key] = g
-				order = append(order, g)
-			}
-			g.hunkLines = append(g.hunkLines, p.Lines...)
+	// The pre-image's entities tell which entity each old line belonged to.
+	// Spans supplied with the file came from another parser, so they cannot
+	// be compared with the core's own spans of the pre-image.
+	var old *oldFile
+	if len(f.Entities) == 0 {
+		old = readOldFile(src, f.Hunks, f.Language, entities)
+	}
+
+	// Split hunks that straddle entity boundaries (context overlap,
+	// whole-new-file hunks) so each piece maps to exactly one entity.
+	var pieces []piece
+	lead := make(map[*Entity]*Entity) // entities whose changes stage together
+	var find func(e *Entity) *Entity
+	find = func(e *Entity) *Entity {
+		if l, ok := lead[e]; ok && l != e {
+			lead[e] = find(l)
+			return lead[e]
 		}
+		return e
+	}
+	for i := range f.Hunks {
+		ps, merged := splitHunkAtEntities(f.Hunks[i], entities, old)
+		pieces = append(pieces, ps...)
+		for _, m := range merged {
+			a, b := find(m[0]), find(m[1])
+			if b != nil && (a == nil || b.StartLine < a.StartLine) {
+				a, b = b, a
+			}
+			if a != b {
+				lead[b] = a
+			}
+		}
+	}
+	for _, p := range pieces {
+		// A piece with no +/- lines is context spilled across an entity
+		// boundary; git apply rejects such a hunk as corrupt.
+		if !hasChangedLine(p.Lines) {
+			continue
+		}
+		ent := find(p.entity)
+		key := any(ent)
+		if ent != nil && ent.Kind == "imports" {
+			key = "imports"
+		}
+		g := groups[key]
+		if g == nil {
+			sl, el := p.NewStart, p.NewStart+p.NewLines-1
+			if ent != nil {
+				sl, el = ent.StartLine, ent.EndLine
+			}
+			g = &group{entity: ent, startLine: sl, endLine: el}
+			groups[key] = g
+			order = append(order, g)
+		}
+		g.hunkLines = append(g.hunkLines, p.Lines...)
 	}
 
 	// ordinal numbers same-kind same-name entities in source order; the

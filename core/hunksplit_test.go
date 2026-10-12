@@ -186,7 +186,7 @@ func TestSplitHunk_SingleEntityUntouched(t *testing.T) {
 		Lines: []string{"@@ -3,3 +3,3 @@", " func a() {", "-\tx()", "+\ty()"},
 	}
 	entities := []Entity{{Name: "a", Kind: "function", StartLine: 3, EndLine: 5}}
-	got := splitHunkAtEntities(h, entities)
+	got, _ := splitHunkAtEntities(h, entities, nil)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 hunk, got %d", len(got))
 	}
@@ -402,6 +402,67 @@ func TestSplitHunk_EachEntityKeepsItsOwnBoundaryLine(t *testing.T) {
 		hunk: []string{"@@ -1,4 +1,7 @@", " class T {", "     @Test", "+    void z() {}", "+", "+    @Test",
 			"     void a() {}", " }"},
 		symbols: []string{"T.z"},
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { runStagingCase(t, tc) })
+	}
+}
+
+func TestSplitHunk_EachEntityGetsItsOwnOldLinesBack(t *testing.T) {
+	// git pairs unchanged lines with any equal line, so an old function's
+	// tail can end up paired with a new function's tail. Each case is git's
+	// own output; staging any one entity alone must leave the others whole.
+	cases := []stagingCase{{
+		name: "both functions end in return nil", path: "a.go", lang: "go",
+		oldText: "package p\n\nfunc a() error {\n\tx()\n\treturn nil\n}\n\nfunc c() error {\n\treturn nil\n}\n",
+		newText: "package p\n\nfunc a() error {\n\ty()\n\treturn nil\n}\n\nfunc b() error {\n\tz()\n\treturn nil\n}\n\nfunc c() error {\n\treturn nil\n}\n",
+		hunk: []string{"@@ -1,7 +1,12 @@", " package p", " ", " func a() error {", "-\tx()", "+\ty()", "+\treturn nil", "+}", "+",
+			"+func b() error {", "+\tz()", " \treturn nil", " }", " "},
+		symbols: []string{"a", "b"},
+		alone: map[string]string{
+			"a": "package p\n\nfunc a() error {\n\ty()\n\treturn nil\n}\n\nfunc c() error {\n\treturn nil\n}\n",
+			"b": "package p\n\nfunc a() error {\n\tx()\n\treturn nil\n}\n\nfunc b() error {\n\tz()\n\treturn nil\n}\n\nfunc c() error {\n\treturn nil\n}\n",
+		},
+	}, {
+		name: "last statement changed above a function ending in it", path: "b.go", lang: "go",
+		oldText: "package p\n\nfunc f3() int {\n\tv := 1\n\treturn v\n}\n",
+		newText: "package p\n\nfunc f3() int {\n\tv := 1\n\treturn v + 4\n}\n\nfunc n4() int {\n\tv := 8\n\treturn v\n}\n",
+		hunk: []string{"@@ -2,5 +2,10 @@ package p", " ", " func f3() int {", " \tv := 1", "+\treturn v + 4", "+}", "+",
+			"+func n4() int {", "+\tv := 8", " \treturn v", " }"},
+		symbols: []string{"f3", "n4"},
+		alone: map[string]string{
+			"f3": "package p\n\nfunc f3() int {\n\tv := 1\n\treturn v + 4\n}\n",
+			"n4": "package p\n\nfunc f3() int {\n\tv := 1\n\treturn v\n}\n\nfunc n4() int {\n\tv := 8\n\treturn v\n}\n",
+		},
+	}, {
+		name: "appended to a file that keeps no final newline", path: "e.go", lang: "go",
+		oldText: "package p\n\nfunc a() int {\n\tv := 1\n\treturn v\n}",
+		newText: "package p\n\nfunc a() int {\n\tv := 1\n\treturn v\n}\n\nfunc b() int {\n\tv := 2\n\treturn v\n}",
+		hunk: []string{"@@ -3,4 +3,9 @@ package p", " func a() int {", " \tv := 1", " \treturn v", "+}", "+", "+func b() int {",
+			"+\tv := 2", "+\treturn v", " }", `\ No newline at end of file`},
+		symbols: []string{"b"},
+	}, {
+		name: "renamed below a new function", path: "h.js", lang: "javascript",
+		oldText: "\"use strict\";\n\nfunction f1() {\n  const v = 0;\n  return v;\n}\n",
+		newText: "\"use strict\";\n\n\nfunction n2() {\n  const v = 2;\n  return v;\n}\n\n\nfunction r3() {\n  const v = 0;\n  return v;\n}\n",
+		hunk: []string{"@@ -1,6 +1,13 @@", " \"use strict\";", " ", "-function f1() {", "+", "+function n2() {", "+  const v = 2;",
+			"+  return v;", "+}", "+", "+", "+function r3() {", "   const v = 0;", "   return v;", " }"},
+		symbols: []string{"n2", "r3"},
+		alone: map[string]string{
+			"n2": "\"use strict\";\n\n\nfunction n2() {\n  const v = 2;\n  return v;\n}\nfunction f1() {\n  const v = 0;\n  return v;\n}\n",
+			"r3": "\"use strict\";\n\n\n\nfunction r3() {\n  const v = 0;\n  return v;\n}\n",
+		},
+	}, {
+		name: "body rewritten above a function sharing a line", path: "i.go", lang: "go",
+		oldText: "package p\n\nfunc f1() int {\n\tv := 2\n\treturn v\n}\n",
+		newText: "package p\n\nfunc f1() int {\n\tv := 48\n\treturn v + 7\n}\n\n\nfunc n2() int {\n\tv := 1\n\tv := 2\n\treturn v + 3\n}\n",
+		hunk: []string{"@@ -1,6 +1,13 @@", " package p", " ", " func f1() int {", "+\tv := 48", "+\treturn v + 7", "+}", "+", "+",
+			"+func n2() int {", "+\tv := 1", " \tv := 2", "-\treturn v", "+\treturn v + 3", " }"},
+		symbols: []string{"f1", "n2"},
+		alone: map[string]string{
+			"f1": "package p\n\nfunc f1() int {\n\tv := 48\n\treturn v + 7\n}\n",
+			"n2": "package p\n\nfunc f1() int {\n\tv := 2\n\treturn v\n}\n\n\nfunc n2() int {\n\tv := 1\n\tv := 2\n\treturn v + 3\n}\n",
+		},
 	}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { runStagingCase(t, tc) })
