@@ -134,7 +134,8 @@ func displaySafe(s string) string {
 			return 0x2400 + r
 		case r == 0x7f:
 			return '␡'
-		case r >= 0x80 && r <= 0x9f, r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+		case r >= 0x80 && r <= 0x9f, r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069,
+			r == 0x200e, r == 0x200f, r == 0x061c:
 			return utf8.RuneError
 		}
 		return r

@@ -69,6 +69,15 @@ func TestDisplaySafe(t *testing.T) {
 	}
 }
 
+func TestDisplaySafe_DirectionMarks(t *testing.T) {
+	for _, r := range []rune{0x200e, 0x200f, 0x061c} {
+		in := "a" + string(r) + "b"
+		if got := displaySafe(in); got != "a�b" {
+			t.Errorf("displaySafe(%q) = %q, want %q", in, got, "a�b")
+		}
+	}
+}
+
 func TestDeltaInput_ShowsControlCharacters(t *testing.T) {
 	assertShown(t, "delta input", deltaInput("app\r.py", hostile))
 	if _, err := exec.LookPath("delta"); err != nil {
