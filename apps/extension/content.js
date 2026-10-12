@@ -75,7 +75,7 @@
     const toggle = document.createElement("button");
     toggle.id = "astra-toggle";
     toggle.textContent = "⭐ Astra";
-    toggle.title = "Toggle Astra AST review panel";
+    toggle.title = "Toggle the Astra review panel";
     toggle.style.cssText = [
       "position: fixed",
       "top: 64px",

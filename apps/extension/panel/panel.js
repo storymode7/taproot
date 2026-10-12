@@ -32,7 +32,7 @@ function presetToOrder(preset) {
 }
 
 async function handleFiles({ owner, repo, prNumber, files }) {
-  setStatus("Parsing AST & ordering…");
+  setStatus("Building the review…");
   try {
     const preset = document.getElementById("preset-select").value;
     // The Go core (WASM) builds snippets, call edges, and the review tree.
