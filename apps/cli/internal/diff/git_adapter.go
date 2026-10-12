@@ -242,8 +242,13 @@ func parseDiff(raw string) []*FileDiff {
 			cur = &FileDiff{OldPath: oldPath, Path: path}
 			continue
 		}
+		if path, ok := conflictPath(line); ok {
+			flush()
+			cur = &FileDiff{OldPath: path, Path: path, IsConflict: true}
+			continue
+		}
 
-		if cur == nil {
+		if cur == nil || cur.IsConflict {
 			continue
 		}
 
@@ -275,10 +280,14 @@ func parseDiff(raw string) []*FileDiff {
 
 		// The extended header, before the first hunk. Its lines name the
 		// paths exactly, where the diff --git line can be ambiguous.
-		case strings.HasPrefix(line, "new file"):
-			cur.IsNew = true
-		case strings.HasPrefix(line, "deleted file"):
-			cur.IsDeleted = true
+		case strings.HasPrefix(line, "old mode "):
+			cur.OldMode = line[len("old mode "):]
+		case strings.HasPrefix(line, "new mode "):
+			cur.NewMode = line[len("new mode "):]
+		case strings.HasPrefix(line, "new file mode "):
+			cur.IsNew, cur.NewMode = true, line[len("new file mode "):]
+		case strings.HasPrefix(line, "deleted file mode "):
+			cur.IsDeleted, cur.OldMode = true, line[len("deleted file mode "):]
 		case strings.HasPrefix(line, "Binary files"):
 			cur.IsBinary = true
 		case strings.HasPrefix(line, "rename from "):
@@ -298,6 +307,20 @@ func parseDiff(raw string) []*FileDiff {
 	flush()
 
 	return files
+}
+
+// conflictPath reads the path of an unmerged file. git diff prints its
+// conflict as a combined diff, or only its name when it is unmerged in a
+// way a combined diff cannot show (and always with --cached); that name
+// is printed as is, never quoted.
+func conflictPath(line string) (string, bool) {
+	if rest, ok := strings.CutPrefix(line, "diff --cc "); ok {
+		return gitPath(rest), true
+	}
+	if rest, ok := strings.CutPrefix(line, "diff --combined "); ok {
+		return gitPath(rest), true
+	}
+	return strings.CutPrefix(line, "* Unmerged path ")
 }
 
 // headerPaths reads the paths of a "diff --git a/<old> b/<new>" line. git

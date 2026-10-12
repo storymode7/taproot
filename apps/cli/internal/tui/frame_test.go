@@ -128,3 +128,17 @@ func TestRenderHelp_FitsTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestRender_HeaderCountsFilesNotShown(t *testing.T) {
+	r := testRunner(t, manySnippets(3, 5)...)
+	r.applyMode = true
+	r.Skipped = []core.SkippedFile{{Path: "logo.png", Reason: "binary"}, {Path: "b.py", OldPath: "a.py", Reason: "renamed"}}
+	if lines := frame(t, r, 24, 120); !strings.Contains(lines[0], "2 not shown") {
+		t.Errorf("header does not count the files not shown: %q", stripANSI(lines[0]))
+	}
+	lines := frame(t, r, 24, 60)
+	assertFits(t, lines, 24, 60)
+	if h := stripANSI(lines[0]); !strings.Contains(h, "[staging]") || !strings.Contains(h, "█") && !strings.Contains(h, "░") {
+		t.Errorf("60 columns: the count must give way before the bar and [staging]: %q", h)
+	}
+}

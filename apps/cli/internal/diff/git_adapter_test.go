@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -256,5 +257,37 @@ func TestParseDiff_HunkLinesThatLookLikeHeaders(t *testing.T) {
 	want := []string{"@@ -1,2 +1,2 @@", "--- a/old comment", "+++ b/new comment", " select 1;"}
 	if got := files[0].Hunks[0].Lines; !reflect.DeepEqual(got, want) {
 		t.Errorf("hunk lines = %q, want %q", got, want)
+	}
+}
+
+func TestParseDiff_FileKinds(t *testing.T) {
+	raw := "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,2 @@\n def a():\n-    return 1\n+    return 2\n\\ No newline at end of file\n" +
+		"diff --cc m.py\nindex 1,2..0\n--- a/m.py\n+++ b/m.py\n@@@ -1,1 -1,1 +1,5 @@@\n++<<<<<<< HEAD\n +c\n++=======\n+ b\n++>>>>>>> other\n" +
+		`diff --cc "\303\251.py"` + "\n" + `--- "a/\303\251.py"` + "\n@@@ -1 -1 +1,3 @@@\n++x\n" +
+		"* Unmerged path q z.py\n" +
+		"diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n" +
+		"diff --git a/empty.py b/empty.py\nnew file mode 100644\nindex 0000000..e69de29\n" +
+		"diff --git a/auth.py b/auth.py\ndeleted file mode 100644\nindex 1..0\n--- a/auth.py\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-def auth():\n-    return True\n"
+
+	files := parseDiff(raw)
+	var got []string
+	for _, f := range files {
+		got = append(got, fmt.Sprintf("%s new=%v del=%v conflict=%v mode=%q->%q hunks=%d", f.Path, f.IsNew, f.IsDeleted, f.IsConflict, f.OldMode, f.NewMode, len(f.Hunks)))
+	}
+	want := []string{
+		`a.py new=false del=false conflict=false mode=""->"" hunks=1`,
+		`m.py new=false del=false conflict=true mode=""->"" hunks=0`,
+		`é.py new=false del=false conflict=true mode=""->"" hunks=0`,
+		`q z.py new=false del=false conflict=true mode=""->"" hunks=0`,
+		`run.sh new=false del=false conflict=false mode="100644"->"100755" hunks=0`,
+		`empty.py new=true del=false conflict=false mode=""->"100644" hunks=0`,
+		`auth.py new=false del=true conflict=false mode="100644"->"" hunks=1`,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("files =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	wantA := []string{"@@ -1,2 +1,2 @@", " def a():", "-    return 1", "+    return 2", `\ No newline at end of file`}
+	if a := files[0].Hunks[0].Lines; !reflect.DeepEqual(a, wantA) {
+		t.Errorf("a.py hunk = %q, want %q: a conflict section must not join it", a, wantA)
 	}
 }

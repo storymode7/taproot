@@ -219,3 +219,17 @@ func TestRun_ResizeRedraws(t *testing.T) {
 		t.Error("the key that closed the help screen was run as a command")
 	}
 }
+
+func TestRun_NamesFilesNotShownAtStart(t *testing.T) {
+	p := openPTY(t, 24, 120)
+	r := testRunner(t, manySnippets(3, 5)...)
+	r.Skipped = []core.SkippedFile{{Path: "logo.png", Reason: "binary"}}
+	done := runTUI(r)
+	off := p.waitFor(t, 0, "Not shown: binary logo.png")
+	p.ctl.Write([]byte("J"))
+	p.waitFor(t, off, "quit")
+	p.ctl.Write([]byte("q"))
+	if v := waitDone(t, done); v != nil {
+		t.Fatalf("Run = %v", v)
+	}
+}

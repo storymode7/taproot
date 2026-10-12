@@ -204,8 +204,13 @@ func run(args []string) error {
 
 	// Build snippets using entity-aware splitting.
 	snippets := core.BuildSnippets(files)
+	skipped := skippedFiles(files)
 	if len(snippets) == 0 {
-		fmt.Println("No reviewable snippets found.")
+		if len(skipped) > 0 {
+			fmt.Println(tui.NotShownLine(skipped))
+		} else {
+			fmt.Println("No reviewable snippets found.")
+		}
 		return nil
 	}
 
@@ -227,6 +232,9 @@ func run(args []string) error {
 
 	if noTTY || !isTTY() {
 		tui.Plain = !isTTY() || os.Getenv("NO_COLOR") != ""
+		if len(skipped) > 0 {
+			fmt.Println(tui.NotShownLine(skipped))
+		}
 		tui.View(ordered, store)
 		return nil
 	}
@@ -240,7 +248,17 @@ func run(args []string) error {
 
 	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, stage)
 	runner.RepoRoot = repoRoot
+	runner.Skipped = skipped
 	return runner.Run()
+}
+
+// skippedFiles lists the changed files that make no snippet, and why.
+func skippedFiles(files []*core.FileDiff) []core.SkippedFile {
+	plain := make([]core.FileDiff, len(files))
+	for i, f := range files {
+		plain[i] = *f
+	}
+	return core.SkippedFiles(plain)
 }
 
 // reviewScope names the diff under review by commit SHAs, so review state

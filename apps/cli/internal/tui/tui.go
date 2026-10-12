@@ -152,6 +152,21 @@ func printDiffLines(filePath string, lines []string) {
 	}
 }
 
+// NotShownLine names the changed files the review has no snippet for, and
+// why, so a binary, a rename or a mode change is never passed over in
+// silence.
+func NotShownLine(skipped []core.SkippedFile) string {
+	parts := make([]string, len(skipped))
+	for i, f := range skipped {
+		name := f.Path
+		if f.OldPath != "" {
+			name = f.OldPath + " → " + f.Path
+		}
+		parts[i] = f.Reason + " " + name
+	}
+	return "Not shown: " + displaySafe(strings.Join(parts, " · "))
+}
+
 func statusBadge(status string) string {
 	switch status {
 	case "accepted":
@@ -181,6 +196,10 @@ type Runner struct {
 	// RepoRoot resolves snippet paths for the o (open in editor) key.
 	RepoRoot string
 	raw      *rawMode
+
+	// Skipped lists the changed files with no snippet: the header counts
+	// them, and the hint line names them until the first key.
+	Skipped []core.SkippedFile
 
 	tree       *treeState
 	cursor     int // index into tree.visible
@@ -218,6 +237,9 @@ func (r *Runner) Run() error {
 	raw, err := enableRawMode()
 	if err != nil {
 		// Fall back to non-interactive view if we can't get raw mode.
+		if len(r.Skipped) > 0 {
+			fmt.Println(NotShownLine(r.Skipped))
+		}
 		View(r.flat, r.store)
 		return nil
 	}
@@ -247,6 +269,9 @@ func (r *Runner) Run() error {
 	notifyResize(resized)
 	defer signal.Stop(resized)
 
+	if len(r.Skipped) > 0 {
+		r.status = NotShownLine(r.Skipped)
+	}
 	r.render()
 
 	for {
@@ -718,7 +743,11 @@ func (r *Runner) render() {
 	barW := min(20, max(0, cols-1-strWidth(stripANSI(head+tail))))
 	filled := pct * barW / 100
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
-	fmt.Println(ansiTruncate(head+dim+bar+reset+tail, cols-1))
+	notShown := ""
+	if len(r.Skipped) > 0 {
+		notShown = fmt.Sprintf("  %s%d not shown%s", yellow, len(r.Skipped), reset)
+	}
+	fmt.Println(ansiTruncate(head+dim+bar+reset+tail+notShown, cols-1))
 	fmt.Println(dim + strings.Repeat("─", cols) + reset)
 
 	// Tree pane.
@@ -827,6 +856,9 @@ func (r *Runner) renderHelp() {
 		dim + "Note: accept/reject records state locally under .git/astra/reviews/, per diff." + reset,
 		dim + "      In working tree mode y also stages the snippet and x/r unstages it;" + reset,
 		dim + "      pass --no-apply to leave the index alone." + reset,
+	}
+	if len(r.Skipped) > 0 {
+		lines = append(lines, "", dim+NotShownLine(r.Skipped)+reset)
 	}
 	for {
 		rows, cols := termSize()
