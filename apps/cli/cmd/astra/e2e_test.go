@@ -174,3 +174,39 @@ func TestStage_OddPaths(t *testing.T) {
 		t.Errorf("staged %q, want %q", staged, want)
 	}
 }
+
+// TestStage_NoNewlineAtEndOfFile stages the snippets of files whose old
+// or new text lacks a final newline, so git marks a line with "\ No
+// newline at end of file". Staging each alone, in either order, must give
+// the working tree, and a second y must leave the index alone.
+func TestStage_NoNewlineAtEndOfFile(t *testing.T) {
+	for _, c := range []struct{ name, old, new string }{
+		{"edit.py", "def a():\n    return 1\n\n\ndef b():\n    return 2", "def a():\n    return 10\n\n\ndef b():\n    return 20"},
+		{"append.py", "def a():\n    return 1", "def a():\n    return 1\n\n\ndef f():\n    return 2\n"},
+		{"append-noeol.py", "def a():\n    return 1", "def a():\n    return 1\n\n\ndef f():\n    return 2"},
+		{"append-edit.py", "def a():\n    return 1", "def a():\n    return 10\n\n\ndef f():\n    return 2\n"},
+		{"append.go", "package p\n\nfunc a() {\n\tx()\n}", "package p\n\nfunc a() {\n\tx()\n}\n\nfunc b() {\n\ty()\n}\n"},
+		{"inner.js", "function a() {\n  return 1;\n}\n\nfunction b() {\n  x();\n  return 2;\n}", "function a() {\n  return 1;\n}\n\nfunction b() {\n  y();\n  return 2;\n}"},
+		{"gains-eol.py", "def a():\n    return 1\n\n\ndef b():\n    return 2", "def a():\n    return 1\n\n\ndef b():\n    return 2\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRepo(t, "")
+			r.write(c.name, c.old)
+			r.commit("base")
+			r.write(c.name, c.new)
+			a := &diff.GitDiffAdapter{RepoRoot: r.dir}
+			snippets := r.snippets(a)
+			if len(snippets) == 0 {
+				t.Fatal("no snippets")
+			}
+			for _, order := range orders(len(snippets)) {
+				stageEach(t, a, snippets, order)
+				stageEach(t, a, snippets, order)
+				if got := r.git("show", ":"+c.name); got != c.new {
+					t.Errorf("order %v: staged %q, want %q", order, got, c.new)
+				}
+				r.git("reset", "-q")
+			}
+		})
+	}
+}
