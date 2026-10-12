@@ -313,7 +313,9 @@ and the browser tests.
 
 ## Releasing
 
-No workflow builds or publishes releases. To make one by hand:
+No workflow builds or publishes releases. Before the first release, turn
+on private vulnerability reporting in the repository's security settings,
+because SECURITY.md sends reports there. Then make each release by hand:
 
 1. If the extension changed, bump `"version"` in
    `apps/extension/manifest.json`. Chrome accepts one to four numbers
