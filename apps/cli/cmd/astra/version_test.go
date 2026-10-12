@@ -3,6 +3,7 @@ package main
 import (
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -22,6 +23,21 @@ func TestVersion_SetAtLinkTime(t *testing.T) {
 		out, err := exec.Command(bin, arg).Output()
 		if err != nil || string(out) != "astra v1.2.3\n" {
 			t.Errorf("astra %s printed %q, %v; want \"astra v1.2.3\\n\"", arg, out, err)
+		}
+	}
+}
+
+// TestUsage_MatchesTheTUI pins the --help lines that drifted from the
+// TUI: n searches (x rejects), and y stages in the default review.
+func TestUsage_MatchesTheTUI(t *testing.T) {
+	for _, s := range []string{"x       Reject", "n / N   Next/prev hit", "/       Search", "y also stages", "-h, --help", "-V, --version"} {
+		if !strings.Contains(usage, s) {
+			t.Errorf("usage lacks %q", s)
+		}
+	}
+	for _, s := range []string{"n / x", "does not stage"} {
+		if strings.Contains(usage, s) {
+			t.Errorf("usage still says %q", s)
 		}
 	}
 }

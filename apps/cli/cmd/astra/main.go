@@ -28,6 +28,9 @@ const usage = `astra — AST-aware PR diff reviewer
 USAGE
   astra diff [options]
 
+  With no options, astra reviews your unstaged changes, as git diff
+  shows them: staged changes and untracked files are left out.
+
 OPTIONS
   --base <ref>         Review a branch the way its PR shows it: changes since
                        it forked from <ref> (git diff <ref>...HEAD). Changes
@@ -58,26 +61,30 @@ OPTIONS
   --no-delta-config    Ignore ~/.gitconfig delta settings and use Astra's
                        GitHub-style theme (the default unless your gitconfig
                        sets delta's look).
+  -h, --help           Show this help
   -V, --version        Show the version
+
+  A value can also follow "=", as in --base=main.
 
 ENVIRONMENT
   ASTRA_THEME          dark | light  (default: from COLORFGBG, else dark)
   ASTRA_DELTA_THEME    Syntax theme for delta, e.g. "OneHalfDark"
   VISUAL / EDITOR      Editor for the o key (default: vi)
-  --help               Show this help
 
 KEYBOARD SHORTCUTS (interactive mode)
   The main view is a call tree of the changed code: children are the
   functions/types the focused snippet calls; roots are entry points.
 
   J / ↓   Move down          y / a   Accept        ] / [  Next/prev pending
-  K / ↑   Move up            n / x   Reject        j / k  Scroll / next
-  l / →   Expand / drill in  r       Mark reviewed E / C  Expand/collapse all
-  h / ←   Collapse / caller  o       Open editor   tab    Toggle auto
-                                                   q  ?   Quit, help
+  K / ↑   Move up            x       Reject        j / k  Scroll / next
+  l / →   Expand / drill in  r       Mark reviewed gg / G Diff top/bottom
+  h / ←   Collapse / caller  o       Open editor   E / C  Expand/collapse all
+  Home    First row          /       Search        tab    Toggle auto
+  End     Last row           n / N   Next/prev hit q  ?   Quit, help
 
-  Accept/reject records state locally under .git/astra/reviews/.
-  It does not stage or apply changes to your working tree.
+  In the default review (no --staged, --ref or --base), y also stages
+  the snippet (git apply --cached), like git add -p, and x or r on an
+  accepted snippet unstages it. --no-apply records verdicts only.
 
 STATE
   Review state is saved per diff under .git/astra/reviews/: one small
