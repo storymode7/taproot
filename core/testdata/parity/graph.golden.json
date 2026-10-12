@@ -1,0 +1,601 @@
+{
+  "snippets": [
+    {
+      "id": "76b0659843c8d57a",
+      "filePath": "app/service.py",
+      "oldPath": "app/service.py",
+      "language": "python",
+      "symbolPath": "UserService.save",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 5,
+      "endLine": 8,
+      "depth": 0,
+      "diffLines": [
+        "@@ -5,2 +5,3 @@",
+        "     def save(self, user):",
+        "+        user.validate()",
+        "         self.repo.save(user)"
+      ]
+    },
+    {
+      "id": "15155c8eceac87c5",
+      "filePath": "app/repo.py",
+      "oldPath": "app/repo.py",
+      "language": "python",
+      "symbolPath": "UserRepo.save",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 2,
+      "endLine": 4,
+      "depth": 1,
+      "diffLines": [
+        "@@ -2,2 +2,2 @@",
+        "     def save(self, user):",
+        "-        self.rows.append(user)",
+        "+        self.rows.append(dict(user))"
+      ]
+    },
+    {
+      "id": "104f5ad14eb2e39b",
+      "filePath": "shapes.go",
+      "oldPath": "shapes.go",
+      "language": "go",
+      "symbolPath": "String",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 13,
+      "endLine": 15,
+      "depth": 0,
+      "diffLines": [
+        "@@ -13,3 +13,3 @@",
+        " func (s Square) String() string {",
+        "-\treturn fmt.Sprintf(\"square %v\", s.Side)",
+        "+\treturn describe(\"square\", s.Side)",
+        " }"
+      ]
+    },
+    {
+      "id": "5c69789a710a34a4",
+      "filePath": "shapes.go",
+      "oldPath": "shapes.go",
+      "language": "go",
+      "symbolPath": "describe",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 17,
+      "endLine": 19,
+      "depth": 1,
+      "diffLines": [
+        "@@ -15,0 +16,4 @@",
+        "+",
+        "+func describe(kind string, size float64) string {",
+        "+\treturn fmt.Sprintf(\"%s %v\", kind, size)",
+        "+}"
+      ]
+    },
+    {
+      "id": "d8049bf66f4a6789",
+      "filePath": "src/pages/CartPage.tsx",
+      "oldPath": "src/pages/CartPage.tsx",
+      "language": "typescript",
+      "symbolPath": "CartPage",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 3,
+      "endLine": 5,
+      "depth": 0,
+      "diffLines": [
+        "@@ -3,3 +3,3 @@",
+        " export function CartPage({ items }: Props) {",
+        "-  return \u003cul\u003e{items.map((i) =\u003e i.name)}\u003c/ul\u003e;",
+        "+  return \u003cul\u003e{items.map((i) =\u003e \u003cCartItem key={i.id} item={i} /\u003e)}\u003c/ul\u003e;",
+        " }"
+      ]
+    },
+    {
+      "id": "93696bd81a758800",
+      "filePath": "src/components/CartItem.tsx",
+      "oldPath": "src/components/CartItem.tsx",
+      "language": "typescript",
+      "symbolPath": "CartItem",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 1,
+      "endLine": 3,
+      "depth": 1,
+      "diffLines": [
+        "@@ -1,3 +1,3 @@",
+        " export const CartItem = ({ item }: ItemProps): JSX.Element =\u003e (",
+        "-  \u003cli\u003e{item.name}\u003c/li\u003e",
+        "+  \u003cli className=\"item\"\u003e{item.name}\u003c/li\u003e",
+        " );"
+      ]
+    },
+    {
+      "id": "c5428c46d79f2b26",
+      "filePath": "pets.py",
+      "oldPath": "pets.py",
+      "language": "python",
+      "symbolPath": "Cat.__init__",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 2,
+      "endLine": 5,
+      "depth": 0,
+      "diffLines": [
+        "@@ -2,4 +2,4 @@",
+        "     def __init__(self, name):",
+        "-        self.name = name",
+        "+        self.name = name.title()",
+        " ",
+        " "
+      ]
+    },
+    {
+      "id": "73736620ac61351f",
+      "filePath": "pets.py",
+      "oldPath": "pets.py",
+      "language": "python",
+      "symbolPath": "Dog.__init__",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 7,
+      "endLine": 9,
+      "depth": 0,
+      "diffLines": [
+        "@@ -7,2 +7,2 @@",
+        "     def __init__(self, name):",
+        "-        self.name = name",
+        "+        self.name = name.upper()"
+      ]
+    },
+    {
+      "id": "a2a775dcb93f5770",
+      "filePath": "shapes.go",
+      "oldPath": "shapes.go",
+      "language": "go",
+      "symbolPath": "String",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 7,
+      "endLine": 9,
+      "depth": 0,
+      "diffLines": [
+        "@@ -7,3 +7,3 @@",
+        " func (c Circle) String() string {",
+        "-\treturn fmt.Sprintf(\"circle %v\", c.R)",
+        "+\treturn fmt.Sprintf(\"circle r=%v\", c.R)",
+        " }"
+      ]
+    },
+    {
+      "id": "8bd3648aa8c133d9",
+      "filePath": "store.go",
+      "oldPath": "store.go",
+      "language": "go",
+      "symbolPath": "Load",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 3,
+      "endLine": 6,
+      "depth": 0,
+      "diffLines": [
+        "@@ -3,4 +3,4 @@",
+        " func Load() error {",
+        "-\tread()",
+        "+\treadAll()",
+        " \treturn nil",
+        " }"
+      ]
+    },
+    {
+      "id": "51958de7a0b7190a",
+      "filePath": "store.go",
+      "oldPath": "store.go",
+      "language": "go",
+      "symbolPath": "Flush",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 8,
+      "endLine": 11,
+      "depth": 0,
+      "diffLines": [
+        "@@ -6,0 +7,5 @@",
+        "+",
+        "+func Flush() error {",
+        "+\tsync()",
+        "+\treturn nil",
+        "+}"
+      ]
+    },
+    {
+      "id": "e69f1de92af3fb58",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "alpha",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 3,
+      "endLine": 5,
+      "depth": 0,
+      "diffLines": [
+        "@@ -3,3 +3,3 @@",
+        " func alpha() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ],
+      "testedBy": [
+        "TestAlpha"
+      ]
+    },
+    {
+      "id": "b180b55a82016861",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "bravo",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 7,
+      "endLine": 9,
+      "depth": 0,
+      "diffLines": [
+        "@@ -7,3 +7,3 @@",
+        " func bravo() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ],
+      "testedBy": [
+        "TestBravo"
+      ]
+    },
+    {
+      "id": "0c9a585f1a80c25f",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "charlie",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 11,
+      "endLine": 13,
+      "depth": 0,
+      "diffLines": [
+        "@@ -11,3 +11,3 @@",
+        " func charlie() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ]
+    },
+    {
+      "id": "7deca26ac4b4432e",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "delta",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 15,
+      "endLine": 17,
+      "depth": 0,
+      "diffLines": [
+        "@@ -15,3 +15,3 @@",
+        " func delta() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ]
+    },
+    {
+      "id": "6651618c977e1fb7",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "echo",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 19,
+      "endLine": 21,
+      "depth": 0,
+      "diffLines": [
+        "@@ -19,3 +19,3 @@",
+        " func echo() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ]
+    },
+    {
+      "id": "f593dc4698e56add",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "foxtrot",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 23,
+      "endLine": 25,
+      "depth": 0,
+      "diffLines": [
+        "@@ -23,3 +23,3 @@",
+        " func foxtrot() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ]
+    },
+    {
+      "id": "0b337b64d57714d9",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "golf",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 27,
+      "endLine": 29,
+      "depth": 0,
+      "diffLines": [
+        "@@ -27,3 +27,3 @@",
+        " func golf() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ]
+    },
+    {
+      "id": "94ab2088f1a3f85f",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "hotel",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 31,
+      "endLine": 33,
+      "depth": 0,
+      "diffLines": [
+        "@@ -31,3 +31,3 @@",
+        " func hotel() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ]
+    },
+    {
+      "id": "00f08492b0de1287",
+      "filePath": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "symbolPath": "india",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 35,
+      "endLine": 37,
+      "depth": 0,
+      "diffLines": [
+        "@@ -35,3 +35,3 @@",
+        " func india() int {",
+        "-\treturn 1",
+        "+\treturn 2",
+        " }"
+      ]
+    },
+    {
+      "id": "8f06acb030f39afe",
+      "filePath": "svc_test.go",
+      "oldPath": "svc_test.go",
+      "language": "go",
+      "symbolPath": "TestAlpha",
+      "nodeType": "function",
+      "isNew": true,
+      "startLine": 5,
+      "endLine": 7,
+      "depth": 0,
+      "diffLines": [
+        "@@ -0,0 +4,4 @@",
+        "+",
+        "+func TestAlpha(t *testing.T) {",
+        "+\talpha()",
+        "+}"
+      ]
+    },
+    {
+      "id": "132c572b9fb29229",
+      "filePath": "svc_test.go",
+      "oldPath": "svc_test.go",
+      "language": "go",
+      "symbolPath": "TestBravo",
+      "nodeType": "function",
+      "isNew": true,
+      "startLine": 9,
+      "endLine": 11,
+      "depth": 0,
+      "diffLines": [
+        "@@ -0,0 +8,4 @@",
+        "+",
+        "+func TestBravo(t *testing.T) {",
+        "+\tbravo()",
+        "+}"
+      ]
+    },
+    {
+      "id": "af5759623aea29fb",
+      "filePath": "svc_test.go",
+      "oldPath": "svc_test.go",
+      "language": "go",
+      "symbolPath": "",
+      "nodeType": "hunk",
+      "isNew": true,
+      "startLine": 1,
+      "endLine": 1,
+      "depth": 0,
+      "diffLines": [
+        "@@ -0,0 +1,1 @@",
+        "+package svc"
+      ]
+    },
+    {
+      "id": "97399be9433b4e7b",
+      "filePath": "svc_test.go",
+      "oldPath": "svc_test.go",
+      "language": "go",
+      "symbolPath": "imports",
+      "nodeType": "imports",
+      "isNew": true,
+      "startLine": 3,
+      "endLine": 3,
+      "depth": 0,
+      "diffLines": [
+        "@@ -0,0 +2,2 @@",
+        "+",
+        "+import \"testing\""
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "104f5ad14eb2e39b",
+      "to": "5c69789a710a34a4",
+      "kind": "call",
+      "callLine": 14
+    },
+    {
+      "from": "132c572b9fb29229",
+      "to": "b180b55a82016861",
+      "kind": "call",
+      "callLine": 10
+    },
+    {
+      "from": "76b0659843c8d57a",
+      "to": "15155c8eceac87c5",
+      "kind": "call",
+      "callLine": 7
+    },
+    {
+      "from": "8f06acb030f39afe",
+      "to": "e69f1de92af3fb58",
+      "kind": "call",
+      "callLine": 6
+    },
+    {
+      "from": "d8049bf66f4a6789",
+      "to": "93696bd81a758800",
+      "kind": "call",
+      "callLine": 4
+    }
+  ],
+  "tree": {
+    "roots": [
+      {
+        "id": "76b0659843c8d57a",
+        "children": [
+          {
+            "id": "15155c8eceac87c5"
+          }
+        ]
+      },
+      {
+        "id": "104f5ad14eb2e39b",
+        "children": [
+          {
+            "id": "5c69789a710a34a4"
+          }
+        ]
+      },
+      {
+        "id": "d8049bf66f4a6789",
+        "children": [
+          {
+            "id": "93696bd81a758800"
+          }
+        ]
+      },
+      {
+        "id": "c5428c46d79f2b26"
+      },
+      {
+        "id": "73736620ac61351f"
+      },
+      {
+        "id": "a2a775dcb93f5770"
+      },
+      {
+        "id": "8bd3648aa8c133d9"
+      },
+      {
+        "id": "51958de7a0b7190a"
+      },
+      {
+        "id": "e69f1de92af3fb58"
+      },
+      {
+        "id": "b180b55a82016861"
+      },
+      {
+        "id": "0c9a585f1a80c25f"
+      },
+      {
+        "id": "7deca26ac4b4432e"
+      },
+      {
+        "id": "6651618c977e1fb7"
+      },
+      {
+        "id": "f593dc4698e56add"
+      },
+      {
+        "id": "0b337b64d57714d9"
+      },
+      {
+        "id": "94ab2088f1a3f85f"
+      },
+      {
+        "id": "00f08492b0de1287"
+      },
+      {
+        "id": "8f06acb030f39afe"
+      },
+      {
+        "id": "132c572b9fb29229"
+      },
+      {
+        "id": "af5759623aea29fb"
+      },
+      {
+        "id": "97399be9433b4e7b"
+      }
+    ]
+  },
+  "flatOrder": [
+    "76b0659843c8d57a",
+    "15155c8eceac87c5",
+    "104f5ad14eb2e39b",
+    "5c69789a710a34a4",
+    "d8049bf66f4a6789",
+    "93696bd81a758800",
+    "c5428c46d79f2b26",
+    "73736620ac61351f",
+    "a2a775dcb93f5770",
+    "8bd3648aa8c133d9",
+    "51958de7a0b7190a",
+    "e69f1de92af3fb58",
+    "b180b55a82016861",
+    "0c9a585f1a80c25f",
+    "7deca26ac4b4432e",
+    "6651618c977e1fb7",
+    "f593dc4698e56add",
+    "0b337b64d57714d9",
+    "94ab2088f1a3f85f",
+    "00f08492b0de1287",
+    "8f06acb030f39afe",
+    "132c572b9fb29229",
+    "af5759623aea29fb",
+    "97399be9433b4e7b"
+  ]
+}

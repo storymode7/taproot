@@ -1,0 +1,287 @@
+{
+  "files": [
+    {
+      "path": "app/repo.py",
+      "oldPath": "app/repo.py",
+      "language": "python",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 3,
+          "newStart": 1,
+          "newLines": 3,
+          "lines": [
+            "@@ -1,3 +1,3 @@",
+            " class UserRepo:",
+            "     def save(self, user):",
+            "-        self.rows.append(user)",
+            "+        self.rows.append(dict(user))"
+          ]
+        }
+      ],
+      "source": "class UserRepo:\n    def save(self, user):\n        self.rows.append(dict(user))\n",
+      "entities": []
+    },
+    {
+      "path": "app/service.py",
+      "oldPath": "app/service.py",
+      "language": "python",
+      "hunks": [
+        {
+          "oldStart": 3,
+          "oldLines": 4,
+          "newStart": 3,
+          "newLines": 5,
+          "lines": [
+            "@@ -3,4 +3,5 @@ class UserService:",
+            "         self.repo = repo",
+            " ",
+            "     def save(self, user):",
+            "+        user.validate()",
+            "         self.repo.save(user)"
+          ]
+        }
+      ],
+      "source": "class UserService:\n    def __init__(self, repo):\n        self.repo = repo\n\n    def save(self, user):\n        user.validate()\n        self.repo.save(user)\n",
+      "entities": []
+    },
+    {
+      "path": "pets.py",
+      "oldPath": "pets.py",
+      "language": "python",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 8,
+          "newStart": 1,
+          "newLines": 8,
+          "lines": [
+            "@@ -1,8 +1,8 @@",
+            " class Cat:",
+            "     def __init__(self, name):",
+            "-        self.name = name",
+            "+        self.name = name.title()",
+            " ",
+            " ",
+            " class Dog:",
+            "     def __init__(self, name):",
+            "-        self.name = name",
+            "+        self.name = name.upper()"
+          ]
+        }
+      ],
+      "source": "class Cat:\n    def __init__(self, name):\n        self.name = name.title()\n\n\nclass Dog:\n    def __init__(self, name):\n        self.name = name.upper()\n",
+      "entities": []
+    },
+    {
+      "path": "shapes.go",
+      "oldPath": "shapes.go",
+      "language": "go",
+      "hunks": [
+        {
+          "oldStart": 5,
+          "oldLines": 11,
+          "newStart": 5,
+          "newLines": 15,
+          "lines": [
+            "@@ -5,11 +5,15 @@ import \"fmt\"",
+            " type Circle struct{ R float64 }",
+            " ",
+            " func (c Circle) String() string {",
+            "-\treturn fmt.Sprintf(\"circle %v\", c.R)",
+            "+\treturn fmt.Sprintf(\"circle r=%v\", c.R)",
+            " }",
+            " ",
+            " type Square struct{ Side float64 }",
+            " ",
+            " func (s Square) String() string {",
+            "-\treturn fmt.Sprintf(\"square %v\", s.Side)",
+            "+\treturn describe(\"square\", s.Side)",
+            "+}",
+            "+",
+            "+func describe(kind string, size float64) string {",
+            "+\treturn fmt.Sprintf(\"%s %v\", kind, size)",
+            " }"
+          ]
+        }
+      ],
+      "source": "package shapes\n\nimport \"fmt\"\n\ntype Circle struct{ R float64 }\n\nfunc (c Circle) String() string {\n\treturn fmt.Sprintf(\"circle r=%v\", c.R)\n}\n\ntype Square struct{ Side float64 }\n\nfunc (s Square) String() string {\n\treturn describe(\"square\", s.Side)\n}\n\nfunc describe(kind string, size float64) string {\n\treturn fmt.Sprintf(\"%s %v\", kind, size)\n}\n",
+      "entities": []
+    },
+    {
+      "path": "src/components/CartItem.tsx",
+      "oldPath": "src/components/CartItem.tsx",
+      "language": "typescript",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 3,
+          "newStart": 1,
+          "newLines": 3,
+          "lines": [
+            "@@ -1,3 +1,3 @@",
+            " export const CartItem = ({ item }: ItemProps): JSX.Element => (",
+            "-  <li>{item.name}</li>",
+            "+  <li className=\"item\">{item.name}</li>",
+            " );"
+          ]
+        }
+      ],
+      "source": "export const CartItem = ({ item }: ItemProps): JSX.Element => (\n  <li className=\"item\">{item.name}</li>\n);\n",
+      "entities": []
+    },
+    {
+      "path": "src/pages/CartPage.tsx",
+      "oldPath": "src/pages/CartPage.tsx",
+      "language": "typescript",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 5,
+          "newStart": 1,
+          "newLines": 5,
+          "lines": [
+            "@@ -1,5 +1,5 @@",
+            " import { CartItem } from \"../components/CartItem\";",
+            " ",
+            " export function CartPage({ items }: Props) {",
+            "-  return <ul>{items.map((i) => i.name)}</ul>;",
+            "+  return <ul>{items.map((i) => <CartItem key={i.id} item={i} />)}</ul>;",
+            " }"
+          ]
+        }
+      ],
+      "source": "import { CartItem } from \"../components/CartItem\";\n\nexport function CartPage({ items }: Props) {\n  return <ul>{items.map((i) => <CartItem key={i.id} item={i} />)}</ul>;\n}\n",
+      "entities": []
+    },
+    {
+      "path": "store.go",
+      "oldPath": "store.go",
+      "language": "go",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 7,
+          "newStart": 1,
+          "newLines": 12,
+          "lines": [
+            "@@ -1,7 +1,12 @@",
+            " package store",
+            " ",
+            " func Load() error {",
+            "-\tread()",
+            "+\treadAll()",
+            "+\treturn nil",
+            "+}",
+            "+",
+            "+func Flush() error {",
+            "+\tsync()",
+            " \treturn nil",
+            " }",
+            " "
+          ]
+        }
+      ],
+      "source": "package store\n\nfunc Load() error {\n\treadAll()\n\treturn nil\n}\n\nfunc Flush() error {\n\tsync()\n\treturn nil\n}\n\nfunc Close() error {\n\treturn nil\n}\n",
+      "entities": []
+    },
+    {
+      "path": "svc.go",
+      "oldPath": "svc.go",
+      "language": "go",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 37,
+          "newStart": 1,
+          "newLines": 37,
+          "lines": [
+            "@@ -1,37 +1,37 @@",
+            " package svc",
+            " ",
+            " func alpha() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func bravo() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func charlie() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func delta() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func echo() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func foxtrot() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func golf() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func hotel() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }",
+            " ",
+            " func india() int {",
+            "-\treturn 1",
+            "+\treturn 2",
+            " }"
+          ]
+        }
+      ],
+      "source": "package svc\n\nfunc alpha() int {\n\treturn 2\n}\n\nfunc bravo() int {\n\treturn 2\n}\n\nfunc charlie() int {\n\treturn 2\n}\n\nfunc delta() int {\n\treturn 2\n}\n\nfunc echo() int {\n\treturn 2\n}\n\nfunc foxtrot() int {\n\treturn 2\n}\n\nfunc golf() int {\n\treturn 2\n}\n\nfunc hotel() int {\n\treturn 2\n}\n\nfunc india() int {\n\treturn 2\n}\n",
+      "entities": []
+    },
+    {
+      "path": "svc_test.go",
+      "oldPath": "svc_test.go",
+      "language": "go",
+      "hunks": [
+        {
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 11,
+          "lines": [
+            "@@ -0,0 +1,11 @@",
+            "+package svc",
+            "+",
+            "+import \"testing\"",
+            "+",
+            "+func TestAlpha(t *testing.T) {",
+            "+\talpha()",
+            "+}",
+            "+",
+            "+func TestBravo(t *testing.T) {",
+            "+\tbravo()",
+            "+}"
+          ]
+        }
+      ],
+      "isNew": true,
+      "newMode": "100644",
+      "source": "package svc\n\nimport \"testing\"\n\nfunc TestAlpha(t *testing.T) {\n\talpha()\n}\n\nfunc TestBravo(t *testing.T) {\n\tbravo()\n}\n",
+      "entities": []
+    }
+  ],
+  "options": {
+    "order": "pre"
+  }
+}
