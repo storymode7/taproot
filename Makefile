@@ -16,6 +16,7 @@ core-wasm:
 .PHONY: test
 test:
 	go test ./...
+	node --test shared/test/*.test.mjs
 
 # Dev-only Go↔WASM parity check (requires node; not a runtime dependency).
 # It checks the committed WASM, so run make core-wasm first after changing /core.

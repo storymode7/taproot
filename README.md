@@ -274,7 +274,7 @@ is no npm install and no build step for the web code.
 
 ```sh
 make cli                              # build ./astra
-make test                             # go test ./...
+make test                             # go test ./... and the browser tests
 go vet ./...
 node --test shared/test/*.test.mjs    # tests for the browser code
 make core-wasm                        # rebuild vendor/core/astra-core.wasm
@@ -295,8 +295,9 @@ make parity                           # check the committed WASM against the Go 
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request. It
 runs `go vet` and `go test`, builds the CLI for linux and darwin on amd64
-and arm64, checks `vendor/core/checksums.txt`, and runs the sync check and
-the parity check.
+and arm64, builds the WebAssembly entry point, checks
+`vendor/core/checksums.txt`, and runs the sync check, the parity check
+and the browser tests.
 
 ## Releasing
 
