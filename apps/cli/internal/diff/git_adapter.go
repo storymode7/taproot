@@ -3,7 +3,9 @@ package diff
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,8 +121,8 @@ func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
 		if a.RepoRoot != "" {
 			path = filepath.Join(a.RepoRoot, req.Path)
 		}
-		if out, err := os.ReadFile(path); err == nil {
-			return out, nil
+		if out, err := readWorktreeFile(path); !errors.Is(err, fs.ErrNotExist) {
+			return out, err
 		}
 		out, err := a.git("show", fmt.Sprintf("HEAD:%s", req.Path))
 		if err != nil {
@@ -133,6 +135,23 @@ func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
 		return nil, fmt.Errorf("git show %s:%s: %w", req.SHA, req.Path, err)
 	}
 	return []byte(out), nil
+}
+
+// readWorktreeFile reads a file as git sees it: a symlink is the path it
+// holds, never what it points to (a device or a pipe there could exhaust
+// memory or block), and only a regular file has content.
+func readWorktreeFile(path string) ([]byte, error) {
+	fi, err := os.Lstat(path)
+	switch {
+	case err != nil:
+		return nil, err
+	case fi.Mode()&fs.ModeSymlink != 0:
+		target, err := os.Readlink(path)
+		return []byte(target), err
+	case !fi.Mode().IsRegular():
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	return os.ReadFile(path)
 }
 
 func (a *GitDiffAdapter) headRef() string {
