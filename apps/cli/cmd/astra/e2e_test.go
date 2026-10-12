@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/storymode7/astra/apps/cli/internal/diff"
+	"github.com/storymode7/astra/apps/cli/internal/state"
 	"github.com/storymode7/astra/core"
 )
 
@@ -77,10 +78,14 @@ func (r *testRepo) commit(msg string) {
 	r.git("commit", "-qm", msg)
 }
 
-// load reads the working-tree review as run does.
+// load reads the working-tree review as run does, with a store of its own.
 func (r *testRepo) load(t *testing.T, applyMode bool) *loaded {
 	t.Helper()
-	d, err := (&review{adapter: &diff.GitDiffAdapter{RepoRoot: r.dir}, applyMode: applyMode}).load()
+	store, err := state.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := (&review{adapter: &diff.GitDiffAdapter{RepoRoot: r.dir}, store: store, applyMode: applyMode}).load()
 	if err != nil {
 		t.Fatal(err)
 	}

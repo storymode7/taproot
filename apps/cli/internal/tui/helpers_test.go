@@ -14,7 +14,7 @@ import (
 // review state in a temp dir.
 func testRunner(t *testing.T, snippets ...*core.Snippet) *Runner {
 	t.Helper()
-	store, err := state.Open(t.TempDir(), "test")
+	store, err := state.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

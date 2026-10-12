@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/storymode7/astra/apps/cli/internal/state"
 	"github.com/storymode7/astra/core"
 )
 
@@ -104,10 +103,10 @@ func (t *treeState) scrollTo(idx, height int) {
 	}
 }
 
-// renderTreeRow renders one tree row, truncated to width. The cursor row is
-// drawn in inverse video. Annotations are short counts; the focus header
-// lists the names.
-func (t *treeState) renderTreeRow(row visRow, store *state.Store, cursor bool, width int) string {
+// renderTreeRow renders one tree row with its review status, truncated to
+// width. The cursor row is drawn in inverse video. Annotations are short
+// counts; the focus header lists the names.
+func (t *treeState) renderTreeRow(row visRow, status string, cursor bool, width int) string {
 	n := row.node
 	s := n.Snippet
 
@@ -121,7 +120,6 @@ func (t *treeState) renderTreeRow(row visRow, store *state.Store, cursor bool, w
 		marker = "▶"
 	}
 
-	status := store.Get(s.ID).Status
 	segs := []segment{
 		{strings.Repeat("  ", row.depth) + marker + " ", ""},
 		{plainGlyph(status), glyphColor(status)},

@@ -7,8 +7,7 @@ import (
 )
 
 func TestStore_GetDefault_ReturnsPending(t *testing.T) {
-	dir := t.TempDir()
-	store, err := Open(dir, "worktree@abc")
+	store, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -16,14 +15,13 @@ func TestStore_GetDefault_ReturnsPending(t *testing.T) {
 	if st.Status != "pending" {
 		t.Errorf("default status = %q, want pending", st.Status)
 	}
-	if st.ID != "nonexistent" {
-		t.Errorf("default ID = %q, want nonexistent", st.ID)
+	if st.Key != "nonexistent" {
+		t.Errorf("default key = %q, want nonexistent", st.Key)
 	}
 }
 
 func TestStore_SetGet_RoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	store, err := Open(dir, "worktree@abc")
+	store, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -40,8 +38,7 @@ func TestStore_SetGet_RoundTrip(t *testing.T) {
 }
 
 func TestStore_SetMultiple_AllRetrievable(t *testing.T) {
-	dir := t.TempDir()
-	store, err := Open(dir, "worktree@abc")
+	store, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -63,7 +60,7 @@ func TestStore_SetMultiple_AllRetrievable(t *testing.T) {
 func TestStore_Persistence_ReloadFromDisk(t *testing.T) {
 	dir := t.TempDir()
 
-	store1, err := Open(dir, "worktree@abc")
+	store1, err := Open(dir)
 	if err != nil {
 		t.Fatalf("Open store1: %v", err)
 	}
@@ -71,8 +68,7 @@ func TestStore_Persistence_ReloadFromDisk(t *testing.T) {
 		t.Fatalf("Set: %v", err)
 	}
 
-	// Open a new store pointing to the same directory.
-	store2, err := Open(dir, "worktree@abc")
+	store2, err := Open(dir)
 	if err != nil {
 		t.Fatalf("Open store2: %v", err)
 	}
@@ -85,51 +81,8 @@ func TestStore_Persistence_ReloadFromDisk(t *testing.T) {
 	}
 }
 
-func TestStore_Prune_RemovesStaleIDs(t *testing.T) {
-	dir := t.TempDir()
-	store, err := Open(dir, "worktree@abc")
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	_ = store.Set("keep", "accepted", "")
-	_ = store.Set("remove", "reviewed", "")
-
-	valid := map[string]struct{}{"keep": {}}
-	if err := store.Prune(valid); err != nil {
-		t.Fatalf("Prune: %v", err)
-	}
-
-	if st := store.Get("keep"); st.Status != "accepted" {
-		t.Errorf("keep status = %q after prune, want accepted", st.Status)
-	}
-	// "remove" was pruned — should return the default pending state.
-	if st := store.Get("remove"); st.Status != "pending" {
-		t.Errorf("remove status = %q after prune, want pending", st.Status)
-	}
-}
-
-func TestStore_Prune_PersistsToReload(t *testing.T) {
-	dir := t.TempDir()
-	store1, err := Open(dir, "worktree@abc")
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	_ = store1.Set("keep", "accepted", "")
-	_ = store1.Set("stale", "reviewed", "")
-	_ = store1.Prune(map[string]struct{}{"keep": {}})
-
-	store2, err := Open(dir, "worktree@abc")
-	if err != nil {
-		t.Fatalf("reload: %v", err)
-	}
-	if st := store2.Get("stale"); st.Status != "pending" {
-		t.Errorf("stale not pruned after reload: status = %q", st.Status)
-	}
-}
-
 func TestStore_All_ReturnsCopy(t *testing.T) {
-	dir := t.TempDir()
-	store, err := Open(dir, "worktree@abc")
+	store, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -142,50 +95,78 @@ func TestStore_All_ReturnsCopy(t *testing.T) {
 	}
 }
 
-func TestStore_StateFilePath(t *testing.T) {
+func TestStore_OneFilePerGitDir(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir, "worktree@abc")
+	store, err := Open(dir)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	_ = store.Set("x", "reviewed", "")
-
-	if got := filepath.Dir(store.path); got != filepath.Join(dir, "astra", "reviews") {
-		t.Errorf("store dir = %q, want <gitDir>/astra/reviews", got)
+	for _, k := range []string{"x", "y", "z"} {
+		if err := store.Set(k, "reviewed", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := os.ReadDir(filepath.Join(dir, "astra"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Name() != "verdicts.json" {
+		t.Errorf("<gitDir>/astra holds %v, want only verdicts.json", files)
 	}
 }
 
-func TestStore_ScopesAreIndependent(t *testing.T) {
-	dir := t.TempDir()
-	a, _ := Open(dir, "commits a..b")
-	if err := a.Set("id1", "reviewed", ""); err != nil {
-		t.Fatalf("Set: %v", err)
+func TestKey_FollowsTheChangeNotItsPlace(t *testing.T) {
+	change := []string{"@@ -3,4 +3,4 @@ func a() {", " \tx := 1", "-\treturn x", "+\treturn x + 1", " }"}
+	moved := []string{"@@ -30,3 +31,3 @@", " \ty := 2", "-\treturn x", "+\treturn x + 1"}
+	if Key("id", change) != Key("id", moved) {
+		t.Error("a change that moved, with other context, must keep its key")
 	}
-	b, _ := Open(dir, "commits b..c")
-	if st := b.Get("id1"); st.Status != "pending" {
-		t.Errorf("other commit sees status %q, want pending", st.Status)
+	for name, other := range map[string][]string{
+		"another added line": {"@@ -3,4 +3,4 @@", "-\treturn x", "+\treturn x + 2"},
+		"one more line":      {"@@ -3,4 +3,5 @@", "-\treturn x", "+\treturn x + 1", "+\tsteal()"},
+		"no final newline":   {"@@ -3,4 +3,4 @@", "-\treturn x", "+\treturn x + 1", `\ No newline at end of file`},
+	} {
+		if Key("id", change) == Key("id", other) {
+			t.Errorf("%s: same key as the original change", name)
+		}
 	}
-	again, _ := Open(dir, "commits a..b")
-	if st := again.Get("id1"); st.Status != "reviewed" {
-		t.Errorf("same commit lost status: %q, want reviewed", st.Status)
+	if Key("id", change) == Key("other", change) {
+		t.Error("the same change in another snippet must have another key")
 	}
 }
 
 func TestStore_OpenWithoutSetWritesNothing(t *testing.T) {
 	dir := t.TempDir()
-	s, _ := Open(dir, "commits a..b")
+	s, _ := Open(dir)
 	s.Get("id1")
+	s.Reset("id1")
 	if _, err := os.Stat(s.path); !os.IsNotExist(err) {
 		t.Errorf("viewing without marking created %s", s.path)
 	}
 }
 
-// Two sessions on one diff each save their own verdicts: a write changes
-// only its snippet, and leaves no temp file behind.
+func TestStore_ResetShowsPendingForTheSession(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := Open(dir)
+	if err := s.Set("k", "accepted", "note"); err != nil {
+		t.Fatal(err)
+	}
+	s.Reset("k")
+	if st := s.Get("k"); st.Status != "pending" || st.Comment != "note" {
+		t.Errorf("after Reset: %+v, want pending with the comment kept", st)
+	}
+	again, _ := Open(dir)
+	if st := again.Get("k"); st.Status != "accepted" {
+		t.Errorf("Reset changed the saved verdict: %q", st.Status)
+	}
+}
+
+// Two sessions on one repository each save their own verdicts: a write
+// changes only its key, and leaves no temp file behind.
 func TestStore_TwoSessionsKeepEachOthersVerdicts(t *testing.T) {
 	dir := t.TempDir()
-	a, _ := Open(dir, "worktree@abc")
-	b, _ := Open(dir, "worktree@abc")
+	a, _ := Open(dir)
+	b, _ := Open(dir)
 	if err := a.Set("alpha", "accepted", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -195,14 +176,14 @@ func TestStore_TwoSessionsKeepEachOthersVerdicts(t *testing.T) {
 	if err := a.Set("gamma", "rejected", ""); err != nil {
 		t.Fatal(err)
 	}
-	fresh, _ := Open(dir, "worktree@abc")
-	for id, want := range map[string]string{"alpha": "accepted", "beta": "reviewed", "gamma": "rejected"} {
-		if got := fresh.Get(id).Status; got != want {
-			t.Errorf("%s = %q on disk, want %q", id, got, want)
+	fresh, _ := Open(dir)
+	for k, want := range map[string]string{"alpha": "accepted", "beta": "reviewed", "gamma": "rejected"} {
+		if got := fresh.Get(k).Status; got != want {
+			t.Errorf("%s = %q on disk, want %q", k, got, want)
 		}
 	}
-	files, _ := os.ReadDir(filepath.Join(dir, "astra", "reviews"))
+	files, _ := os.ReadDir(filepath.Join(dir, "astra"))
 	if len(files) != 1 {
-		t.Errorf("reviews holds %v, want one state file", files)
+		t.Errorf("<gitDir>/astra holds %v, want only verdicts.json", files)
 	}
 }

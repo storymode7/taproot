@@ -48,7 +48,7 @@ func View(snippets []*core.Snippet, store *state.Store) {
 		return
 	}
 	for i, s := range snippets {
-		st := store.Get(s.ID)
+		st := store.Get(state.Key(s.ID, s.DiffLines))
 		// Indent by call-tree depth so the drill-down structure survives
 		// in plain output.
 		printSnippetHeader(i+1, len(snippets), s, st.Status, strings.Repeat("  ", s.Depth))
@@ -86,7 +86,7 @@ func plainView(snippets []*core.Snippet, store *state.Store) {
 		if s.SymbolPath != "" {
 			title += " :: " + displaySafe(s.SymbolPath)
 		}
-		fmt.Printf("%s--- %d/%d  %s  [%s]\n", indent, i+1, len(snippets), title, store.Get(s.ID).Status)
+		fmt.Printf("%s--- %d/%d  %s  [%s]\n", indent, i+1, len(snippets), title, store.Get(state.Key(s.ID, s.DiffLines)).Status)
 		for _, note := range snippetNotes(s, nil) {
 			fmt.Printf("%s    %s\n", indent, note)
 		}
@@ -193,6 +193,7 @@ type Runner struct {
 	autoAdvance bool // jump to the next pending snippet after accept/reject/reviewed
 	applyMode   bool // stage on accept, unstage on un-accept (off with --no-apply)
 	stage       func(s *core.Snippet, reverse bool) error
+	keys        map[string]string // review-state key per snippet ID
 
 	// RepoRoot resolves snippet paths for the o (open in editor) key.
 	RepoRoot string
@@ -427,7 +428,7 @@ func (r *Runner) reload(why string) {
 			r.tree.expanded[e] = true
 		}
 	}
-	r.search = nil
+	r.keys, r.search = nil, nil
 	r.diffCache = make(map[string][]string)
 	r.cursor = 0
 	r.focusNode(id)
@@ -720,6 +721,24 @@ func (r *Runner) refocus() {
 	r.render()
 }
 
+// key is the review-state key of s: its ID and change.
+func (r *Runner) key(s *core.Snippet) string {
+	if r.keys == nil {
+		r.keys = make(map[string]string)
+	}
+	k, ok := r.keys[s.ID]
+	if !ok {
+		k = state.Key(s.ID, s.DiffLines)
+		r.keys[s.ID] = k
+	}
+	return k
+}
+
+// statusOf is the review status of s.
+func (r *Runner) statusOf(s *core.Snippet) string {
+	return r.store.Get(r.key(s)).Status
+}
+
 func (r *Runner) setStatus(status string) {
 	n := r.currentNode()
 	if n == nil {
@@ -733,7 +752,8 @@ func (r *Runner) setStatus(status string) {
 			return
 		}
 	}
-	st := r.store.Get(n.Snippet.ID)
+	key := r.key(n.Snippet)
+	st := r.store.Get(key)
 	if r.applyMode && r.stage != nil && (status == "accepted" || st.Status == "accepted") {
 		if err := r.stage(n.Snippet, status != "accepted"); err != nil {
 			verb := "stage"
@@ -745,7 +765,7 @@ func (r *Runner) setStatus(status string) {
 			return
 		}
 	}
-	if err := r.store.Set(n.Snippet.ID, status, st.Comment); err != nil {
+	if err := r.store.Set(key, status, st.Comment); err != nil {
 		// Lead with the cause; the full error is mostly the file's path.
 		for u := errors.Unwrap(err); u != nil; u = errors.Unwrap(u) {
 			err = u
@@ -778,7 +798,7 @@ func (r *Runner) gotoPending(dir int) {
 	for i := 1; i <= len(r.flat); i++ {
 		idx := (cur + dir*i%len(r.flat) + len(r.flat)) % len(r.flat)
 		s := r.flat[idx]
-		if s.ID != n.Snippet.ID && r.store.Get(s.ID).Status == "pending" {
+		if s.ID != n.Snippet.ID && r.statusOf(s) == "pending" {
 			r.focusNode(s.ID)
 			break
 		}
@@ -840,7 +860,7 @@ func (r *Runner) render() {
 	// Header: progress + toggles.
 	done := 0
 	for _, s := range r.flat {
-		if r.store.Get(s.ID).Status != "pending" {
+		if r.statusOf(s) != "pending" {
 			done++
 		}
 	}
@@ -873,7 +893,8 @@ func (r *Runner) render() {
 	// Tree pane.
 	r.tree.scrollTo(r.cursor, treeH)
 	for i := r.tree.top; i < r.tree.top+treeH && i < len(r.tree.visible); i++ {
-		fmt.Println(r.tree.renderTreeRow(r.tree.visible[i], r.store, i == r.cursor, cols))
+		row := r.tree.visible[i]
+		fmt.Println(r.tree.renderTreeRow(row, r.statusOf(row.node.Snippet), i == r.cursor, cols))
 	}
 
 	// Focus rule + diff pane.
@@ -884,7 +905,7 @@ func (r *Runner) render() {
 		if s.SymbolPath != "" {
 			title = displaySafe(s.SymbolPath) + "  "
 		}
-		loc := fmt.Sprintf("%s:%d · %s ", displaySafe(s.FilePath), firstChangedLine(s), r.store.Get(s.ID).Status)
+		loc := fmt.Sprintf("%s:%d · %s ", displaySafe(s.FilePath), firstChangedLine(s), r.statusOf(s))
 		rule := ""
 		if pad := cols - strWidth("── "+title+loc); pad > 0 {
 			rule = strings.Repeat("─", pad)
@@ -973,9 +994,9 @@ func (r *Runner) renderHelp() {
 		dim + "functions/types the focused snippet calls. Roots are entry points" + reset,
 		dim + "nothing else in the diff calls. Tests follow the code they test." + reset,
 		"",
-		dim + "Note: accept/reject records state locally under .git/astra/reviews/, per diff." + reset,
-		dim + "      In working tree mode y also stages the snippet and x/r unstages it;" + reset,
-		dim + "      pass --no-apply to leave the index alone." + reset,
+		dim + "Note: verdicts are saved under .git/astra/, per change, so they survive" + reset,
+		dim + "      commits and rebases. In working tree mode y also stages the snippet" + reset,
+		dim + "      and x/r unstages it; pass --no-apply to leave the index alone." + reset,
 	}
 	if len(r.Skipped) > 0 {
 		lines = append(lines, "", dim+NotShownLine(r.Skipped)+reset)

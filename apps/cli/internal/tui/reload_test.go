@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/storymode7/astra/apps/cli/internal/state"
 	"github.com/storymode7/astra/core"
 )
 
@@ -45,12 +46,12 @@ func TestSetStatus_ReloadsWhenTheDiffChanged(t *testing.T) {
 	if n := r.currentNode(); n == nil || n.Snippet != fresh {
 		t.Errorf("the cursor is not on the reloaded alpha: %v", n)
 	}
-	if got := r.store.Get(stale.ID).Status; got != "pending" {
+	if got := r.store.Get(state.Key(stale.ID, stale.DiffLines)).Status; got != "pending" {
 		t.Errorf("the stale change was recorded as %q", got)
 	}
 
 	captureStdout(t, func() { r.setStatus("accepted") })
-	if !reflect.DeepEqual(staged, []string{"+\treturn 11"}) || r.store.Get(fresh.ID).Status != "accepted" {
-		t.Errorf("second y staged %q, status %q; want the new change accepted", staged, r.store.Get(fresh.ID).Status)
+	if !reflect.DeepEqual(staged, []string{"+\treturn 11"}) || r.statusOf(fresh) != "accepted" {
+		t.Errorf("second y staged %q, status %q; want the new change accepted", staged, r.statusOf(fresh))
 	}
 }

@@ -89,8 +89,10 @@ KEYBOARD SHORTCUTS (interactive mode)
   the diff instead of staging what is no longer there.
 
 STATE
-  Review state is saved per diff under .git/astra/reviews/: one small
-  file per commit range (or working tree at its HEAD) you have marked.
+  Verdicts are saved in .git/astra/verdicts.json, each keyed by the
+  snippet and its exact change: they survive commit, amend and rebase,
+  every mode sees them (--staged shows what y staged as accepted), and a
+  snippet whose change is edited is pending again.
 `
 
 // version is set by a release build: go build -ldflags "-X main.version=v1.2.3".
@@ -231,12 +233,12 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("find git dir: %w", err)
 	}
-	store, err := state.Open(strings.TrimSpace(gitDir), reviewScope(adapter))
+	store, err := state.Open(strings.TrimSpace(gitDir))
 	if err != nil {
 		return fmt.Errorf("open state store: %w", err)
 	}
 
-	rv := &review{adapter: adapter, applyMode: applyMode}
+	rv := &review{adapter: adapter, store: store, applyMode: applyMode}
 	d, err := rv.load()
 	if err != nil {
 		return err
@@ -301,6 +303,7 @@ func run(args []string) error {
 // whenever the working tree or the index changed since.
 type review struct {
 	adapter   *diff.GitDiffAdapter
+	store     *state.Store
 	applyMode bool // y stages
 }
 
@@ -343,6 +346,13 @@ func (rv *review) load() (*loaded, error) {
 	d.forest = core.BuildForest(d.snippets, edges)
 
 	if rv.applyMode {
+		// A staged snippet leaves this diff, so an accepted one still in
+		// it is not staged: it shows as pending.
+		for _, s := range d.snippets {
+			if k := state.Key(s.ID, s.DiffLines); rv.store.Get(k).Status == "accepted" {
+				rv.store.Reset(k)
+			}
+		}
 		if d.stager, err = newStager(rv.adapter, files, pre, d.snippets); err != nil {
 			return nil, fmt.Errorf("read the index: %w", err)
 		}
@@ -395,33 +405,6 @@ func checkRefs(a *diff.GitDiffAdapter) error {
 		return fmt.Errorf("%s %s: no such branch, tag or commit", f[0], f[1])
 	}
 	return nil
-}
-
-// reviewScope names the diff under review by commit SHAs, so review state
-// follows the exact commits rather than branch names that move.
-func reviewScope(a *diff.GitDiffAdapter) string {
-	sha := func(args ...string) string {
-		out, err := a.RunGit(args...)
-		if err != nil {
-			return "unborn"
-		}
-		return strings.TrimSpace(out)
-	}
-	head := sha("rev-parse", "HEAD")
-	switch {
-	case a.Base != "":
-		tip := a.Head
-		if tip == "" {
-			tip = "HEAD"
-		}
-		return "commits " + sha("merge-base", a.Base, tip) + ".." + sha("rev-parse", tip+"^{commit}")
-	case a.Staged:
-		return "staged@" + head
-	case a.Ref != "":
-		return "worktree vs " + sha("rev-parse", a.Ref+"^{commit}") + "@" + head
-	default:
-		return "worktree@" + head
-	}
 }
 
 func parsePreset(name string) (core.Preset, error) {

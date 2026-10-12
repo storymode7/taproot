@@ -80,11 +80,11 @@ func TestSetStatus_ReportsUnsavedState(t *testing.T) {
 		t.Skip("root ignores directory permissions")
 	}
 	gitDir := t.TempDir()
-	store, err := state.Open(gitDir, "test")
+	store, err := state.Open(gitDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reviews := filepath.Join(gitDir, "astra", "reviews")
+	reviews := filepath.Join(gitDir, "astra")
 	if err := os.Chmod(reviews, 0o555); err != nil {
 		t.Fatal(err)
 	}

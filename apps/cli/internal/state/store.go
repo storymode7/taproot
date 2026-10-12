@@ -1,9 +1,10 @@
 // Package state manages review state persistence for the CLI.
 //
-// Each reviewed diff (a commit range, the index, or the working tree at a
-// given HEAD) gets its own file under .git/astra/reviews/, so marking a
-// function in one commit leaves it pending in the others. Files live inside
-// .git and never leave the developer's machine.
+// A repository's verdicts live in one file, .git/astra/verdicts.json, each
+// keyed by a snippet and its exact change (Key). So a verdict follows the
+// change, not the commit: it survives commit, amend and rebase, every
+// review mode sees it, and it resets when the change itself changes. The
+// file lives inside .git and never leaves the developer's machine.
 package state
 
 import (
@@ -18,97 +19,101 @@ import (
 	"sync"
 )
 
-// SnippetState holds the review status and optional comment for one snippet.
+// SnippetState holds the review status and optional comment for one
+// snippet's change.
 type SnippetState struct {
-	// ID is the snippet's stable hash (file + symbolPath + startLine).
-	ID string `json:"id"`
+	// Key is the snippet's ID and change (Key).
+	Key string `json:"key"`
 	// Status is one of: pending, reviewed, accepted, rejected.
 	Status string `json:"status"`
 	// Comment is a local draft comment for this snippet.
 	Comment string `json:"comment,omitempty"`
 }
 
-// Store persists the snippet review states of one diff.
+// Key names the verdict on a snippet's change: its ID and a hash of its
+// changed lines (+, - and "\ No newline at end of file"), without @@
+// headers or context, so lines shifting around it keep the verdict.
+func Key(id string, diffLines []string) string {
+	h := sha256.New()
+	for _, l := range diffLines {
+		if l != "" && (l[0] == '+' || l[0] == '-' || l[0] == '\\') {
+			h.Write([]byte(l))
+			h.Write([]byte{'\n'})
+		}
+	}
+	return fmt.Sprintf("%s:%x", id, h.Sum(nil)[:8])
+}
+
+// Store persists the verdicts of one repository (one git dir).
 // It is safe for concurrent use.
 type Store struct {
 	mu       sync.Mutex
 	path     string
-	scope    string
-	snippets map[string]*SnippetState // keyed by snippet ID
+	verdicts map[string]*SnippetState // by key
 }
 
-// Open opens the state store for one diff, identified by scope, under gitDir
-// (the repo's .git directory, or a linked worktree's own git dir). The file is
-// only written once a status is set.
-func Open(gitDir, scope string) (*Store, error) {
-	dir := filepath.Join(gitDir, "astra", "reviews")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+// Open opens the verdicts saved under gitDir (the repo's .git directory, or
+// a linked worktree's own git dir). The file is only written once a status
+// is set.
+func Open(gitDir string) (*Store, error) {
+	s := &Store{path: filepath.Join(gitDir, "astra", "verdicts.json")}
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return nil, fmt.Errorf("create state dir: %w", err)
-	}
-
-	h := sha256.Sum256([]byte(scope))
-	s := &Store{
-		path:  filepath.Join(dir, fmt.Sprintf("%x.json", h[:8])),
-		scope: scope,
 	}
 	saved, err := s.read()
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
-	s.snippets = saved
+	s.verdicts = saved
 	return s, nil
 }
 
-// Get returns the state for a snippet. Returns a default (pending) state if
-// the snippet has not been seen before.
-func (s *Store) Get(id string) *SnippetState {
+// Get returns the state for a key. Returns a default (pending) state if the
+// change has no verdict.
+func (s *Store) Get(key string) *SnippetState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if st, ok := s.snippets[id]; ok {
+	if st, ok := s.verdicts[key]; ok {
 		return st
 	}
-	return &SnippetState{ID: id, Status: "pending"}
+	return &SnippetState{Key: key, Status: "pending"}
 }
 
-// Set updates the state for a snippet and saves it. The file is read again
-// and only this snippet changes, so another astra on the same diff keeps
-// its verdicts.
-func (s *Store) Set(id, status, comment string) error {
+// Set records a verdict and saves it. The file is read again and only this
+// key changes, so another astra on the same repository keeps its verdicts.
+func (s *Store) Set(key, status, comment string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := &SnippetState{ID: id, Status: status, Comment: comment}
-	s.snippets[id] = st
+	st := &SnippetState{Key: key, Status: status, Comment: comment}
+	s.verdicts[key] = st
 	saved, err := s.read()
 	if err != nil {
 		return err
 	}
-	saved[id] = st
+	saved[key] = st
 	return s.write(saved)
+}
+
+// Reset shows key as pending for the rest of this session, keeping its
+// comment. The saved verdict is left alone.
+func (s *Store) Reset(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if st, ok := s.verdicts[key]; ok {
+		s.verdicts[key] = &SnippetState{Key: key, Status: "pending", Comment: st.Comment}
+	}
 }
 
 // All returns a copy of all stored states.
 func (s *Store) All() []*SnippetState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]*SnippetState, 0, len(s.snippets))
-	for _, v := range s.snippets {
+	out := make([]*SnippetState, 0, len(s.verdicts))
+	for _, v := range s.verdicts {
 		cp := *v
 		out = append(out, &cp)
 	}
 	return out
-}
-
-// Prune removes any stored states whose IDs are not in the given set.
-// Call this after a force-push invalidates old snippet hashes.
-func (s *Store) Prune(validIDs map[string]struct{}) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for id := range s.snippets {
-		if _, ok := validIDs[id]; !ok {
-			delete(s.snippets, id)
-		}
-	}
-	return s.write(s.snippets)
 }
 
 // ---------------------------------------------------------------------------
@@ -116,16 +121,15 @@ func (s *Store) Prune(validIDs map[string]struct{}) error {
 // ---------------------------------------------------------------------------
 
 type storedFile struct {
-	Scope    string          `json:"scope"`
-	Snippets []*SnippetState `json:"snippets"`
+	Verdicts []*SnippetState `json:"verdicts"`
 }
 
-// read returns the saved states; none when there is no file yet.
+// read returns the saved verdicts; none when there is no file yet.
 func (s *Store) read() (map[string]*SnippetState, error) {
-	snippets := make(map[string]*SnippetState)
+	verdicts := make(map[string]*SnippetState)
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return snippets, nil
+		return verdicts, nil
 	}
 	if err != nil {
 		return nil, err
@@ -134,25 +138,25 @@ func (s *Store) read() (map[string]*SnippetState, error) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", s.path, err)
 	}
-	for _, st := range f.Snippets {
-		snippets[st.ID] = st
+	for _, st := range f.Verdicts {
+		verdicts[st.Key] = st
 	}
-	return snippets, nil
+	return verdicts, nil
 }
 
-// write saves snippets through a temp file of its own, renamed into place,
+// write saves verdicts through a temp file of its own, renamed into place,
 // so a reader never sees half a file and two writers never share one.
-func (s *Store) write(snippets map[string]*SnippetState) error {
-	f := storedFile{Scope: s.scope, Snippets: make([]*SnippetState, 0, len(snippets))}
-	for _, v := range snippets {
-		f.Snippets = append(f.Snippets, v)
+func (s *Store) write(verdicts map[string]*SnippetState) error {
+	f := storedFile{Verdicts: make([]*SnippetState, 0, len(verdicts))}
+	for _, v := range verdicts {
+		f.Verdicts = append(f.Verdicts, v)
 	}
-	sort.Slice(f.Snippets, func(i, j int) bool { return f.Snippets[i].ID < f.Snippets[j].ID })
+	sort.Slice(f.Verdicts, func(i, j int) bool { return f.Verdicts[i].Key < f.Verdicts[j].Key })
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), "state-*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), "verdicts-*.tmp")
 	if err != nil {
 		return fmt.Errorf("write state: %w", err)
 	}
