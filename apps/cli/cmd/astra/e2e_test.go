@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -138,5 +140,37 @@ func TestStage_CRLFFile(t *testing.T) {
 			t.Errorf("order %v: after unstaging a, index %q, want %q", order, got, want)
 		}
 		r.git("reset", "-q")
+	}
+}
+
+func TestStage_OddPaths(t *testing.T) {
+	r := newRepo(t, "[core]\n\tquotePath = false\n")
+	names := []string{"My Docs/foo.py", "foo.py", "café.py", "sp ace.py"}
+	for i, n := range names {
+		r.write(n, fmt.Sprintf("def f%d():\n    return 1\n", i))
+	}
+	r.commit("base")
+	edited := map[string]string{}
+	for i, n := range names {
+		if n != "foo.py" {
+			r.write(n, fmt.Sprintf("def f%d():\n    return 2\n", i))
+			edited[n] = fmt.Sprintf("f%d", i)
+		}
+	}
+
+	a := &diff.GitDiffAdapter{RepoRoot: r.dir}
+	snippets := r.snippets(a)
+	got := map[string]string{}
+	for _, s := range snippets {
+		got[s.FilePath] = s.SymbolPath
+	}
+	if !reflect.DeepEqual(got, edited) {
+		t.Fatalf("snippets (path: symbol) = %q, want %q", got, edited)
+	}
+	stageEach(t, a, snippets, orders(len(snippets))[0])
+	staged := strings.Split(strings.TrimSuffix(r.git("diff", "--cached", "--name-only", "-z"), "\x00"), "\x00")
+	want := []string{"My Docs/foo.py", "café.py", "sp ace.py"}
+	if !reflect.DeepEqual(staged, want) {
+		t.Errorf("staged %q, want %q", staged, want)
 	}
 }

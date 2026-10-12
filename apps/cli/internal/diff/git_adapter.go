@@ -90,10 +90,11 @@ func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 
 // diffArgs starts a git diff whose output parseDiff can read whatever the
 // user's config says: no external diff, textconv or color, a/ and b/
-// prefixes, one line per submodule, renames found but not copies, and
-// paths from the top of the repository.
+// prefixes, one line per submodule, renames found but not copies, paths
+// from the top of the repository, and every path with a byte outside
+// printable ASCII quoted, so it decodes exactly.
 func diffArgs(opts ...string) []string {
-	return append([]string{"diff", "--no-color", "--no-ext-diff", "--no-textconv",
+	return append([]string{"-c", "core.quotePath=true", "diff", "--no-color", "--no-ext-diff", "--no-textconv",
 		"--src-prefix=a/", "--dst-prefix=b/", "--submodule=short", "--no-relative", "-M"}, opts...)
 }
 
@@ -213,29 +214,32 @@ func (a *GitDiffAdapter) git(args ...string) (string, error) {
 // Unified diff parser
 // ---------------------------------------------------------------------------
 
-var (
-	reDiffHeader = regexp.MustCompile(`^diff --git [^/]+/(.+) [^/]+/(.+)$`)
-	reHunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
-)
+var reHunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
 func parseDiff(raw string) []*FileDiff {
 	var files []*FileDiff
 	var cur *FileDiff
 	var curHunk *Hunk
+	flush := func() {
+		if cur == nil {
+			return
+		}
+		if curHunk != nil {
+			cur.Hunks = append(cur.Hunks, *curHunk)
+			curHunk = nil
+		}
+		cur.Language = detectLanguage(cur.Path)
+		files = append(files, cur)
+		cur = nil
+	}
 
 	// Split on "\n" alone: lines have no length limit and keep the "\r" of
 	// a CRLF file, which git apply needs to match the index.
 	for _, line := range strings.Split(strings.TrimSuffix(raw, "\n"), "\n") {
-		if m := reDiffHeader.FindStringSubmatch(line); m != nil {
-			if curHunk != nil && cur != nil {
-				cur.Hunks = append(cur.Hunks, *curHunk)
-				curHunk = nil
-			}
-			if cur != nil {
-				files = append(files, cur)
-			}
-			cur = &FileDiff{OldPath: m[1], Path: m[2]}
-			cur.Language = detectLanguage(cur.Path)
+		if rest, ok := strings.CutPrefix(line, "diff --git "); ok {
+			flush()
+			oldPath, path := headerPaths(rest)
+			cur = &FileDiff{OldPath: oldPath, Path: path}
 			continue
 		}
 
@@ -244,13 +248,6 @@ func parseDiff(raw string) []*FileDiff {
 		}
 
 		switch {
-		case strings.HasPrefix(line, "new file"):
-			cur.IsNew = true
-		case strings.HasPrefix(line, "deleted file"):
-			cur.IsDeleted = true
-		case strings.HasPrefix(line, "Binary files"):
-			cur.IsBinary = true
-
 		case reHunkHeader.MatchString(line):
 			if curHunk != nil {
 				cur.Hunks = append(cur.Hunks, *curHunk)
@@ -273,22 +270,66 @@ func parseDiff(raw string) []*FileDiff {
 				NewLines: newLines,
 				Lines:    []string{line},
 			}
+		case curHunk != nil:
+			curHunk.Lines = append(curHunk.Lines, line)
 
-		default:
-			if curHunk != nil {
-				curHunk.Lines = append(curHunk.Lines, line)
+		// The extended header, before the first hunk. Its lines name the
+		// paths exactly, where the diff --git line can be ambiguous.
+		case strings.HasPrefix(line, "new file"):
+			cur.IsNew = true
+		case strings.HasPrefix(line, "deleted file"):
+			cur.IsDeleted = true
+		case strings.HasPrefix(line, "Binary files"):
+			cur.IsBinary = true
+		case strings.HasPrefix(line, "rename from "):
+			cur.OldPath = gitPath(line[len("rename from "):])
+		case strings.HasPrefix(line, "rename to "):
+			cur.Path = gitPath(line[len("rename to "):])
+		case strings.HasPrefix(line, "--- "):
+			if p := gitPath(line[len("--- "):]); p != "/dev/null" {
+				cur.OldPath = strings.TrimPrefix(p, "a/")
+			}
+		case strings.HasPrefix(line, "+++ "):
+			if p := gitPath(line[len("+++ "):]); p != "/dev/null" {
+				cur.Path = strings.TrimPrefix(p, "b/")
 			}
 		}
 	}
-
-	if curHunk != nil && cur != nil {
-		cur.Hunks = append(cur.Hunks, *curHunk)
-	}
-	if cur != nil {
-		files = append(files, cur)
-	}
+	flush()
 
 	return files
+}
+
+// headerPaths reads the paths of a "diff --git a/<old> b/<new>" line. git
+// quotes a path that holds special characters. An unquoted path may hold
+// spaces, so the line splits where both halves name the same file, as git
+// apply does; a rename's "rename from/to" lines then give its paths.
+func headerPaths(s string) (oldPath, newPath string) {
+	n := len(s)
+	if q, err := strconv.QuotedPrefix(s); err == nil {
+		oldPath, newPath = gitPath(q), gitPath(strings.TrimPrefix(s[len(q):], " "))
+	} else if i := strings.IndexByte(s, '"'); i > 0 {
+		oldPath, newPath = s[:i-1], gitPath(s[i:])
+	} else if n >= 5 && n%2 == 1 && s[n/2] == ' ' && s[2:n/2] == s[n/2+3:] {
+		oldPath, newPath = s[:n/2], s[n/2+1:]
+	} else if i := strings.Index(s, " b/"); i >= 0 {
+		oldPath, newPath = s[:i], s[i+1:]
+	} else {
+		oldPath, newPath = s, s
+	}
+	return strings.TrimPrefix(oldPath, "a/"), strings.TrimPrefix(newPath, "b/")
+}
+
+// gitPath decodes a path as git prints it: C-quoted when it holds special
+// characters, and followed by a tab on a ---/+++ line when it holds a space.
+func gitPath(s string) string {
+	s = strings.TrimSuffix(s, "\t")
+	if strings.HasPrefix(s, `"`) {
+		if u, err := strconv.Unquote(s); err == nil {
+			return u
+		}
+	}
+	return s
 }
 
 func detectLanguage(path string) string {

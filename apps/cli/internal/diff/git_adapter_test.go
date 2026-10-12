@@ -213,3 +213,48 @@ func TestParseDiff_LongLineAndCRLF(t *testing.T) {
 		t.Errorf("CRLF lines = %q, want %q (git apply needs the \\r)", got, want)
 	}
 }
+
+func TestParseDiff_Paths(t *testing.T) {
+	raw := "diff --git a/My Docs/foo.py b/My Docs/foo.py\n" +
+		"--- a/My Docs/foo.py\t\n+++ b/My Docs/foo.py\t\n@@ -1 +1 @@\n-x\n+y\n" +
+		`diff --git "a/caf\303\251.py" "b/caf\303\251.py"` + "\n" +
+		`--- "a/caf\303\251.py"` + "\n" + `+++ "b/caf\303\251.py"` + "\n@@ -1 +1 @@\n-x\n+y\n" +
+		`diff --git "a/q\"uote \\ tab\t.py" "b/q\"uote \\ tab\t.py"` + "\n" +
+		`--- "a/q\"uote \\ tab\t.py"` + "\n" + `+++ "b/q\"uote \\ tab\t.py"` + "\n@@ -1 +1 @@\n-x\n+y\n" +
+		"diff --git a/sp ace.py b/sp ace2.py\nsimilarity index 100%\nrename from sp ace.py\nrename to sp ace2.py\n" +
+		`diff --git a/plain.py "b/new\tname.py"` + "\nsimilarity index 100%\nrename from plain.py\n" + `rename to "new\tname.py"` + "\n" +
+		"diff --git a/img dir/x.png b/img dir/x.png\nindex 1..2 100644\nBinary files a/img dir/x.png and b/img dir/x.png differ\n" +
+		"diff --git a/a b/c.py b/a b/c.py\nold mode 100644\nnew mode 100755\n"
+
+	type paths struct{ old, new, lang string }
+	want := []paths{
+		{"My Docs/foo.py", "My Docs/foo.py", "python"},
+		{"café.py", "café.py", "python"},
+		{"q\"uote \\ tab\t.py", "q\"uote \\ tab\t.py", "python"},
+		{"sp ace.py", "sp ace2.py", "python"},
+		{"plain.py", "new\tname.py", "python"},
+		{"img dir/x.png", "img dir/x.png", ""},
+		{"a b/c.py", "a b/c.py", "python"},
+	}
+	files := parseDiff(raw)
+	var got []paths
+	for _, f := range files {
+		got = append(got, paths{f.OldPath, f.Path, f.Language})
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("paths =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestParseDiff_HunkLinesThatLookLikeHeaders(t *testing.T) {
+	raw := "diff --git a/q.sql b/q.sql\n--- a/q.sql\n+++ b/q.sql\n@@ -1,2 +1,2 @@\n" +
+		"--- a/old comment\n+++ b/new comment\n select 1;\n"
+	files := parseDiff(raw)
+	if len(files) != 1 || files[0].Path != "q.sql" || files[0].OldPath != "q.sql" {
+		t.Fatalf("files = %+v, want q.sql alone", files)
+	}
+	want := []string{"@@ -1,2 +1,2 @@", "--- a/old comment", "+++ b/new comment", " select 1;"}
+	if got := files[0].Hunks[0].Lines; !reflect.DeepEqual(got, want) {
+		t.Errorf("hunk lines = %q, want %q", got, want)
+	}
+}
