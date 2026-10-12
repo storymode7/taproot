@@ -72,7 +72,7 @@ func (a *GitDiffAdapter) Meta() (*PRMeta, error) {
 
 // Files returns all changed files by running git diff.
 func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
-	args := []string{"diff", "--unified=3", "--no-color"}
+	args := diffArgs("--unified=3")
 	switch {
 	case a.Staged:
 		args = append(args, "--cached")
@@ -81,11 +81,20 @@ func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 	case a.Ref != "":
 		args = append(args, a.Ref)
 	}
-	raw, err := a.git(args...)
+	raw, err := a.git(append(args, "--")...)
 	if err != nil {
 		return nil, fmt.Errorf("git diff: %w", err)
 	}
 	return parseDiff(raw), nil
+}
+
+// diffArgs starts a git diff whose output parseDiff can read whatever the
+// user's config says: no external diff, textconv or color, a/ and b/
+// prefixes, one line per submodule, renames found but not copies, and
+// paths from the top of the repository.
+func diffArgs(opts ...string) []string {
+	return append([]string{"diff", "--no-color", "--no-ext-diff", "--no-textconv",
+		"--src-prefix=a/", "--dst-prefix=b/", "--submodule=short", "--no-relative", "-M"}, opts...)
 }
 
 // FileBlob returns the full contents of a file at a given commit SHA.
@@ -147,7 +156,10 @@ func (a *GitDiffAdapter) ApplyCached(patch string, reverse bool) error {
 }
 
 func (a *GitDiffAdapter) gitApplyCached(patch string, reverse, check bool) error {
-	args := []string{"apply", "--cached", "--unidiff-zero"}
+	// The user's apply.whitespace and apply.ignoreWhitespace would refuse
+	// or rewrite lines with trailing whitespace, or match lines that
+	// differ in it.
+	args := []string{"apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "--no-ignore-whitespace"}
 	if reverse {
 		args = append(args, "-R")
 	}
