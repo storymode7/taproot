@@ -211,7 +211,9 @@ type Runner struct {
 	// Changed names what changed outside astra since the diff was read,
 	// "" when nothing did. y, x and r check it first when they stage.
 	Changed func() string
-	copies  string // temp dir of the read-only copies o opened
+	// Notice is shown on the hint line at start.
+	Notice string
+	copies string // temp dir of the read-only copies o opened
 
 	tree       *treeState
 	cursor     int // index into tree.visible
@@ -284,6 +286,9 @@ func (r *Runner) Run() error {
 
 	if len(r.Skipped) > 0 {
 		r.status = NotShownLine(r.Skipped)
+	}
+	if r.Notice != "" {
+		r.status = strings.TrimSuffix(r.Notice+" · "+r.status, " · ")
 	}
 	r.render()
 

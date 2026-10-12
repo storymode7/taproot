@@ -167,3 +167,45 @@ func TestVerdicts_SurviveARebase(t *testing.T) {
 		t.Errorf("after a fixup to beta: %v, want %v", got, want)
 	}
 }
+
+// TestVerdicts_UnreadableStateDoesNotBlockReview: a corrupt verdicts file
+// or a read-only .git leaves the review usable.
+func TestVerdicts_UnreadableStateDoesNotBlockReview(t *testing.T) {
+	r := newRepo(t, "")
+	r.write("a.py", funcs("1", "2", "3"))
+	r.commit("base")
+	r.git("checkout", "-qb", "feature")
+	r.write("a.py", funcs("10", "2", "3"))
+	r.commit("feature")
+
+	path := filepath.Join(r.dir, ".git", "astra", "verdicts.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"verdicts": [`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, err := runIn(t, r.dir, "diff", "--base", "main", "--no-tty")
+	if err != nil || !strings.Contains(out, ":: alpha  [pending]") || !strings.Contains(errOut, "verdicts are not saved this session") {
+		t.Errorf("corrupt state: err %v, stdout %q, stderr %q", err, out, errOut)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Join(r.dir, ".git")
+	if err := os.Chmod(gitDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(gitDir, 0o755) })
+	out, errOut, err = runIn(t, r.dir, "diff", "--base", "main", "--no-tty")
+	if err != nil || !strings.Contains(out, ":: alpha  [pending]") || errOut != "" {
+		t.Errorf("read-only .git: err %v, stdout %q, stderr %q", err, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Errorf("a review that marks nothing created %s", filepath.Dir(path))
+	}
+}

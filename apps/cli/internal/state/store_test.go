@@ -1,8 +1,11 @@
 package state
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -140,8 +143,8 @@ func TestStore_OpenWithoutSetWritesNothing(t *testing.T) {
 	s, _ := Open(dir)
 	s.Get("id1")
 	s.Reset("id1")
-	if _, err := os.Stat(s.path); !os.IsNotExist(err) {
-		t.Errorf("viewing without marking created %s", s.path)
+	if _, err := os.Stat(filepath.Join(dir, "astra")); !os.IsNotExist(err) {
+		t.Errorf("viewing without marking created %s", filepath.Join(dir, "astra"))
 	}
 }
 
@@ -185,5 +188,56 @@ func TestStore_TwoSessionsKeepEachOthersVerdicts(t *testing.T) {
 	files, _ := os.ReadDir(filepath.Join(dir, "astra"))
 	if len(files) != 1 {
 		t.Errorf("<gitDir>/astra holds %v, want only verdicts.json", files)
+	}
+}
+
+// An unreadable file never blocks a review: the store keeps verdicts in
+// memory, says why, and leaves the file as it was.
+func TestStore_UnreadableFileKeepsVerdictsInMemory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "astra", "verdicts.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"", `{"verdicts": [`, `{"verdicts": []}]`} {
+		if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s, err := Open(dir)
+		if s == nil || err == nil || !strings.Contains(err.Error(), "not saved") || !strings.Contains(err.Error(), path) {
+			t.Fatalf("Open with %q: %v, want a usable store and an error naming the file", bad, err)
+		}
+		if err := s.Set("k", "reviewed", ""); err != nil {
+			t.Errorf("Set in memory: %v", err)
+		}
+		if got := s.Get("k").Status; got != "reviewed" {
+			t.Errorf("status in memory = %q", got)
+		}
+		if got, _ := os.ReadFile(path); string(got) != bad {
+			t.Errorf("the unreadable file was rewritten to %q", got)
+		}
+	}
+}
+
+// A read-only .git opens fine; marking says why it could not be saved and
+// keeps the verdict for the session.
+func TestStore_ReadOnlyGitDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open on a read-only git dir: %v", err)
+	}
+	if err := s.Set("k", "accepted", ""); !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("Set = %v, want a permission error", err)
+	}
+	if got := s.Get("k").Status; got != "accepted" {
+		t.Errorf("status in memory = %q, want accepted", got)
 	}
 }

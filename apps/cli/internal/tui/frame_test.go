@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -84,11 +83,10 @@ func TestSetStatus_ReportsUnsavedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reviews := filepath.Join(gitDir, "astra")
-	if err := os.Chmod(reviews, 0o555); err != nil {
+	if err := os.Chmod(gitDir, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(reviews, 0o755) })
+	t.Cleanup(func() { os.Chmod(gitDir, 0o755) })
 
 	r := NewRunner(core.BuildForest(manySnippets(3, 2), nil), store, true, false, nil)
 	fixedSize(t, 24, 80)

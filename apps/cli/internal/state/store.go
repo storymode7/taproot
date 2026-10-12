@@ -50,19 +50,22 @@ type Store struct {
 	mu       sync.Mutex
 	path     string
 	verdicts map[string]*SnippetState // by key
+	unsaved  bool                     // the file was unreadable: keep verdicts in memory
 }
 
 // Open opens the verdicts saved under gitDir (the repo's .git directory, or
-// a linked worktree's own git dir). The file is only written once a status
-// is set.
+// a linked worktree's own git dir). It creates nothing: the file is only
+// written once a status is set. The store is always usable; when the saved
+// file cannot be read, the error says so and verdicts stay in memory.
 func Open(gitDir string) (*Store, error) {
-	s := &Store{path: filepath.Join(gitDir, "astra", "verdicts.json")}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
-		return nil, fmt.Errorf("create state dir: %w", err)
+	s := &Store{
+		path:     filepath.Join(gitDir, "astra", "verdicts.json"),
+		verdicts: make(map[string]*SnippetState),
 	}
 	saved, err := s.read()
 	if err != nil {
-		return nil, fmt.Errorf("load state: %w", err)
+		s.unsaved = true
+		return s, fmt.Errorf("verdicts are not saved this session: %w", err)
 	}
 	s.verdicts = saved
 	return s, nil
@@ -86,6 +89,9 @@ func (s *Store) Set(key, status, comment string) error {
 	defer s.mu.Unlock()
 	st := &SnippetState{Key: key, Status: status, Comment: comment}
 	s.verdicts[key] = st
+	if s.unsaved {
+		return nil
+	}
 	saved, err := s.read()
 	if err != nil {
 		return err
@@ -136,7 +142,7 @@ func (s *Store) read() (map[string]*SnippetState, error) {
 	}
 	var f storedFile
 	if err := json.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", s.path, err)
+		return nil, fmt.Errorf("%s is unreadable, delete it to start over: %w", s.path, err)
 	}
 	for _, st := range f.Verdicts {
 		verdicts[st.Key] = st
@@ -156,7 +162,11 @@ func (s *Store) write(verdicts map[string]*SnippetState) error {
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), "verdicts-*.tmp")
+	dir := filepath.Dir(s.path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create state dir: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, "verdicts-*.tmp")
 	if err != nil {
 		return fmt.Errorf("write state: %w", err)
 	}

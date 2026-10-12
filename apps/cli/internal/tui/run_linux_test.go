@@ -313,3 +313,15 @@ func TestRun_EditReloadsTheDiff(t *testing.T) {
 		t.Errorf("reloaded %d times, want once: only the second o changed the file", reloads)
 	}
 }
+
+func TestRun_ShowsTheNoticeAtStart(t *testing.T) {
+	p := openPTY(t, 24, 120)
+	r := testRunner(t, manySnippets(3, 5)...)
+	r.Notice = "verdicts are not saved this session"
+	done := runTUI(r)
+	p.waitFor(t, 0, "verdicts are not saved this session")
+	p.ctl.Write([]byte("q"))
+	if v := waitDone(t, done); v != nil {
+		t.Fatalf("Run = %v", v)
+	}
+}

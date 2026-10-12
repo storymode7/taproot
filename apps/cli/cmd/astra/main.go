@@ -234,8 +234,10 @@ func run(args []string) error {
 		return fmt.Errorf("find git dir: %w", err)
 	}
 	store, err := state.Open(strings.TrimSpace(gitDir))
+	var notice string
 	if err != nil {
-		return fmt.Errorf("open state store: %w", err)
+		notice = err.Error()
+		fmt.Fprintln(os.Stderr, "astra: "+notice)
 	}
 
 	rv := &review{adapter: adapter, store: store, applyMode: applyMode}
@@ -279,6 +281,7 @@ func run(args []string) error {
 	runner := tui.NewRunner(d.forest, store, !noAutoAdvance, applyMode, stage)
 	runner.RepoRoot = repoRoot
 	runner.Skipped = d.skipped
+	runner.Notice = notice
 	if staged || base != "" {
 		runner.Reviewed = func(path string) ([]byte, error) {
 			return adapter.FileBlob(diff.BlobRequest{Path: path})
