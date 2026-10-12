@@ -32,9 +32,10 @@ import (
 // entity. This allows the ordering engine to place, e.g., utils.go::formatDate
 // earlier in the review than utils.go::parseCSV, if the call graph demands it.
 type Snippet struct {
-	// ID is a stable hash of the file and the entity's kind and name
-	// (entitySnippetID), or of the file and start line for a snippet with
-	// no entity (snippetID).
+	// ID is a stable hash of the file and the entity's kind and name, with
+	// its place among same-kind same-name entities after the first
+	// (entitySnippetID); of the file and "(deleted)" for a deleted file; or
+	// of the file and start line for a snippet with no entity (snippetID).
 	ID string
 
 	// FilePath is the relative path of the changed file (new path on renames).
