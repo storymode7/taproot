@@ -106,10 +106,15 @@ publish `apps/pwa/` again.
 - [ ] `apps/pwa/index.html` loads only local scripts and stylesheets, with
       no CDN.
 - [ ] The only hosts the app's code fetches from are `api.github.com` and
-      `raw.githubusercontent.com`. The command below lists every URL host
-      in it; `github.com` appears only in links and pull request URLs.
+      `raw.githubusercontent.com`. The command below prints every line in
+      `apps/pwa/` that holds a URL with any scheme (`https:`, `http:`,
+      `wss:` and so on) or a `//host` URL, in any text file. `github.com`
+      should appear only in links, comments and pull request URLs, and
+      other hosts only in `THIRD_PARTY_NOTICES`. Where a line builds a URL
+      from variables, check where they come from. No search can find a
+      host that code assembles from pieces at run time.
 - [ ] Optional: you rebuilt the engine yourself, as in step 2.
 
 ```sh
-grep -rnoE 'https://[a-z.]+' apps/pwa --include='*.js' --include='*.html' | grep -v /vendor/
+grep -rniIE '[a-z][a-z0-9+.-]*://|//[a-z0-9.-]+\.[a-z]{2,}' apps/pwa
 ```
