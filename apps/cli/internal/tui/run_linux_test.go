@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -269,6 +270,57 @@ func TestRun_OpensTheReviewedVersion(t *testing.T) {
 	}
 	if _, err := os.Stat(args[1]); !os.IsNotExist(err) {
 		t.Errorf("the copy outlived the session: %v", err)
+	}
+}
+
+// TestRun_SignalRemovesCopies: a signal ends astra through os.Exit, which
+// skips Run's defers. The TUI runs in a child process that SIGTERM ends.
+func TestRun_SignalRemovesCopies(t *testing.T) {
+	if report := os.Getenv("ASTRA_TEST_SIGNAL_REPORT"); report != "" {
+		p := openPTY(t, 24, 80)
+		r := testRunner(t, manySnippets(1, 3)...)
+		r.RepoRoot = t.TempDir()
+		r.Reviewed = func(string) ([]byte, error) { return []byte("reviewed\n"), nil }
+		if _, _, err := r.editorPath(r.flat[0]); err != nil {
+			t.Fatal(err)
+		}
+		copies := r.copies
+		done := runTUI(r)
+		p.waitFor(t, 0, "quit")
+		if err := os.WriteFile(report+".tmp", []byte(copies), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(report+".tmp", report); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatalf("Run = %v, want SIGTERM to end the process", waitDone(t, done))
+	}
+
+	tmp := t.TempDir()
+	report := filepath.Join(tmp, "copies")
+	var out strings.Builder
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRun_SignalRemovesCopies$")
+	cmd.Env = append(os.Environ(), "ASTRA_TEST_SIGNAL_REPORT="+report, "TMPDIR="+tmp)
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var copies []byte
+	for end := time.Now().Add(5 * time.Second); len(copies) == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			cmd.Process.Kill()
+			cmd.Wait()
+			t.Fatalf("the TUI did not start:\n%s", out.String())
+		}
+		copies, _ = os.ReadFile(report)
+	}
+	cmd.Process.Signal(syscall.SIGTERM)
+	cmd.Wait()
+	if code := cmd.ProcessState.ExitCode(); code != 128+int(syscall.SIGTERM) {
+		t.Errorf("exit status %d, want %d:\n%s", code, 128+int(syscall.SIGTERM), out.String())
+	}
+	if _, err := os.Stat(string(copies)); !os.IsNotExist(err) {
+		t.Errorf("SIGTERM left the copies in %s", copies)
 	}
 }
 

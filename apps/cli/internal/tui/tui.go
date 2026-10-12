@@ -277,6 +277,7 @@ func (r *Runner) Run() error {
 		select {
 		case s := <-sigs:
 			leave()
+			r.removeCopies()
 			os.Exit(128 + int(s.(syscall.Signal)))
 		case <-done:
 		}
