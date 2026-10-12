@@ -1,6 +1,10 @@
 package core
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func fn(id, path, symbol string, startLine int) *Snippet {
 	return &Snippet{
@@ -159,6 +163,31 @@ func TestBuildForest_DisconnectedComponents_LargestFirst(t *testing.T) {
 	f := BuildForest(snippets, edges)
 	if got := rootIDs(f); len(got) != 2 || got[0] != "x" || got[1] != "lone" {
 		t.Fatalf("roots = %v, want [x lone] (larger component first despite path order)", got)
+	}
+}
+
+func TestBuildForest_TiedComponentsKeepLineOrder(t *testing.T) {
+	// Unrelated changes in one file, and single-test components in one test
+	// file, tie on test-ness, size and path. They must come in line order
+	// on every run, not in map order.
+	var snippets []*Snippet
+	var want []string
+	for i := 0; i < 12; i++ {
+		id := fmt.Sprintf("f%02d", i)
+		snippets = append(snippets, fn(id, "svc.go", id, 1+10*i))
+		want = append(want, id)
+	}
+	var edges []SymbolEdge
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("Test%d", i)
+		snippets = append(snippets, fn(id, "svc_test.go", id, 1+10*i))
+		edges = append(edges, call(id, "f00", 1+10*i+1))
+		want = append(want, id)
+	}
+	for run := 0; run < 50; run++ {
+		if got := rootIDs(BuildForest(snippets, edges)); strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("run %d: roots = %v, want %v", run, got, want)
+		}
 	}
 }
 

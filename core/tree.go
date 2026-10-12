@@ -152,20 +152,6 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 		}
 	}
 
-	// Component size (primary members) and minimum path, for root ordering.
-	compSize := make(map[string]int)
-	compMinPath := make(map[string]string)
-	for _, s := range snippets {
-		if !isPrimary(s) {
-			continue
-		}
-		root := find(s.ID)
-		compSize[root]++
-		if p, ok := compMinPath[root]; !ok || s.FilePath < p {
-			compMinPath[root] = s.FilePath
-		}
-	}
-
 	snippetLess := func(a, b *Snippet) bool {
 		if a.FilePath != b.FilePath {
 			return a.FilePath < b.FilePath
@@ -174,6 +160,20 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 			return a.StartLine < b.StartLine
 		}
 		return a.ID < b.ID
+	}
+
+	// Component size (primary members) and first member, for root ordering.
+	compSize := make(map[string]int)
+	compFirst := make(map[string]*Snippet)
+	for _, s := range snippets {
+		if !isPrimary(s) {
+			continue
+		}
+		root := find(s.ID)
+		compSize[root]++
+		if f, ok := compFirst[root]; !ok || snippetLess(s, f) {
+			compFirst[root] = s
+		}
 	}
 
 	forest := &ReviewForest{ByID: make(map[string]*ReviewNode, len(snippets))}
@@ -204,7 +204,8 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 	}
 
 	// Group primary snippets by component; order code components before
-	// test components, then by size desc, then by their smallest file path.
+	// test components, then by size desc, then by their first member (path,
+	// line), so components that tie on size keep one order from run to run.
 	compMembers := make(map[string][]*Snippet)
 	for _, s := range snippets {
 		if isPrimary(s) {
@@ -223,7 +224,7 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 		if compSize[comps[i]] != compSize[comps[j]] {
 			return compSize[comps[i]] > compSize[comps[j]]
 		}
-		return compMinPath[comps[i]] < compMinPath[comps[j]]
+		return snippetLess(compFirst[comps[i]], compFirst[comps[j]])
 	})
 
 	for _, c := range comps {
