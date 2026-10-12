@@ -203,11 +203,13 @@ opens a panel with the review tree and the snippets.
 
 It is not in the Chrome Web Store. To install it:
 
-1. Get the extension folder. Unzip `astra-extension-<version>.zip` from a
-   [release](https://github.com/storymode7/astra/releases), or use
-   `apps/extension/` in a clone of this repository.
+1. Get the extension folder. Download `astra-extension-<version>.zip`
+   from a [release](https://github.com/storymode7/astra/releases). The
+   zip has no top-level folder, so unzip it into a new, empty folder, for
+   example with `unzip astra-extension-<version>.zip -d astra-extension`.
+   Or use `apps/extension/` in a clone of this repository.
 2. Open `chrome://extensions` and turn on Developer mode.
-3. Click **Load unpacked** and select the folder.
+3. Click **Load unpacked** and select that folder.
 
 What it can do:
 
