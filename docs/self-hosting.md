@@ -97,12 +97,20 @@ GitHub Pages publishes a branch from its root or its `docs/` folder. To
 use it, publish the repository root and open
 `https://<user>.github.io/<repo>/apps/pwa/`.
 
+Prefer an origin that serves nothing but the app, such as a domain or
+subdomain of its own. The browser keeps verdicts and comments in
+IndexedDB for the whole origin, so any page on the same origin can read
+your comments and mark snippets as accepted. On GitHub Pages, every
+project site of an account shares the origin `https://<user>.github.io`
+unless its repository sets a custom domain.
+
 To update, pull the new commits, run the checks in step 2 again and
 publish `apps/pwa/` again.
 
 ## Trust checklist
 
 - [ ] The checksum and sync checks in step 2 pass.
+- [ ] The app has an origin of its own, as step 3 explains.
 - [ ] `apps/pwa/index.html` loads only local scripts and stylesheets, with
       no CDN.
 - [ ] The only hosts the app's code fetches from are `api.github.com` and
