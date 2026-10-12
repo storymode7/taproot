@@ -202,11 +202,11 @@ func plural(n int, word string) string {
 func glyphColor(status string) string {
 	switch status {
 	case "accepted":
-		return green
+		return paint(green)
 	case "rejected":
-		return red
+		return paint(red)
 	case "reviewed":
-		return yellow
+		return paint(yellow)
 	default:
 		return dim
 	}

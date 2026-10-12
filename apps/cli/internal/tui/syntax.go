@@ -76,7 +76,9 @@ func highlightLines(filePath string, diffLines []string) []string {
 	switch activeHighlighter {
 	case HighlightBat, HighlightDelta:
 		// bat is used for line-by-line capture; delta uses direct-write (see printDiffLines)
-		out = runBat(filePath, diffLines)
+		if !NoColor {
+			out = runBat(filePath, diffLines)
+		}
 	}
 	if out == nil {
 		out = builtinHighlight(diffLines)
@@ -88,7 +90,7 @@ func highlightLines(filePath string, diffLines []string) []string {
 // line-number columns, counted from the hunk headers. Hunk headers
 // themselves get a blank gutter.
 func withLineNumbers(diffLines, rendered []string) []string {
-	numStyle := hexFg(palette().zeroNum)
+	numStyle := paint(hexFg(palette().zeroNum))
 	oldN, newN := 0, 0
 	out := make([]string, len(rendered))
 	for i, r := range rendered {
@@ -366,11 +368,11 @@ func builtinHighlight(diffLines []string) []string {
 	for i, line := range diffLines {
 		switch {
 		case strings.HasPrefix(line, "+"):
-			result[i] = green + line + reset
+			result[i] = paint(green) + line + reset
 		case strings.HasPrefix(line, "-"):
-			result[i] = red + line + reset
+			result[i] = paint(red) + line + reset
 		case strings.HasPrefix(line, "@"):
-			result[i] = cyan + line + reset
+			result[i] = paint(cyan) + line + reset
 		default:
 			result[i] = line
 		}

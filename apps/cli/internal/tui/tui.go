@@ -39,11 +39,24 @@ const (
 // is not a terminal or NO_COLOR is set.
 var Plain bool
 
+// NoColor makes the interactive view use no color, as NO_COLOR asks: the
+// diff shows plain lines with +/- markers, and bold, dim and inverse text
+// stay. View then prints as Plain does.
+var NoColor bool
+
+// paint returns the color escape c, or nothing under NoColor.
+func paint(c string) string {
+	if NoColor {
+		return ""
+	}
+	return c
+}
+
 // View renders the full list of snippets to stdout.
 // This is the non-interactive "print and exit" mode used when stdout is
 // not a TTY (e.g. piped to `less`).
 func View(snippets []*core.Snippet, store *state.Store) {
-	if Plain {
+	if Plain || NoColor {
 		plainView(snippets, store)
 		return
 	}
@@ -818,7 +831,7 @@ func (r *Runner) renderedDiff(s *core.Snippet, width int) []string {
 		return lines
 	}
 	var lines []string
-	if activeHighlighter == HighlightDelta {
+	if activeHighlighter == HighlightDelta && !NoColor {
 		if out, err := runDeltaCapture(s.FilePath, s.DiffLines, width); err == nil {
 			lines = out
 		}
@@ -881,13 +894,13 @@ func (r *Runner) render() {
 	}
 	applyLabel := ""
 	if r.applyMode {
-		applyLabel = "  " + yellow + "[staging]" + reset
+		applyLabel = "  " + paint(yellow) + "[staging]" + reset
 	}
-	head := fmt.Sprintf("%s Astra%s  %d/%d reviewed ", bold+blue+"⭐", reset, done, total)
+	head := fmt.Sprintf("%s Astra%s  %d/%d reviewed ", bold+paint(blue)+"⭐", reset, done, total)
 	tail := fmt.Sprintf(" %d%%  %s%s%s%s", pct, dim, autoLabel, reset, applyLabel)
 	notShown := ""
 	if len(r.Skipped) > 0 {
-		notShown = fmt.Sprintf("  %s%d not shown%s", yellow, len(r.Skipped), reset)
+		notShown = fmt.Sprintf("  %s%d not shown%s", paint(yellow), len(r.Skipped), reset)
 	}
 	// In a narrow terminal the bar shrinks before the labels are cut, and
 	// down to a quarter of its width for the count of files not shown,
@@ -970,7 +983,7 @@ func (r *Runner) render() {
 		fmt.Print(ansiTruncate("/"+displaySafe(r.input), cols-1) + "\033[?25h")
 	case r.status != "":
 		status := strings.Join(strings.Fields(r.status), " ") // git errors span lines
-		fmt.Print(yellow + ansiTruncate(displaySafe(status), cols-1) + reset)
+		fmt.Print(paint(yellow) + ansiTruncate(displaySafe(status), cols-1) + reset)
 	default:
 		hints := "? help · q quit · J/K move · l/h drill in/out · y/x/r judge · ]/[ pending · j/k scroll · / search · o open · E/C fold · tab auto"
 		fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)

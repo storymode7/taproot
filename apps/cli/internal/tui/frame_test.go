@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -55,6 +56,46 @@ func TestRender_FrameFitsTerminal(t *testing.T) {
 				t.Errorf("%dx%d: header lost [staging]: %q", rows, cols, stripANSI(lines[0]))
 			}
 		}
+	}
+}
+
+// TestRender_NoColor: with NoColor the frame keeps only bold, dim and
+// inverse text, whichever highlighter is installed, and the diff keeps its
+// +/- markers.
+func TestRender_NoColor(t *testing.T) {
+	useHighlighter(t, HighlightDelta)
+	r := testRunner(t, manySnippets(3, 5)...)
+	r.applyMode = true
+	r.Skipped = []core.SkippedFile{{Path: "logo.png", Reason: "binary"}}
+	for i, status := range []string{"accepted", "rejected", "reviewed"} {
+		if err := r.store.Set(r.key(r.flat[i]), status, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sgr := regexp.MustCompile("\x1b\\[([0-9;]*)m")
+	colors := func() []string {
+		r.diffCache = make(map[string][]string)
+		r.status = "could not stage: no"
+		var found []string
+		for _, m := range sgr.FindAllStringSubmatch(strings.Join(frame(t, r, 24, 80), "\n"), -1) {
+			switch m[1] {
+			case "0", "1", "2", "7", "27":
+			default:
+				found = append(found, m[0])
+			}
+		}
+		return found
+	}
+	if len(colors()) == 0 {
+		t.Fatal("the frame has no color to turn off")
+	}
+	NoColor = true
+	t.Cleanup(func() { NoColor = false })
+	if found := colors(); len(found) > 0 {
+		t.Errorf("NoColor frame has color escapes %q", found)
+	}
+	if got := stripANSI(strings.Join(frame(t, r, 24, 80), "\n")); !strings.Contains(got, "│ +    line 0 of a long hunk") {
+		t.Errorf("NoColor diff lost its + markers:\n%s", got)
 	}
 }
 

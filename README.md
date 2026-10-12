@@ -129,8 +129,10 @@ A value can also follow `=`, as in `--base=main`. `--staged`, `--ref` and
 Environment: `ASTRA_THEME` (`dark` or `light`; the default comes from
 `COLORFGBG`, else dark), `ASTRA_DELTA_THEME` (a delta syntax theme for
 Astra's own delta style; it has no effect when your git config sets
-delta's look, unless you pass `--no-delta-config`) and `VISUAL` /
-`EDITOR` (the editor for `o`; the default is vi).
+delta's look, unless you pass `--no-delta-config`), `VISUAL` /
+`EDITOR` (the editor for `o`; the default is vi) and `NO_COLOR` (any
+value turns color off: the interactive view keeps bold, dim and inverse
+text, and `--no-tty` prints plain text).
 
 Exit status: 0 on success, 2 for a mistake on the command line (an unknown
 flag or preset, a stray argument, a missing value or conflicting flags),

@@ -72,6 +72,8 @@ ENVIRONMENT
                        own style: ignored when your gitconfig sets delta's
                        look, unless you pass --no-delta-config
   VISUAL / EDITOR      Editor for the o key (default: vi)
+  NO_COLOR             Any value turns color off: the interactive view keeps
+                       bold, dim and inverse text, --no-tty prints plain text
 
 KEYBOARD SHORTCUTS (interactive mode)
   The main view is a call tree of the changed code: children are the
@@ -284,6 +286,7 @@ func run(args []string) error {
 		}
 	}
 
+	tui.NoColor = os.Getenv("NO_COLOR") != ""
 	runner := tui.NewRunner(d.forest, store, !noAutoAdvance, applyMode, stage)
 	runner.RepoRoot = repoRoot
 	runner.Skipped = d.skipped
