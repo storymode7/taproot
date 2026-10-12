@@ -33,6 +33,7 @@ VERSION ?= $(shell git describe --tags --always --dirty)
 
 .PHONY: dist
 dist:
+	@s=$$(git status --porcelain) && test -z "$$s" || { echo "make dist: the tree has changes; commit or stash them first" >&2; exit 1; }
 	sh scripts/sync-extension-lib.sh --check
 	node scripts/parity-check.mjs
 	rm -rf dist
