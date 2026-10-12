@@ -75,7 +75,8 @@ run that line yourself if you do not have `make`.
 
 When a release is out, the
 [Releases page](https://github.com/storymode7/astra/releases) has binaries
-named `astra-<version>-<os>-<arch>`, the extension zip and `SHA256SUMS`.
+named `astra-<version>-<os>-<arch>`, `LICENSE`, `THIRD_PARTY_NOTICES`, the
+extension zip and `SHA256SUMS`.
 Releases are built by hand with `make dist` and are not signed. For
 example, for v0.1.0 on Linux amd64:
 
@@ -287,8 +288,9 @@ make parity                           # check the committed WASM against the Go 
   `go test ./core -run Parity -update` and read the diff.
 - `shared/lib/` holds the browser code that both web surfaces use. The sync
   script copies it to `apps/pwa/lib/shared/` and
-  `apps/extension/lib/shared/`, and copies `vendor/core/` to each app's
-  `vendor/core/`. Do not edit the copies.
+  `apps/extension/lib/shared/`, copies `vendor/core/` to each app's
+  `vendor/core/`, and copies `LICENSE` and `THIRD_PARTY_NOTICES` to
+  `apps/pwa/`. Do not edit the copies.
   `sh scripts/sync-extension-lib.sh --check` fails when they differ.
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request. It
@@ -313,6 +315,7 @@ No workflow builds or publishes releases. To make one by hand:
    - `astra-<VERSION>-linux-amd64`, `-linux-arm64`, `-darwin-amd64` and
      `-darwin-arm64`, built with `CGO_ENABLED=0`, `-trimpath` and
      `-ldflags "-s -w -X main.version=<VERSION>"`;
+   - `LICENSE` and `THIRD_PARTY_NOTICES`, which go with the binaries;
    - `astra-extension-<manifest version>.zip`, with the tracked files of
      `apps/extension/`, `LICENSE` and `THIRD_PARTY_NOTICES`;
    - `SHA256SUMS`.

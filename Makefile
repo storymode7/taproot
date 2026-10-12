@@ -28,7 +28,8 @@ cli:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o astra ./apps/cli/cmd/astra
 
 # Release artifacts in dist/: the CLI for linux and darwin on amd64 and arm64,
-# the extension zip named after its manifest version, and SHA256SUMS.
+# LICENSE and THIRD_PARTY_NOTICES, the extension zip named after its manifest
+# version, and SHA256SUMS.
 VERSION ?= $(shell git describe --tags --always --dirty)
 
 .PHONY: dist
@@ -44,6 +45,7 @@ dist:
 			-ldflags "-s -w -X main.version=$(VERSION)" \
 			-o dist/astra-$(VERSION)-$$os-$$arch ./apps/cli/cmd/astra || exit 1; \
 	done
+	cp LICENSE THIRD_PARTY_NOTICES dist/
 	ext=$$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' apps/extension/manifest.json) && \
 		test -n "$$ext" && \
 		(cd apps/extension && git ls-files | zip -q -X -@ ../../dist/astra-extension-$$ext.zip) && \

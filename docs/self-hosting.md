@@ -4,7 +4,10 @@ The web app in `apps/pwa/` is a static site: HTML, CSS, plain JavaScript
 modules and the engine compiled to WebAssembly. There is no build step, no
 server code and no database. The folder holds everything the app loads:
 `scripts/sync-extension-lib.sh` copies the shared browser code into
-`apps/pwa/lib/shared/` and the engine into `apps/pwa/vendor/core/`.
+`apps/pwa/lib/shared/` and the engine into `apps/pwa/vendor/core/`. It
+also copies `LICENSE` and `THIRD_PARTY_NOTICES` into `apps/pwa/`: the
+engine contains the Go runtime, and Go's license asks that its notice
+ship with it.
 
 ## What it can and cannot do
 
@@ -53,7 +56,8 @@ sh scripts/sync-extension-lib.sh --check
 
 On macOS, use `shasum -a 256 -c checksums.txt` in place of `sha256sum -c
 checksums.txt`. The sync check confirms that `apps/pwa/` holds the same
-engine and shared code as `vendor/core/` and `shared/lib/`.
+engine, shared code and license files as `vendor/core/`, `shared/lib/`
+and the repository root.
 
 The committed `astra-core.wasm` is built from `core/` by `make core-wasm`.
 To run your own build instead, run these commands (`make core-wasm` needs
