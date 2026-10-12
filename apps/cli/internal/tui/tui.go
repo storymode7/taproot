@@ -204,7 +204,13 @@ type Runner struct {
 	// Reviewed reads a file's reviewed version when that is not the
 	// working tree (--base, --staged), for the o key; nil otherwise.
 	Reviewed func(path string) ([]byte, error)
-	copies   string // temp dir of the read-only copies o opened
+	// Reload reads the diff again, after o changed a file or when Changed
+	// reports a change; nil when the review is not of the working tree.
+	Reload func() (*core.ReviewForest, []core.SkippedFile, error)
+	// Changed names what changed outside astra since the diff was read,
+	// "" when nothing did. y, x and r check it first when they stage.
+	Changed func() string
+	copies  string // temp dir of the read-only copies o opened
 
 	tree       *treeState
 	cursor     int // index into tree.visible
@@ -372,6 +378,7 @@ func (r *Runner) openInEditor() {
 		editor = "vi"
 	}
 	name, args := editorArgs(editor, path, firstChangedLine(n.Snippet))
+	before, _ := os.ReadFile(path)
 
 	// Editors that use the alternate screen leave it on exit, so step out first.
 	r.raw.restore()
@@ -387,6 +394,44 @@ func (r *Runner) openInEditor() {
 	if err != nil {
 		r.status = fmt.Sprintf("%s: %v", editor, err)
 	}
+	if after, _ := os.ReadFile(path); r.Reload != nil && !bytes.Equal(before, after) {
+		r.reload(n.Snippet.FilePath + " changed: reloaded the diff")
+		return
+	}
+	r.render()
+}
+
+// reload reads the diff again and shows it with why on the hint line,
+// keeping the cursor on the same snippet when it is still there.
+func (r *Runner) reload(why string) {
+	if r.Reload == nil {
+		r.status = why
+		r.render()
+		return
+	}
+	forest, skipped, err := r.Reload()
+	if err != nil {
+		r.status = "could not reload the diff: " + err.Error()
+		r.render()
+		return
+	}
+	var id string
+	if n := r.currentNode(); n != nil {
+		id = n.Snippet.ID
+	}
+	expanded := r.tree.expanded
+	r.forest, r.flat, r.Skipped = forest, forest.Flatten(core.OrderPre), skipped
+	r.tree = newTreeState(forest)
+	for e := range expanded {
+		if forest.ByID[e] != nil {
+			r.tree.expanded[e] = true
+		}
+	}
+	r.search = nil
+	r.diffCache = make(map[string][]string)
+	r.cursor = 0
+	r.focusNode(id)
+	r.status = why
 	r.render()
 }
 
@@ -679,6 +724,14 @@ func (r *Runner) setStatus(status string) {
 	n := r.currentNode()
 	if n == nil {
 		return
+	}
+	// The index and the files must still be what the diff on screen was
+	// read from, or staging would write changes nobody reviewed.
+	if r.applyMode && r.Changed != nil {
+		if why := r.Changed(); why != "" {
+			r.reload(why + " outside astra: reloaded the diff, verdict not recorded")
+			return
+		}
 	}
 	st := r.store.Get(n.Snippet.ID)
 	if r.applyMode && r.stage != nil && (status == "accepted" || st.Status == "accepted") {

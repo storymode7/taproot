@@ -392,6 +392,42 @@ func snippetNamed(t *testing.T, d *loaded, symbol string) *core.Snippet {
 	return nil
 }
 
+// TestStage_SeesChangesOutsideAstra: whatever changes the diff on screen
+// outside astra is reported before y, x or r stage anything: an editor,
+// git stash, checkout, add or commit in another shell, or a second astra.
+// astra's own writes are not.
+func TestStage_SeesChangesOutsideAstra(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		act   func(r *testRepo)
+		want  string
+		stage bool // y on alpha first
+	}{
+		{"nothing", func(*testRepo) {}, "", true},
+		{"an edit", func(r *testRepo) {
+			r.write("a.go", strings.Replace(r.git("show", ":a.go"), "return 1\n", "return 11\n", 1))
+		}, "a.go changed on disk", false},
+		{"git checkout", func(r *testRepo) { r.git("checkout", "--", "a.go") }, "a.go changed on disk", false},
+		{"git stash", func(r *testRepo) { r.git("stash", "-q") }, "the index entry of a.go changed", true},
+		{"git add", func(r *testRepo) { r.git("add", "a.go") }, "the index entry of a.go changed", false},
+		{"git commit", func(r *testRepo) { r.git("commit", "-qm", "alpha") }, "HEAD moved", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := staleRepo(t)
+			d := r.load(t, true)
+			if c.stage {
+				if err := d.stager.stage(snippetNamed(t, d, "alpha"), true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c.act(r)
+			if got := d.stager.changed(); got != c.want {
+				t.Errorf("changed() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 // TestStage_RefusesAnIndexItDidNotWrite proves the guard: when a file's
 // index entry is not the one astra found or last wrote, y and x change
 // nothing and say to restart.
@@ -419,6 +455,26 @@ func TestStage_RefusesAnIndexItDidNotWrite(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestStage_TwoSessions: a second astra on the same working tree sees the
+// first one's y as a change outside it and stages nothing over it.
+func TestStage_TwoSessions(t *testing.T) {
+	r := staleRepo(t)
+	first, second := r.load(t, true), r.load(t, true)
+	if err := first.stager.stage(snippetNamed(t, first, "alpha"), true); err != nil {
+		t.Fatal(err)
+	}
+	if got := second.stager.changed(); got != "the index entry of a.go changed" {
+		t.Errorf("second session: changed() = %q", got)
+	}
+	before := r.git("ls-files", "-s")
+	if err := second.stager.stage(snippetNamed(t, second, "beta"), true); err == nil {
+		t.Error("the second session staged over the first one's y")
+	}
+	if after := r.git("ls-files", "-s"); after != before {
+		t.Errorf("the refusal changed the index:\n%s\nwas\n%s", after, before)
 	}
 }
 

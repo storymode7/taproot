@@ -1,8 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
+	"strings"
 
 	"github.com/storymode7/astra/apps/cli/internal/diff"
 	"github.com/storymode7/astra/core"
@@ -15,6 +19,7 @@ import (
 // order of the keys, the index then holds exactly the accepted changes.
 type stager struct {
 	git   *diff.GitDiffAdapter
+	head  string
 	files map[string]*stagedFile // by path
 	order []*stagedFile
 }
@@ -33,6 +38,7 @@ type stagedFile struct {
 	snippets      []*core.Snippet
 	accepted      map[string]bool // IDs of the snippets this session staged
 	expect        map[string]diff.IndexEntry
+	disk          map[string]string // working-tree fingerprints at load
 }
 
 // emptyBlob is the empty blob's id, by the length of object ids.
@@ -42,9 +48,9 @@ var emptyBlob = map[int]string{
 }
 
 // newStager records, for each file with snippets, the index entries the
-// diff was read from.
+// diff was read from and what its working-tree files hold.
 func newStager(a *diff.GitDiffAdapter, files []*core.FileDiff, pre map[string]diff.IndexEntry, snippets []*core.Snippet) (*stager, error) {
-	st := &stager{git: a, files: make(map[string]*stagedFile)}
+	st := &stager{git: a, head: headSHA(a), files: make(map[string]*stagedFile)}
 	for _, s := range snippets {
 		sf := st.files[s.FilePath]
 		if sf == nil {
@@ -85,6 +91,10 @@ func newStager(a *diff.GitDiffAdapter, files []*core.FileDiff, pre map[string]di
 				sf.mode = sf.added.Mode
 			}
 		}
+		sf.disk = make(map[string]string)
+		for _, p := range sf.paths() {
+			sf.disk[p] = st.fingerprint(p)
+		}
 	}
 	return st, nil
 }
@@ -95,6 +105,60 @@ func (sf *stagedFile) paths() []string {
 		return []string{sf.oldPath, sf.path}
 	}
 	return []string{sf.path}
+}
+
+// headSHA is HEAD's commit, "" on a branch with no commits.
+func headSHA(a *diff.GitDiffAdapter) string {
+	out, err := a.RunGit("rev-parse", "-q", "--verify", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// fingerprint identifies a working-tree file's content, "" when there is
+// no such file.
+func (st *stager) fingerprint(path string) string {
+	b, err := st.git.WorktreeFile(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return ""
+	case err != nil:
+		return "unreadable: " + err.Error()
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(b))
+}
+
+// changed names what changed outside astra since the diff was read: HEAD,
+// an index entry astra did not write, or a working-tree file. It returns
+// "" when the diff on screen is still the one git would show.
+func (st *stager) changed() string {
+	if headSHA(st.git) != st.head {
+		return "HEAD moved"
+	}
+	var paths []string
+	for _, sf := range st.order {
+		paths = append(paths, sf.paths()...)
+	}
+	now, err := st.git.IndexEntries(paths)
+	if err != nil {
+		return "the index could not be read"
+	}
+	for _, sf := range st.order {
+		for _, p := range sf.paths() {
+			if now[p] != sf.expect[p] {
+				return "the index entry of " + p + " changed"
+			}
+		}
+	}
+	for _, sf := range st.order {
+		for _, p := range sf.paths() {
+			if st.fingerprint(p) != sf.disk[p] {
+				return p + " changed on disk"
+			}
+		}
+	}
+	return ""
 }
 
 // stage stages s (accept) or takes it back out of the index. It refuses,

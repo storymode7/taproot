@@ -271,3 +271,45 @@ func TestRun_OpensTheReviewedVersion(t *testing.T) {
 		t.Errorf("the copy outlived the session: %v", err)
 	}
 }
+
+// TestRun_EditReloadsTheDiff: after o, a file the editor changed is read
+// again, so y never stages the version from before the edit.
+func TestRun_EditReloadsTheDiff(t *testing.T) {
+	p := openPTY(t, 24, 120)
+	repo, dir := t.TempDir(), t.TempDir()
+	path := filepath.Join(repo, "m.py")
+	if err := os.WriteFile(path, []byte("def f():\n    return 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	flag, editor := filepath.Join(dir, "edit"), filepath.Join(dir, "ed")
+	script := "#!/bin/sh\nif [ -e '" + flag + "' ]; then echo '    # fixed' >> \"$2\"; fi\n"
+	if err := os.WriteFile(editor, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VISUAL", editor)
+	r := testRunner(t, &core.Snippet{ID: "m", FilePath: "m.py", SymbolPath: "f", NodeType: "function", StartLine: 1,
+		DiffLines: []string{"@@ -1,1 +1,2 @@", " def f():", "+    return 2"}})
+	r.RepoRoot = repo
+	reloads := 0
+	r.Reload = func() (*core.ReviewForest, []core.SkippedFile, error) {
+		reloads++
+		return core.BuildForest([]*core.Snippet{{ID: "m", FilePath: "m.py", SymbolPath: "f", NodeType: "function", StartLine: 1,
+			DiffLines: []string{"@@ -1,1 +1,3 @@", " def f():", "+    return 2", "+    # fixed"}}}, nil), nil, nil
+	}
+	done := runTUI(r)
+	off := p.waitFor(t, 0, "quit")
+	p.ctl.Write([]byte("o"))
+	off = p.waitFor(t, off, "quit")
+	if err := os.WriteFile(flag, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p.ctl.Write([]byte("o"))
+	p.waitFor(t, off, "m.py changed: reloaded the diff")
+	p.ctl.Write([]byte("q"))
+	if v := waitDone(t, done); v != nil {
+		t.Fatalf("Run = %v", v)
+	}
+	if reloads != 1 {
+		t.Errorf("reloaded %d times, want once: only the second o changed the file", reloads)
+	}
+}

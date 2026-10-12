@@ -84,7 +84,9 @@ KEYBOARD SHORTCUTS (interactive mode)
 
   In the default review (no --staged, --ref or --base), y also stages
   the snippet, like git add -p, and x or r on an accepted snippet
-  unstages it. --no-apply records verdicts only.
+  unstages it. --no-apply records verdicts only. When the index, HEAD or
+  a file changed outside astra (or through o), the next y, x or r reloads
+  the diff instead of staging what is no longer there.
 
 STATE
   Review state is saved per diff under .git/astra/reviews/: one small
@@ -279,11 +281,24 @@ func run(args []string) error {
 		runner.Reviewed = func(path string) ([]byte, error) {
 			return adapter.FileBlob(diff.BlobRequest{Path: path})
 		}
+	} else {
+		runner.Reload = func() (*core.ReviewForest, []core.SkippedFile, error) {
+			next, err := rv.load()
+			if err != nil {
+				return nil, nil, err
+			}
+			d = next
+			return d.forest, d.skipped, nil
+		}
+	}
+	if applyMode {
+		runner.Changed = func() string { return d.stager.changed() }
 	}
 	return runner.Run()
 }
 
-// review reads the diff under review.
+// review reads the diff under review, for the first time and again
+// whenever the working tree or the index changed since.
 type review struct {
 	adapter   *diff.GitDiffAdapter
 	applyMode bool // y stages
