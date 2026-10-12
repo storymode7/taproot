@@ -187,3 +187,19 @@ func TestGit_ErrorIsGitsMessage(t *testing.T) {
 		t.Errorf("err = %q, want git's message without the trailing newline", err)
 	}
 }
+
+func TestFileBlob_IgnoresUserConfig(t *testing.T) {
+	r := newGitRepo(t, hostileConfig(t))
+	if err := os.WriteFile(filepath.Join(r.dir, ".git", "info", "attributes"), []byte("*.py diff=upper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := "def a():\n    return 1\n"
+	r.write("m.py", src)
+	r.git("add", "-A")
+	r.git("commit", "-qm", "base")
+	for _, a := range []*GitDiffAdapter{{RepoRoot: r.dir, Base: "main"}, {RepoRoot: r.dir, Staged: true}} {
+		if got, err := a.FileBlob(BlobRequest{Path: "m.py"}); err != nil || string(got) != src {
+			t.Errorf("Base %q Staged %v: FileBlob = %q, %v; want the blob as committed", a.Base, a.Staged, got, err)
+		}
+	}
+}
