@@ -19,7 +19,9 @@
 // skipped. A call through another object (self.repo.save( inside
 // UserService.save) delegates and never resolves to the caller itself; a
 // bare call or one through self, this, cls, super or a Go method's receiver
-// may be recursion and resolves as any other call.
+// may be recursion and resolves as any other call. Recursion through another
+// node (n.left.walk() inside walk) reads like delegation and links to a
+// changed same-named entity elsewhere if there is one: accepted ambiguity.
 //
 // A call site resolves to a changed function, class or type, else to a
 // changed var/const: a var can hold a function (a factory hook, a memo or
