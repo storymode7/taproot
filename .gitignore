@@ -3,6 +3,7 @@
 /astra
 apps/cli/astra
 apps/cli/astra.exe
+/apps/cli/cmd/astra/astra
 
 # Go
 *.test
