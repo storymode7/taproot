@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -76,7 +77,18 @@ func (a *GitDiffAdapter) Meta() (*PRMeta, error) {
 
 // Files returns all changed files by running git diff.
 func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
-	args := diffArgs("--unified=3")
+	files, _, err := a.FilesAndPreimages()
+	return files, err
+}
+
+// IndexEntry is a path's entry in the git index: its mode and object id.
+type IndexEntry struct{ Mode, SHA string }
+
+// FilesAndPreimages is Files with the pre-image of each file, by path, as
+// the same git diff names it: in a working-tree review, the index entry
+// its hunks apply to (a rename's old path's entry; no SHA for a new file).
+func (a *GitDiffAdapter) FilesAndPreimages() ([]*FileDiff, map[string]IndexEntry, error) {
+	args := diffArgs("--unified=3", "--full-index")
 	switch {
 	case a.Staged:
 		args = append(args, "--cached")
@@ -87,9 +99,10 @@ func (a *GitDiffAdapter) Files() ([]*FileDiff, error) {
 	}
 	raw, err := a.git(append(args, "--")...)
 	if err != nil {
-		return nil, fmt.Errorf("git diff: %w", err)
+		return nil, nil, fmt.Errorf("git diff: %w", err)
 	}
-	return parseDiff(raw), nil
+	files, pre := parseDiffIndex(raw)
+	return files, pre, nil
 }
 
 // diffArgs starts a git diff whose output parseDiff can read whatever the
@@ -119,11 +132,7 @@ func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
 		req.SHA = a.headRef()
 	}
 	if req.SHA == "" {
-		path := req.Path
-		if a.RepoRoot != "" {
-			path = filepath.Join(a.RepoRoot, req.Path)
-		}
-		if out, err := readWorktreeFile(path); !errors.Is(err, fs.ErrNotExist) {
+		if out, err := a.WorktreeFile(req.Path); !errors.Is(err, fs.ErrNotExist) {
 			return out, err
 		}
 		out, err := a.git("show", fmt.Sprintf("HEAD:%s", req.Path))
@@ -137,6 +146,14 @@ func (a *GitDiffAdapter) FileBlob(req BlobRequest) ([]byte, error) {
 		return nil, fmt.Errorf("git show %s:%s: %w", req.SHA, req.Path, err)
 	}
 	return []byte(out), nil
+}
+
+// WorktreeFile reads a working-tree file, by its path in the repository.
+func (a *GitDiffAdapter) WorktreeFile(path string) ([]byte, error) {
+	if a.RepoRoot != "" {
+		path = filepath.Join(a.RepoRoot, path)
+	}
+	return readWorktreeFile(path)
 }
 
 // readWorktreeFile reads a file as git sees it: a symlink is the path it
@@ -163,40 +180,89 @@ func (a *GitDiffAdapter) headRef() string {
 	return "HEAD"
 }
 
-// ApplyCached applies the given unified-diff patch to the git index.
-// Equivalent to: echo "$patch" | git apply --cached --unidiff-zero [-R]
-// Hunks cut at entity boundaries end on their last changed line, with no
-// trailing context; without --unidiff-zero git would anchor them to EOF.
-// It is idempotent: a patch already in the index (or, with reverse, already
-// absent from it) is left alone, so review state recorded before staging
-// existed, or an index the user touched by hand, never makes a keypress fail.
-func (a *GitDiffAdapter) ApplyCached(patch string, reverse bool) error {
-	if a.gitApplyCached(patch, !reverse, true) == nil {
-		return nil
+// IndexEntries returns the index entries of paths. A path with no entry is
+// missing from the map; an unmerged path has the Mode "unmerged".
+func (a *GitDiffAdapter) IndexEntries(paths []string) (map[string]IndexEntry, error) {
+	entries := make(map[string]IndexEntry, len(paths))
+	if len(paths) == 0 {
+		return entries, nil
 	}
-	return a.gitApplyCached(patch, reverse, false)
+	want := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		want[p] = true
+	}
+	out, err := a.git(append([]string{"--literal-pathspecs", "ls-files", "--stage", "-z", "--"}, paths...)...)
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files: %w", err)
+	}
+	for _, rec := range strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") {
+		// <mode> SP <object> SP <stage> TAB <path>
+		info, path, ok := strings.Cut(rec, "\t")
+		f := strings.Fields(info)
+		if !ok || len(f) != 3 || !want[path] {
+			continue
+		}
+		if f[2] != "0" {
+			entries[path] = IndexEntry{Mode: "unmerged"}
+			continue
+		}
+		entries[path] = IndexEntry{Mode: f[0], SHA: f[1]}
+	}
+	return entries, nil
 }
 
-func (a *GitDiffAdapter) gitApplyCached(patch string, reverse, check bool) error {
-	// The user's apply.whitespace and apply.ignoreWhitespace would refuse
-	// or rewrite lines with trailing whitespace, or match lines that
-	// differ in it.
-	args := []string{"apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "--no-ignore-whitespace"}
-	if reverse {
-		args = append(args, "-R")
+// Blob returns the content of the blob sha, as stored.
+func (a *GitDiffAdapter) Blob(sha string) ([]byte, error) {
+	out, err := a.git("cat-file", "blob", sha)
+	if err != nil {
+		return nil, fmt.Errorf("git cat-file blob %s: %w", sha, err)
 	}
-	if check {
-		args = append(args, "--check")
+	return []byte(out), nil
+}
+
+// WriteBlob stores content as a blob, exactly as given: it is the text the
+// index will hold, so no clean filter or line-ending conversion runs.
+func (a *GitDiffAdapter) WriteBlob(content []byte) (string, error) {
+	out, err := a.gitIn(content, "hash-object", "-w", "--no-filters", "--stdin")
+	if err != nil {
+		return "", fmt.Errorf("git hash-object: %w", err)
 	}
-	cmd := exec.Command("git", args...)
-	if a.RepoRoot != "" {
-		cmd.Dir = a.RepoRoot
+	return strings.TrimSpace(out), nil
+}
+
+// SetIndex writes index entries in one git update-index, so they change
+// together or not at all. An entry with no Mode removes its path; its SHA
+// must still be an object id of the repository's length.
+func (a *GitDiffAdapter) SetIndex(entries map[string]IndexEntry) error {
+	paths := make([]string, 0, len(entries))
+	for p := range entries {
+		paths = append(paths, p)
 	}
-	cmd.Stdin = strings.NewReader(patch)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git apply --cached: %w: %s", err, stderr.String())
+	sort.Strings(paths)
+	var in bytes.Buffer
+	for _, p := range paths {
+		e := entries[p]
+		if e.Mode == "" {
+			fmt.Fprintf(&in, "0 %s 0\t%s\x00", strings.Repeat("0", len(e.SHA)), p)
+			continue
+		}
+		fmt.Fprintf(&in, "%s %s 0\t%s\x00", e.Mode, e.SHA, p)
+	}
+	if _, err := a.gitIn(in.Bytes(), "update-index", "-z", "--index-info"); err != nil {
+		return fmt.Errorf("git update-index: %w", err)
+	}
+	return nil
+}
+
+// IntentToAdd gives path an intent-to-add entry (git add -N), in place of
+// any entry it has.
+func (a *GitDiffAdapter) IntentToAdd(path string) error {
+	if _, err := a.git("update-index", "--force-remove", "--", path); err != nil {
+		return fmt.Errorf("git update-index: %w", err)
+	}
+	// --force: a file the user added with -N stays added if it is ignored.
+	if _, err := a.git("--literal-pathspecs", "add", "--intent-to-add", "--force", "--", path); err != nil {
+		return fmt.Errorf("git add -N: %w", err)
 	}
 	return nil
 }
@@ -218,9 +284,17 @@ func (a *GitDiffAdapter) RunGit(args ...string) (string, error) {
 
 // git runs a git command in RepoRoot and returns stdout as a string.
 func (a *GitDiffAdapter) git(args ...string) (string, error) {
+	return a.gitIn(nil, args...)
+}
+
+// gitIn is git with stdin.
+func (a *GitDiffAdapter) gitIn(stdin []byte, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	if a.RepoRoot != "" {
 		cmd.Dir = a.RepoRoot
+	}
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -238,9 +312,18 @@ func (a *GitDiffAdapter) git(args ...string) (string, error) {
 var reHunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
 func parseDiff(raw string) []*FileDiff {
+	files, _ := parseDiffIndex(raw)
+	return files
+}
+
+// parseDiffIndex parses a diff and the pre-image blob that each file's
+// "index <old>..<new> [<mode>]" line names, by path.
+func parseDiffIndex(raw string) ([]*FileDiff, map[string]IndexEntry) {
 	var files []*FileDiff
+	pre := make(map[string]IndexEntry)
 	var cur *FileDiff
 	var curHunk *Hunk
+	var preSHA, preMode string
 	flush := func() {
 		if cur == nil {
 			return
@@ -250,12 +333,19 @@ func parseDiff(raw string) []*FileDiff {
 			curHunk = nil
 		}
 		cur.Language = detectLanguage(cur.Path)
+		if preMode == "" {
+			preMode = cur.OldMode
+		}
+		if strings.Trim(preSHA, "0") != "" && !cur.IsNew {
+			pre[cur.Path] = IndexEntry{Mode: preMode, SHA: preSHA}
+		}
+		preSHA, preMode = "", ""
 		files = append(files, cur)
 		cur = nil
 	}
 
 	// Split on "\n" alone: lines have no length limit and keep the "\r" of
-	// a CRLF file, which git apply needs to match the index.
+	// a CRLF file, which the index blob has too.
 	for _, line := range strings.Split(strings.TrimSuffix(raw, "\n"), "\n") {
 		if rest, ok := strings.CutPrefix(line, "diff --git "); ok {
 			flush()
@@ -301,6 +391,10 @@ func parseDiff(raw string) []*FileDiff {
 
 		// The extended header, before the first hunk. Its lines name the
 		// paths exactly, where the diff --git line can be ambiguous.
+		case strings.HasPrefix(line, "index "):
+			ids, mode, _ := strings.Cut(line[len("index "):], " ")
+			preSHA, _, _ = strings.Cut(ids, "..")
+			preMode = mode
 		case strings.HasPrefix(line, "old mode "):
 			cur.OldMode = line[len("old mode "):]
 		case strings.HasPrefix(line, "new mode "):
@@ -327,7 +421,7 @@ func parseDiff(raw string) []*FileDiff {
 	}
 	flush()
 
-	return files
+	return files, pre
 }
 
 // conflictPath reads the path of an unmerged file. git diff prints its

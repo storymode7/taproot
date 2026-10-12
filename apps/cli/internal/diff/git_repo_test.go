@@ -148,36 +148,67 @@ func TestFiles_IgnoresUserDiffConfig(t *testing.T) {
 	}
 }
 
-func TestApplyCached_IgnoresUserApplyConfig(t *testing.T) {
+// TestIndexWrites_IgnoreUserConfig: what astra writes to the index is the
+// text it gives, whatever filters and line-ending settings the user has,
+// and a path is a path, never a pattern.
+func TestIndexWrites_IgnoreUserConfig(t *testing.T) {
 	r := newGitRepo(t, hostileConfig(t))
-	r.write("w.py", "def a():\n    return 1\n\n\ndef b():\n  return 2\n")
+	names := []string{"w.py", "sp ace[1].py", "sp ace1.py", "café.py"}
+	for _, n := range names {
+		r.write(n, "x\n")
+	}
 	r.git("add", "-A")
 	r.git("commit", "-qm", "base")
-	// A trailing space (apply.whitespace=error refuses it) and a
-	// whitespace-only change (apply.ignoreWhitespace=change takes it as
-	// already applied).
-	newSrc := "def a():\n    return 1 \n\n\ndef b():\n    return 2\n"
-	r.write("w.py", newSrc)
+	if err := os.WriteFile(filepath.Join(r.dir, ".git", "info", "attributes"), []byte("*.py filter=upper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.git("config", "filter.upper.clean", "tr a-z A-Z")
+	r.git("config", "core.autocrlf", "true")
+	r.git("config", "core.safecrlf", "true")
 
 	a := &GitDiffAdapter{RepoRoot: r.dir}
-	files, err := a.Files()
+	entries, err := a.IndexEntries([]string{"sp ace[1].py", "café.py", "missing.py"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 {
-		t.Fatalf("want one file, got %d", len(files))
+	if len(entries) != 2 || entries["sp ace[1].py"].Mode != "100644" || entries["café.py"].SHA == "" {
+		t.Fatalf("IndexEntries = %v, want exactly the two named paths", entries)
 	}
-	var patch strings.Builder
-	patch.WriteString("--- a/w.py\n+++ b/w.py\n")
-	for _, h := range files[0].Hunks {
-		patch.WriteString(strings.Join(h.Lines, "\n") + "\n")
-	}
-	if err := a.ApplyCached(patch.String(), false); err != nil {
+
+	text := "def a():\r\n    return 1\n"
+	sha, err := a.WriteBlob([]byte(text))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := r.git("show", ":w.py"); got != newSrc {
-		t.Errorf("staged %q, want %q", got, newSrc)
+	if err := a.SetIndex(map[string]IndexEntry{
+		"sp ace[1].py": {Mode: "100755", SHA: sha},
+		"café.py":      {SHA: entries["café.py"].SHA},
+	}); err != nil {
+		t.Fatal(err)
 	}
+	if got := r.git("cat-file", "blob", ":sp ace[1].py"); got != text {
+		t.Errorf("staged %q, want %q", got, text)
+	}
+	if got, err := a.Blob(sha); err != nil || string(got) != text {
+		t.Errorf("Blob = %q, %v", got, err)
+	}
+	after, err := a.IndexEntries(names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := after["café.py"]; ok || after["sp ace[1].py"] != (IndexEntry{Mode: "100755", SHA: sha}) || after["sp ace1.py"] != entries2(t, r, "sp ace1.py") {
+		t.Errorf("index after SetIndex: %v", after)
+	}
+}
+
+// entries2 is a path's index entry as git ls-files prints it.
+func entries2(t *testing.T, r *gitRepo, path string) IndexEntry {
+	t.Helper()
+	f := strings.Fields(r.git("ls-files", "-s", "--", path))
+	if len(f) < 2 {
+		t.Fatalf("%s is not in the index", path)
+	}
+	return IndexEntry{Mode: f[0], SHA: f[1]}
 }
 
 func TestGit_ErrorIsGitsMessage(t *testing.T) {

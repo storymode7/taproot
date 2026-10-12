@@ -291,3 +291,59 @@ func TestParseDiff_FileKinds(t *testing.T) {
 		t.Errorf("a.py hunk = %q, want %q: a conflict section must not join it", a, wantA)
 	}
 }
+
+func TestParseDiff_IndexLines(t *testing.T) {
+	raw := `diff --git a/gone.txt b/gone.txt
+deleted file mode 100644
+index 587be6b4c3f93f93c489c0111bba5596147a26cb..0000000000000000000000000000000000000000
+--- a/gone.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-x
+diff --git a/m.go b/m.go
+index f137635bb4ff592552cad25d2ec27d231fa0f60b..861b9e4c3bfe6b5d15f0868fefa3aca13443c1b6 100644
+--- a/m.go
++++ b/m.go
+@@ -4 +4 @@ func a() int {
+-	return 1
++	return 2
+diff --git a/new.go b/new.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c9c28f0ad5132a37ca0d60dd03103eeb872261e
+--- /dev/null
++++ b/new.go
+@@ -0,0 +1 @@
++package p
+diff --git a/a.py b/b.py
+similarity index 80%
+rename from a.py
+rename to b.py
+index b15961688a217a301d912b576aa4b5443871b385..56c1dd68f32b9151150f562732436b4b9d59300d 100644
+--- a/a.py
++++ b/b.py
+@@ -6 +6 @@ def b():
+-    return 2
++    return 20
+diff --git a/run.sh b/run.sh
+old mode 100644
+new mode 100755
+index f5bdd214e01603ecd6c83be9f66d88579c588ec6..87ce052c781441ea027128d3ee602b3fb588cbac
+--- a/run.sh
++++ b/run.sh
+@@ -1 +1 @@
+-run
++run2`
+	files, pre := parseDiffIndex(raw)
+	if len(files) != 5 {
+		t.Fatalf("got %d files", len(files))
+	}
+	want := map[string]IndexEntry{
+		"gone.txt": {Mode: "100644", SHA: "587be6b4c3f93f93c489c0111bba5596147a26cb"},
+		"m.go":     {Mode: "100644", SHA: "f137635bb4ff592552cad25d2ec27d231fa0f60b"},
+		"b.py":     {Mode: "100644", SHA: "b15961688a217a301d912b576aa4b5443871b385"},
+		"run.sh":   {Mode: "100644", SHA: "f5bdd214e01603ecd6c83be9f66d88579c588ec6"},
+	}
+	if !reflect.DeepEqual(pre, want) {
+		t.Errorf("pre-images = %v, want %v", pre, want)
+	}
+}

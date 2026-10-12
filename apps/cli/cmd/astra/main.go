@@ -50,10 +50,10 @@ OPTIONS
   --no-auto-advance    Stay on the current snippet after accept/reject/reviewed
                        (default: auto-advance to next snippet, like git add -p)
   --no-apply           Record verdicts only; leave the git index alone.
-                       By default y stages the snippet (git apply --cached) and
-                       x/r on an accepted snippet unstages it (-R), like
-                       git add -p. Staging is off anyway with --staged, --ref
-                       or --base, since those don't review the working tree.
+                       By default y stages the snippet and x/r on an accepted
+                       snippet unstages it, like git add -p. Staging is off
+                       anyway with --staged, --ref or --base, since those
+                       don't review the working tree.
   --no-tty             Print diff to stdout without interactive UI (plain
                        text when piped or when NO_COLOR is set)
   --no-delta           Skip delta; use bat or built-in highlighting instead.
@@ -83,8 +83,8 @@ KEYBOARD SHORTCUTS (interactive mode)
   End     Last row           n / N   Next/prev hit q  ?   Quit, help
 
   In the default review (no --staged, --ref or --base), y also stages
-  the snippet (git apply --cached), like git add -p, and x or r on an
-  accepted snippet unstages it. --no-apply records verdicts only.
+  the snippet, like git add -p, and x or r on an accepted snippet
+  unstages it. --no-apply records verdicts only.
 
 STATE
   Review state is saved per diff under .git/astra/reviews/: one small
@@ -234,14 +234,74 @@ func run(args []string) error {
 		return fmt.Errorf("open state store: %w", err)
 	}
 
-	// Fetch diff.
-	files, err := adapter.Files()
+	rv := &review{adapter: adapter, applyMode: applyMode}
+	d, err := rv.load()
 	if err != nil {
-		return fmt.Errorf("read diff: %w", err)
+		return err
 	}
-	if len(files) == 0 {
+	if len(d.files) == 0 {
 		fmt.Fprintln(os.Stderr, "No changes found."+emptyDiffHint(adapter))
 		return nil
+	}
+	if len(d.snippets) == 0 {
+		if len(d.skipped) > 0 {
+			fmt.Println(tui.NotShownLine(d.skipped))
+		} else {
+			fmt.Println("No reviewable snippets found.")
+		}
+		return nil
+	}
+
+	if noTTY || !isTTY() {
+		order := core.OrderPre
+		if preset == core.PresetBottomUp {
+			order = core.OrderPost
+		}
+		tui.Plain = !isTTY() || os.Getenv("NO_COLOR") != ""
+		if len(d.skipped) > 0 {
+			fmt.Println(tui.NotShownLine(d.skipped))
+		}
+		tui.View(d.forest.Flatten(order), store)
+		return nil
+	}
+
+	var stage func(s *core.Snippet, reverse bool) error
+	if applyMode {
+		stage = func(s *core.Snippet, reverse bool) error {
+			return d.stager.stage(s, !reverse)
+		}
+	}
+
+	runner := tui.NewRunner(d.forest, store, !noAutoAdvance, applyMode, stage)
+	runner.RepoRoot = repoRoot
+	runner.Skipped = d.skipped
+	if staged || base != "" {
+		runner.Reviewed = func(path string) ([]byte, error) {
+			return adapter.FileBlob(diff.BlobRequest{Path: path})
+		}
+	}
+	return runner.Run()
+}
+
+// review reads the diff under review.
+type review struct {
+	adapter   *diff.GitDiffAdapter
+	applyMode bool // y stages
+}
+
+// loaded is one reading of the diff.
+type loaded struct {
+	files    []*core.FileDiff
+	snippets []*core.Snippet
+	skipped  []core.SkippedFile // changed files that make no snippet, and why
+	forest   *core.ReviewForest
+	stager   *stager // when y stages
+}
+
+func (rv *review) load() (*loaded, error) {
+	files, pre, err := rv.adapter.FilesAndPreimages()
+	if err != nil {
+		return nil, fmt.Errorf("read diff: %w", err)
 	}
 
 	// Fill in post-image source so the core can extract entity boundaries
@@ -250,64 +310,29 @@ func run(args []string) error {
 		if f.Language == "" || f.IsDeleted || f.IsBinary {
 			continue
 		}
-		if src, err := adapter.FileBlob(diff.BlobRequest{Path: f.Path}); err == nil {
+		if src, err := rv.adapter.FileBlob(diff.BlobRequest{Path: f.Path}); err == nil {
 			f.Source = src
 		}
 	}
 
 	// Build snippets using entity-aware splitting.
-	snippets := core.BuildSnippets(files)
-	skipped := skippedFiles(files)
-	if len(snippets) == 0 {
-		if len(skipped) > 0 {
-			fmt.Println(tui.NotShownLine(skipped))
-		} else {
-			fmt.Println("No reviewable snippets found.")
-		}
-		return nil
-	}
+	d := &loaded{files: files, snippets: core.BuildSnippets(files), skipped: skippedFiles(files)}
 
 	// Annotate snippets whose callers live in unchanged regions of changed
 	// files, so context-free roots can say who calls them.
-	core.AnnotateUnchangedCallers(files, snippets)
+	core.AnnotateUnchangedCallers(files, d.snippets)
 
 	// Build symbol graph: call edges between changed entities drive review
 	// order; import edges only group snippets into clusters.
-	edges := append(core.BuildCallEdges(snippets), core.BuildEdgesFromDiff(snippets)...)
+	edges := append(core.BuildCallEdges(d.snippets), core.BuildEdgesFromDiff(d.snippets)...)
+	d.forest = core.BuildForest(d.snippets, edges)
 
-	// Build the review forest and its flattened reading order.
-	forest := core.BuildForest(snippets, edges)
-	order := core.OrderPre
-	if preset == core.PresetBottomUp {
-		order = core.OrderPost
-	}
-	ordered := forest.Flatten(order)
-
-	if noTTY || !isTTY() {
-		tui.Plain = !isTTY() || os.Getenv("NO_COLOR") != ""
-		if len(skipped) > 0 {
-			fmt.Println(tui.NotShownLine(skipped))
-		}
-		tui.View(ordered, store)
-		return nil
-	}
-
-	var stage func(s *core.Snippet, reverse bool) error
-	if applyMode {
-		stage = func(s *core.Snippet, reverse bool) error {
-			return adapter.ApplyCached(buildAcceptedPatch([]*core.Snippet{s}), reverse)
+	if rv.applyMode {
+		if d.stager, err = newStager(rv.adapter, files, pre, d.snippets); err != nil {
+			return nil, fmt.Errorf("read the index: %w", err)
 		}
 	}
-
-	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, stage)
-	runner.RepoRoot = repoRoot
-	runner.Skipped = skipped
-	if staged || base != "" {
-		runner.Reviewed = func(path string) ([]byte, error) {
-			return adapter.FileBlob(diff.BlobRequest{Path: path})
-		}
-	}
-	return runner.Run()
+	return d, nil
 }
 
 // emptyDiffHint explains an empty review of the working tree, which shows

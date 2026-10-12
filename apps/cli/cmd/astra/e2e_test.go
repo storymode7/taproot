@@ -77,30 +77,22 @@ func (r *testRepo) commit(msg string) {
 	r.git("commit", "-qm", msg)
 }
 
-// snippets reads the diff the way run does: files, post-images, snippets.
-func (r *testRepo) snippets(a *diff.GitDiffAdapter) []*core.Snippet {
-	r.t.Helper()
-	files, err := a.Files()
+// load reads the working-tree review as run does.
+func (r *testRepo) load(t *testing.T, applyMode bool) *loaded {
+	t.Helper()
+	d, err := (&review{adapter: &diff.GitDiffAdapter{RepoRoot: r.dir}, applyMode: applyMode}).load()
 	if err != nil {
-		r.t.Fatal(err)
+		t.Fatal(err)
 	}
-	for _, f := range files {
-		if f.Language == "" || f.IsDeleted || f.IsBinary {
-			continue
-		}
-		if src, err := a.FileBlob(diff.BlobRequest{Path: f.Path}); err == nil {
-			f.Source = src
-		}
-	}
-	return core.BuildSnippets(files)
+	return d
 }
 
 // stageEach stages snippets one at a time, as y does, in the given order.
-func stageEach(t *testing.T, a *diff.GitDiffAdapter, snippets []*core.Snippet, order []int) {
+func stageEach(t *testing.T, st *stager, snippets []*core.Snippet, order []int) {
 	t.Helper()
 	for _, i := range order {
 		s := snippets[i]
-		if err := a.ApplyCached(buildAcceptedPatch([]*core.Snippet{s}), false); err != nil {
+		if err := st.stage(s, true); err != nil {
 			t.Fatalf("staging %s:%s alone: %v\n%q", s.FilePath, s.SymbolPath, err, s.DiffLines)
 		}
 	}
@@ -123,18 +115,17 @@ func TestStage_CRLFFile(t *testing.T) {
 	r.commit("base")
 	r.write("w.py", newSrc)
 
-	a := &diff.GitDiffAdapter{RepoRoot: r.dir}
-	snippets := r.snippets(a)
-	if len(snippets) != 2 {
-		t.Fatalf("want snippets for a and c, got %v", symbols(snippets))
-	}
-	for _, order := range orders(len(snippets)) {
-		stageEach(t, a, snippets, order)
+	for _, order := range orders(2) {
+		d := r.load(t, true)
+		if len(d.snippets) != 2 {
+			t.Fatalf("want snippets for a and c, got %v", symbols(d.snippets))
+		}
+		stageEach(t, d.stager, d.snippets, order)
 		if got := r.git("show", ":w.py"); got != newSrc {
 			t.Errorf("order %v: staged %q, want the working tree %q", order, got, newSrc)
 		}
-		if err := a.ApplyCached(buildAcceptedPatch(snippets[:1]), true); err != nil {
-			t.Fatalf("unstaging %s: %v", snippets[0].SymbolPath, err)
+		if err := d.stager.stage(d.snippets[0], false); err != nil {
+			t.Fatalf("unstaging %s: %v", d.snippets[0].SymbolPath, err)
 		}
 		if got, want := r.git("show", ":w.py"), strings.Replace(newSrc, "return 10", "return 1", 1); got != want {
 			t.Errorf("order %v: after unstaging a, index %q, want %q", order, got, want)
@@ -158,16 +149,15 @@ func TestStage_OddPaths(t *testing.T) {
 		}
 	}
 
-	a := &diff.GitDiffAdapter{RepoRoot: r.dir}
-	snippets := r.snippets(a)
+	d := r.load(t, true)
 	got := map[string]string{}
-	for _, s := range snippets {
+	for _, s := range d.snippets {
 		got[s.FilePath] = s.SymbolPath
 	}
 	if !reflect.DeepEqual(got, edited) {
 		t.Fatalf("snippets (path: symbol) = %q, want %q", got, edited)
 	}
-	stageEach(t, a, snippets, orders(len(snippets))[0])
+	stageEach(t, d.stager, d.snippets, orders(len(d.snippets))[0])
 	staged := strings.Split(strings.TrimSuffix(r.git("diff", "--cached", "--name-only", "-z"), "\x00"), "\x00")
 	want := []string{"My Docs/foo.py", "café.py", "sp ace.py"}
 	if !reflect.DeepEqual(staged, want) {
@@ -194,14 +184,14 @@ func TestStage_NoNewlineAtEndOfFile(t *testing.T) {
 			r.write(c.name, c.old)
 			r.commit("base")
 			r.write(c.name, c.new)
-			a := &diff.GitDiffAdapter{RepoRoot: r.dir}
-			snippets := r.snippets(a)
-			if len(snippets) == 0 {
+			n := len(r.load(t, true).snippets)
+			if n == 0 {
 				t.Fatal("no snippets")
 			}
-			for _, order := range orders(len(snippets)) {
-				stageEach(t, a, snippets, order)
-				stageEach(t, a, snippets, order)
+			for _, order := range orders(n) {
+				d := r.load(t, true)
+				stageEach(t, d.stager, d.snippets, order)
+				stageEach(t, d.stager, d.snippets, order)
 				if got := r.git("show", ":"+c.name); got != c.new {
 					t.Errorf("order %v: staged %q, want %q", order, got, c.new)
 				}

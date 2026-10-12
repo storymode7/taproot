@@ -1,305 +1,160 @@
 package main
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/apps/cli/internal/diff"
 	"github.com/storymode7/astra/core"
 )
 
-func snippet(filePath, oldPath string, isNew bool, startLine int, diffLines ...string) *core.Snippet {
-	return &core.Snippet{
-		FilePath:  filePath,
-		OldPath:   oldPath,
-		IsNew:     isNew,
-		StartLine: startLine,
-		DiffLines: diffLines,
-	}
-}
-
-func TestBuildAcceptedPatch_Empty(t *testing.T) {
-	if patch := buildAcceptedPatch(nil); patch != "" {
-		t.Errorf("expected empty patch, got %q", patch)
-	}
-	if patch := buildAcceptedPatch([]*core.Snippet{}); patch != "" {
-		t.Errorf("expected empty patch for empty slice, got %q", patch)
-	}
-}
-
-func TestBuildAcceptedPatch_SingleHunk(t *testing.T) {
-	snippets := []*core.Snippet{
-		snippet("foo.go", "foo.go", false, 5,
-			"@@ -5,3 +5,4 @@", " ctx", "+// added", " line2", " line3"),
-	}
-	patch := buildAcceptedPatch(snippets)
-	if !strings.Contains(patch, "--- a/foo.go") {
-		t.Errorf("missing old header in:\n%s", patch)
-	}
-	if !strings.Contains(patch, "+++ b/foo.go") {
-		t.Errorf("missing new header in:\n%s", patch)
-	}
-	if !strings.Contains(patch, "@@ -5,3 +5,4 @@") {
-		t.Errorf("missing hunk header in:\n%s", patch)
-	}
-	if !strings.Contains(patch, "+// added") {
-		t.Errorf("missing added line in:\n%s", patch)
-	}
-}
-
-func TestBuildAcceptedPatch_MultiHunkSameFile_SortedByStartLine(t *testing.T) {
-	// Provide hunks in reverse order — result must sort them by start line.
-	snippets := []*core.Snippet{
-		snippet("foo.go", "foo.go", false, 20, "@@ -20,2 +20,2 @@", "-old2", "+new2"),
-		snippet("foo.go", "foo.go", false, 5, "@@ -5,2 +5,2 @@", "-old1", "+new1"),
-	}
-	patch := buildAcceptedPatch(snippets)
-
-	idx5 := strings.Index(patch, "@@ -5,2")
-	idx20 := strings.Index(patch, "@@ -20,2")
-	if idx5 == -1 || idx20 == -1 {
-		t.Fatalf("expected both hunks in patch:\n%s", patch)
-	}
-	if idx5 > idx20 {
-		t.Errorf("hunk at line 5 must appear before hunk at line 20;\npatch:\n%s", patch)
-	}
-
-	// File header must appear exactly once.
-	if count := strings.Count(patch, "--- a/foo.go"); count != 1 {
-		t.Errorf("expected 1 file header, got %d:\n%s", count, patch)
-	}
-}
-
-func TestBuildAcceptedPatch_InterleavedFragmentsSorted(t *testing.T) {
-	// A class-container snippet can hold multiple non-contiguous fragments
-	// that interleave with its methods' snippets (one git hunk split at
-	// entity boundaries). git apply needs hunks in ascending order, so
-	// fragments must be sorted individually — not per snippet.
-	class := snippet("store.py", "store.py", false, 1,
-		"@@ -1,3 +1,3 @@", " class Store:", "-    version = 1", "+    version = 2", " ",
-		"@@ -8,1 +9,1 @@", "-    limit = 10", "+    limit = 20")
-	method := snippet("store.py", "store.py", false, 4,
-		"@@ -4,3 +4,4 @@", "     def put(self, x):", "         self.items.append(x)", "+        self.log(x)", " ")
-
-	patch := buildAcceptedPatch([]*core.Snippet{class, method})
-
-	idx1 := strings.Index(patch, "@@ -1,3")
-	idx4 := strings.Index(patch, "@@ -4,3")
-	idx8 := strings.Index(patch, "@@ -8,1")
-	if idx1 == -1 || idx4 == -1 || idx8 == -1 {
-		t.Fatalf("expected all three fragments in patch:\n%s", patch)
-	}
-	if !(idx1 < idx4 && idx4 < idx8) {
-		t.Errorf("fragments out of ascending order (git apply would fail):\n%s", patch)
-	}
-}
-
-func TestBuildAcceptedPatch_GitApply_ClassAndMethodSplit(t *testing.T) {
-	// End-to-end regression: one git hunk spanning class-level lines and a
-	// method body splits into interleaved snippets. The assembled patch must
-	// still be a valid git patch, and accepting only the method must not
-	// stage the class-level deletion.
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not installed")
-	}
-
-	oldSrc := `class Store:
-    version = 1
-
-    def put(self, x):
-        self.items.append(x)
-
-    limit = 10
-`
-	newSrc := `class Store:
-    version = 2
-
-    def put(self, x):
-        self.items.append(x)
-        self.log(x)
-
-    limit = 20
-`
-
-	dir := t.TempDir()
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	git("init", "-q")
-	git("config", "user.email", "t@t")
-	git("config", "user.name", "t")
-	if err := os.WriteFile(filepath.Join(dir, "store.py"), []byte(oldSrc), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	git("add", "store.py")
-	git("commit", "-q", "-m", "base")
-	if err := os.WriteFile(filepath.Join(dir, "store.py"), []byte(newSrc), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	adapter := &diff.GitDiffAdapter{RepoRoot: dir}
-	files, err := adapter.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range files {
-		f.Source = []byte(newSrc)
-	}
-	snippets := core.BuildSnippets(files)
-
-	// Accepting everything must produce a patch git can apply.
-	patch := buildAcceptedPatch(snippets)
-	if err := adapter.ApplyCached(patch, false); err != nil {
-		t.Fatalf("full patch rejected by git apply: %v\npatch:\n%s", err, patch)
-	}
-	git("reset", "-q")
-
-	// Accepting only Store.put must leave the class-level limit line alone.
-	var put []*core.Snippet
-	for _, s := range snippets {
-		if s.SymbolPath == "Store.put" {
-			put = append(put, s)
-		}
-	}
-	if len(put) != 1 {
-		t.Fatalf("expected a Store.put snippet, got %v", symbols(snippets))
-	}
-	if err := adapter.ApplyCached(buildAcceptedPatch(put), false); err != nil {
-		t.Fatalf("method-only patch rejected by git apply: %v", err)
-	}
-	show := func() string {
-		t.Helper()
-		cmd := exec.Command("git", "show", ":store.py")
-		cmd.Dir = dir
-		out, err := cmd.Output()
+// apply puts the fragments of snippets, given by their diff lines, into base.
+func apply(t *testing.T, base string, snippets ...[]string) (string, error) {
+	t.Helper()
+	var all []fragment
+	for _, lines := range snippets {
+		frags, err := fragments(&core.Snippet{FilePath: "f", DiffLines: lines})
 		if err != nil {
 			t.Fatal(err)
 		}
-		return string(out)
+		all = append(all, frags...)
 	}
-	staged := show()
-	if !strings.Contains(staged, "limit = 10") {
-		t.Errorf("accepting only Store.put lost the unaccepted limit line; staged:\n%s", staged)
-	}
-	git("reset", "-q")
+	out, err := applyFragments([]byte(base), all)
+	return string(out), err
+}
 
-	// Staging runs one snippet per keypress, in whatever order the user
-	// reviews them, and -R takes one back out again.
-	for i := len(snippets) - 1; i >= 0; i-- {
-		one := buildAcceptedPatch(snippets[i : i+1])
-		if err := adapter.ApplyCached(one, false); err != nil {
-			t.Fatalf("staging %s alone rejected: %v\npatch:\n%s", snippets[i].SymbolPath, err, one)
+func TestApplyFragments_ExactPlaces(t *testing.T) {
+	base := "a\nb\nc\nd\n"
+	for _, c := range []struct {
+		name     string
+		snippets [][]string
+		want     string
+	}{
+		{"nothing", nil, base},
+		{"a change", [][]string{{"@@ -2,1 +2,1 @@", "-b", "+B"}}, "a\nB\nc\nd\n"},
+		// An insertion names the line it goes after, 0 for the top.
+		{"insert at the top", [][]string{{"@@ -0,0 +1,1 @@", "+top"}}, "top\na\nb\nc\nd\n"},
+		{"insert after line 2", [][]string{{"@@ -2,0 +3,1 @@", "+new"}}, "a\nb\nnew\nc\nd\n"},
+		{"insert at the end", [][]string{{"@@ -4,0 +5,1 @@", "+end"}}, base + "end\n"},
+		// A pure insertion at a line goes before a change starting there,
+		// in either order of the snippets.
+		{"insert before a change", [][]string{{"@@ -3,1 +4,1 @@", "-c", "+C"}, {"@@ -2,0 +3,1 @@", "+new"}}, "a\nb\nnew\nC\nd\n"},
+		{"insert before a deletion", [][]string{{"@@ -2,1 +2,0 @@", "-b"}, {"@@ -1,0 +2,1 @@", "+new"}}, "a\nnew\nc\nd\n"},
+		{"two insertions at one line", [][]string{{"@@ -2,0 +4,1 @@", "+second"}, {"@@ -2,0 +3,1 @@", "+first"}}, "a\nb\nfirst\nsecond\nc\nd\n"},
+		{"one snippet, two fragments", [][]string{{"@@ -1,1 +1,1 @@", "-a", "+A", "@@ -4,1 +4,1 @@", "-d", "+D"}}, "A\nb\nc\nD\n"},
+		{"a deletion", [][]string{{"@@ -2,2 +1,0 @@", "-b", "-c"}}, "a\nd\n"},
+		{"context is kept", [][]string{{"@@ -1,3 +1,3 @@", " a", "-b", "+B", " c"}}, "a\nB\nc\nd\n"},
+	} {
+		got, err := apply(t, base, c.snippets...)
+		if err != nil || got != c.want {
+			t.Errorf("%s: %q, %v; want %q", c.name, got, err, c.want)
 		}
-	}
-	if got := show(); got != newSrc {
-		t.Errorf("staging every snippet one at a time != full change; staged:\n%s", got)
-	}
-	if err := adapter.ApplyCached(buildAcceptedPatch(put), false); err != nil {
-		t.Fatalf("re-staging an already staged snippet must be a no-op, got: %v", err)
-	}
-	if err := adapter.ApplyCached(buildAcceptedPatch(put), true); err != nil {
-		t.Fatalf("unstaging Store.put rejected: %v", err)
-	}
-	if got := show(); strings.Contains(got, "self.log(x)") || !strings.Contains(got, "version = 2") {
-		t.Errorf("unstaging Store.put should remove only its change; staged:\n%s", got)
-	}
-	if err := adapter.ApplyCached(buildAcceptedPatch(put), true); err != nil {
-		t.Fatalf("unstaging a snippet that isn't staged must be a no-op, got: %v", err)
-	}
-	if got := show(); strings.Contains(got, "self.log(x)") || !strings.Contains(got, "version = 2") {
-		t.Errorf("second unstage changed the index; staged:\n%s", got)
 	}
 }
 
-func TestBuildAcceptedPatch_GitApply_SplitHunkWithoutTrailingContext(t *testing.T) {
-	// A sub-hunk cut at an entity boundary ends on its last changed line,
-	// with no trailing context. git apply would anchor such a hunk to the
-	// end of the file; staging it must still work.
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not installed")
+func TestApplyFragments_LineEndings(t *testing.T) {
+	// "\ No newline at end of file" marks the line before it; a CRLF
+	// line keeps its "\r".
+	got, err := apply(t, "a\nb", []string{"@@ -2,1 +2,2 @@", "-b", `\ No newline at end of file`, "+b", "+c"})
+	if err != nil || got != "a\nb\nc\n" {
+		t.Errorf("gaining a newline: %q, %v", got, err)
 	}
+	got, err = apply(t, "a\nb\n", []string{"@@ -2,1 +2,1 @@", "-b", "+B", `\ No newline at end of file`})
+	if err != nil || got != "a\nB" {
+		t.Errorf("losing a newline: %q, %v", got, err)
+	}
+	got, err = apply(t, "a\r\nb\r\n", []string{"@@ -2,1 +2,1 @@", "-b\r", "+B\r"})
+	if err != nil || got != "a\r\nB\r\n" {
+		t.Errorf("CRLF: %q, %v", got, err)
+	}
+}
 
-	oldSrc := `"""doc"""
-
-import os
-import sys
-
-from app.client import Client
-
-
-def f():
-    pass
-`
-	newSrc := `"""doc"""
-
-import os
-import sys
-from app.errors import RequestError
-
-from app.client import Client
-
-
-def f():
-    pass
-`
-
-	dir := t.TempDir()
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
+func TestApplyFragments_RefusesWhatDoesNotMatch(t *testing.T) {
+	for name, snippets := range map[string][][]string{
+		"a removed line that is not there":      {{"@@ -2,1 +2,1 @@", "-x", "+B"}},
+		"context that is not there":             {{"@@ -1,2 +1,3 @@", " a", "+new", " x"}},
+		"a CR the base does not have":           {{"@@ -2,1 +2,1 @@", "-b\r", "+B"}},
+		"two changes to one line":               {{"@@ -2,1 +2,1 @@", "-b", "+B"}, {"@@ -2,1 +2,1 @@", "-b", "+X"}},
+		"past the end of the file":              {{"@@ -5,1 +5,1 @@", "-e", "+E"}},
+		"a newline the last line lacks":         {{"@@ -4,1 +4,1 @@", "-d", `\ No newline at end of file`, "+D"}},
+		"identical lines elsewhere in the file": {{"@@ -3,1 +3,1 @@", "-b", "+B"}},
+	} {
+		if got, err := apply(t, "a\nb\nc\nd\n", snippets...); err == nil {
+			t.Errorf("%s: applied as %q, want an error", name, got)
 		}
 	}
-	git("init", "-q")
-	git("config", "user.email", "t@t")
-	git("config", "user.name", "t")
-	if err := os.WriteFile(filepath.Join(dir, "p.py"), []byte(oldSrc), 0o644); err != nil {
-		t.Fatal(err)
+	if _, err := fragments(&core.Snippet{FilePath: "f", DiffLines: []string{"@@ -1,2 +1,1 @@", "-a"}}); err == nil {
+		t.Error("a header whose counts do not match its lines must be an error")
 	}
-	git("add", "p.py")
-	git("commit", "-q", "-m", "base")
-	if err := os.WriteFile(filepath.Join(dir, "p.py"), []byte(newSrc), 0o644); err != nil {
-		t.Fatal(err)
-	}
+}
 
-	adapter := &diff.GitDiffAdapter{RepoRoot: dir}
-	files, err := adapter.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range files {
-		f.Source = []byte(newSrc)
-	}
-	snippets := core.BuildSnippets(files)
-	if len(snippets) != 1 || snippets[0].NodeType != "imports" {
-		t.Fatalf("expected one imports snippet, got %v", symbols(snippets))
-	}
+// TestStage_ClassAndMethodSplit: one git hunk spanning class-level lines
+// and a method body splits into interleaved snippets. Accepting only the
+// method must not stage the class-level change.
+func TestStage_ClassAndMethodSplit(t *testing.T) {
+	oldSrc := "class Store:\n    version = 1\n\n    def put(self, x):\n        self.items.append(x)\n\n    limit = 10\n"
+	newSrc := "class Store:\n    version = 2\n\n    def put(self, x):\n        self.items.append(x)\n        self.log(x)\n\n    limit = 20\n"
+	r := newRepo(t, "")
+	r.write("store.py", oldSrc)
+	r.commit("base")
+	r.write("store.py", newSrc)
 
-	patch := buildAcceptedPatch(snippets)
-	if err := adapter.ApplyCached(patch, false); err != nil {
-		t.Fatalf("staging imports rejected: %v\npatch:\n%s", err, patch)
+	d := r.load(t, true)
+	var put *core.Snippet
+	for _, s := range d.snippets {
+		if s.SymbolPath == "Store.put" {
+			put = s
+		}
 	}
-	show := exec.Command("git", "show", ":p.py")
-	show.Dir = dir
-	staged, err := show.Output()
-	if err != nil {
+	if put == nil {
+		t.Fatalf("expected a Store.put snippet, got %v", symbols(d.snippets))
+	}
+	if err := d.stager.stage(put, true); err != nil {
 		t.Fatal(err)
 	}
-	if string(staged) != newSrc {
-		t.Errorf("staged content != new source; staged:\n%s", staged)
+	want := strings.Replace(oldSrc, "append(x)\n", "append(x)\n        self.log(x)\n", 1)
+	if got := r.git("show", ":store.py"); got != want {
+		t.Errorf("accepting only Store.put staged\n%q\nwant\n%q", got, want)
 	}
-	if err := adapter.ApplyCached(patch, true); err != nil {
-		t.Fatalf("unstaging imports rejected: %v", err)
+	stageEach(t, d.stager, d.snippets, orders(len(d.snippets))[1])
+	if got := r.git("show", ":store.py"); got != newSrc {
+		t.Errorf("staging every snippet != full change; staged:\n%s", got)
+	}
+	if err := d.stager.stage(put, false); err != nil {
+		t.Fatalf("unstaging Store.put: %v", err)
+	}
+	if got := r.git("show", ":store.py"); strings.Contains(got, "self.log(x)") || !strings.Contains(got, "version = 2") || !strings.Contains(got, "limit = 20") {
+		t.Errorf("unstaging Store.put should remove only its change; staged:\n%s", got)
+	}
+	if err := d.stager.stage(put, false); err != nil {
+		t.Fatalf("unstaging a snippet that isn't staged must be a no-op, got: %v", err)
+	}
+}
+
+// TestStage_SplitHunkWithoutTrailingContext: a sub-hunk cut at an entity
+// boundary ends on its last changed line, with no trailing context.
+func TestStage_SplitHunkWithoutTrailingContext(t *testing.T) {
+	oldSrc := "\"\"\"doc\"\"\"\n\nimport os\nimport sys\n\nfrom app.client import Client\n\n\ndef f():\n    pass\n"
+	newSrc := "\"\"\"doc\"\"\"\n\nimport os\nimport sys\nfrom app.errors import RequestError\n\nfrom app.client import Client\n\n\ndef f():\n    pass\n"
+	r := newRepo(t, "")
+	r.write("p.py", oldSrc)
+	r.commit("base")
+	r.write("p.py", newSrc)
+
+	d := r.load(t, true)
+	if len(d.snippets) != 1 || d.snippets[0].NodeType != "imports" {
+		t.Fatalf("expected one imports snippet, got %v", symbols(d.snippets))
+	}
+	if err := d.stager.stage(d.snippets[0], true); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.git("show", ":p.py"); got != newSrc {
+		t.Errorf("staged content != new source; staged:\n%s", got)
+	}
+	if err := d.stager.stage(d.snippets[0], false); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.git("show", ":p.py"); got != oldSrc {
+		t.Errorf("unstaging the imports left\n%s", got)
 	}
 }
 
@@ -309,64 +164,4 @@ func symbols(snippets []*core.Snippet) []string {
 		out[i] = s.SymbolPath
 	}
 	return out
-}
-
-func TestBuildAcceptedPatch_MultiFile(t *testing.T) {
-	snippets := []*core.Snippet{
-		snippet("a.go", "a.go", false, 1, "@@ -1,1 +1,1 @@", "-x", "+y"),
-		snippet("b.go", "b.go", false, 1, "@@ -1,1 +1,1 @@", "-p", "+q"),
-	}
-	patch := buildAcceptedPatch(snippets)
-	if !strings.Contains(patch, "--- a/a.go") {
-		t.Errorf("missing a.go header:\n%s", patch)
-	}
-	if !strings.Contains(patch, "--- a/b.go") {
-		t.Errorf("missing b.go header:\n%s", patch)
-	}
-	// Each file header appears exactly once.
-	for _, hdr := range []string{"--- a/a.go", "--- a/b.go", "+++ b/a.go", "+++ b/b.go"} {
-		if strings.Count(patch, hdr) != 1 {
-			t.Errorf("expected exactly 1 %q in patch:\n%s", hdr, patch)
-		}
-	}
-}
-
-func TestBuildAcceptedPatch_Rename(t *testing.T) {
-	snippets := []*core.Snippet{
-		snippet("new_name.go", "old_name.go", false, 1, "@@ -1,1 +1,1 @@", "-old", "+new"),
-	}
-	patch := buildAcceptedPatch(snippets)
-	if !strings.Contains(patch, "--- a/old_name.go") {
-		t.Errorf("expected old path in old header, got:\n%s", patch)
-	}
-	if !strings.Contains(patch, "+++ b/new_name.go") {
-		t.Errorf("expected new path in new header, got:\n%s", patch)
-	}
-}
-
-func TestBuildAcceptedPatch_NewFile_UsesDevNull(t *testing.T) {
-	// New files: IsNew=true, OldPath matches FilePath (from git diff header).
-	snippets := []*core.Snippet{
-		snippet("brand_new.go", "brand_new.go", true, 1,
-			"@@ -0,0 +1,3 @@", "+package main", "+", "+func init() {}"),
-	}
-	patch := buildAcceptedPatch(snippets)
-	if !strings.Contains(patch, "--- /dev/null") {
-		t.Errorf("expected /dev/null for new file, got:\n%s", patch)
-	}
-	if !strings.Contains(patch, "+++ b/brand_new.go") {
-		t.Errorf("expected new file path in new header, got:\n%s", patch)
-	}
-}
-
-func TestBuildAcceptedPatch_OldPathEmpty_FallsBackToFilePath(t *testing.T) {
-	// If OldPath is empty for some reason, FilePath is used.
-	snippets := []*core.Snippet{
-		{FilePath: "foo.go", OldPath: "", IsNew: false, StartLine: 1,
-			DiffLines: []string{"@@ -1,1 +1,1 @@", "-a", "+b"}},
-	}
-	patch := buildAcceptedPatch(snippets)
-	if !strings.Contains(patch, "--- a/foo.go") {
-		t.Errorf("expected foo.go as fallback old path, got:\n%s", patch)
-	}
 }
