@@ -1,106 +1,111 @@
-# Self-hosting Astra PWA
+# Self-hosting the web app
 
-The PWA is a **pure static site** — HTML, JS, and vendored WASM. No server, no build step, no database. You can host your own instance in under five minutes.
+The web app in `apps/pwa/` is a static site: HTML, CSS, plain JavaScript
+modules and the engine compiled to WebAssembly. There is no build step, no
+server code and no database. The folder holds everything the app loads:
+`scripts/sync-extension-lib.sh` copies the shared browser code into
+`apps/pwa/lib/shared/` and the engine into `apps/pwa/vendor/core/`.
 
-## Why self-host?
+## What it can and cannot do
 
-- Full control over what code runs in your browser.
-- No dependency on our hosting (which may change or disappear).
-- Inspect every file before deploying — there are no minified bundles.
+It can:
 
-## What you need
+- review public GitHub pull requests, without a login;
+- load up to 3000 changed files, the most that GitHub's API lists for a
+  pull request. When a pull request changes more, a banner says how many
+  of them the review shows;
+- save verdicts and comments in your browser (IndexedDB, per origin).
 
-- Any static file host (GitHub Pages, Cloudflare Pages, Netlify, nginx, caddy, `python -m http.server`…)
-- `git` and `curl` to clone and vendor grammars.
+It cannot:
 
-No Node.js. No npm. No Docker.
+- read private repositories (use the Chrome extension);
+- post comments or reviews to GitHub; comments stay in your browser;
+- sync verdicts and comments between browsers or devices;
+- work offline or install as an app: it has no service worker and no web
+  manifest.
 
-## Steps
+Requests and limits:
 
-### 1. Clone
+- It calls `api.github.com` without credentials: one request for the pull
+  request and one for each 100 changed files (2 requests for up to 100
+  files, 31 for 3000). GitHub allows 60 unauthenticated API requests an
+  hour from one IP address. When the limit is reached, the app says when
+  it resets.
+- It fetches the source of each changed file in a supported language from
+  `raw.githubusercontent.com`. A file whose source fails to load, or takes
+  longer than 15 seconds, shows as plain hunks without call structure.
+- It contacts no other host than these two and the host that serves it.
 
-```bash
+## 1. Get the files
+
+```sh
 git clone https://github.com/storymode7/astra
 cd astra
 ```
 
-### 2. Vendor grammar WASM files
+## 2. Check the vendored engine
 
-The grammar files are pre-built WASM from official tree-sitter grammar releases.
-They are NOT fetched from npm.
-
-```bash
-bash vendor/fetch-grammars.sh
+```sh
+(cd apps/pwa/vendor/core && sha256sum -c checksums.txt)
+(cd vendor/core && sha256sum -c checksums.txt)
+sh scripts/sync-extension-lib.sh --check
 ```
 
-This script downloads each `.wasm` file from its grammar's GitHub releases page,
-verifies the SHA256 checksum, and writes them to `vendor/grammars/`.
-Re-running is idempotent — already-verified files are skipped.
+On macOS, use `shasum -a 256 -c checksums.txt` in place of `sha256sum -c
+checksums.txt`. The sync check confirms that `apps/pwa/` holds the same
+engine and shared code as `vendor/core/` and `shared/lib/`.
 
-The checksums are in `vendor/checksums.txt`.
-The download URLs and release dates are in `vendor/fetch-grammars.sh`.
-**Inspect both before running.**
+The committed `astra-core.wasm` is built from `core/` by `make core-wasm`.
+To run your own build instead, run these commands (`make core-wasm` needs
+Go and `sha256sum`):
 
-### 3. Verify checksums (optional but recommended)
-
-```bash
-cd vendor/grammars && sha256sum -c ../checksums.txt
+```sh
+make core-wasm
+sh scripts/sync-extension-lib.sh
+make parity
 ```
 
-### 4. Deploy
+Your build can differ byte for byte from the committed file, because the
+bytes depend on the Go toolchain. `make parity` (it needs Node.js) checks
+that the WASM gives the same output as the Go code on the test fixtures.
 
-Point your static host at `apps/pwa/`.
-The PWA needs access to `../../vendor/grammars/` relative to `apps/pwa/`
-(i.e., `vendor/grammars/` from the repo root must be served alongside).
+## 3. Publish `apps/pwa/`
 
-**GitHub Pages example:**
+Publish the contents of `apps/pwa/` as the web root of any static host.
+All its URLs are relative, so a sub-path works too. There is no server
+configuration to do.
 
-```bash
-# Serve from the repo root; GH Pages will serve the whole repo.
-# In repository Settings → Pages, set source to "main branch / root".
-# Then visit: https://<you>.github.io/<repo>/apps/pwa/
+Serve it over HTTPS. When the page is not a secure context (plain HTTP
+from a host other than localhost or 127.0.0.1), the browser does not give
+it the crypto API that keys the saved state. Verdicts and comments then
+stay in memory, and a reload or another pull request clears them.
+
+To try it on your machine:
+
+```sh
+cd apps/pwa
+python3 -m http.server --bind 127.0.0.1 8080
 ```
 
-**Cloudflare Pages / Netlify:**
-Set the **publish directory** to the repository root (not `apps/pwa/`),
-so that `vendor/grammars/` is accessible at `/vendor/grammars/` from the PWA.
+Then open <http://127.0.0.1:8080/>.
 
-**Local (for testing):**
+GitHub Pages publishes a branch from its root or its `docs/` folder. To
+use it, publish the repository root and open
+`https://<user>.github.io/<repo>/apps/pwa/`.
 
-```bash
-# From repo root:
-python3 -m http.server 8080
-# Then open: http://localhost:8080/apps/pwa/
+To update, pull the new commits, run the checks in step 2 again and
+publish `apps/pwa/` again.
+
+## Trust checklist
+
+- [ ] The checksum and sync checks in step 2 pass.
+- [ ] `apps/pwa/index.html` loads only local scripts and stylesheets, with
+      no CDN.
+- [ ] The only hosts the app's code fetches from are `api.github.com` and
+      `raw.githubusercontent.com`. The command below lists every URL host
+      in it; `github.com` appears only in links and pull request URLs.
+- [ ] Optional: you rebuilt the engine yourself, as in step 2.
+
+```sh
+grep -rnoE 'https://[a-z.]+' apps/pwa --include='*.js' --include='*.html' | grep -v /vendor/
 ```
-
-### 5. Update grammars
-
-To update a grammar WASM:
-1. Check the grammar's GitHub releases for a newer `.wasm` artifact.
-2. Update the URL and checksum in `vendor/fetch-grammars.sh`.
-3. Re-run `bash vendor/fetch-grammars.sh`.
-4. Commit the updated `.wasm` and `checksums.txt`.
-
-**Never update a grammar WASM within 14 days of its release.** This gives time
-for the broader community to audit the new artifact.
-
-## What the PWA can and cannot do
-
-| Can | Cannot |
-|---|---|
-| Review public GitHub PRs (unauthenticated) | Access private repos (use the extension) |
-| Run fully offline once grammar WASMs are loaded | Post review comments (use the extension) |
-| Store review state in your browser's IndexedDB | Sync state across browsers/devices |
-| Mobile swipe review (responsive layout) | |
-
-## Trust verification checklist
-
-Before deploying your own instance, you may want to verify:
-
-- [ ] `vendor/checksums.txt` matches the files in `vendor/grammars/`  
-      (`cd vendor/grammars && sha256sum -c ../checksums.txt`)
-- [ ] Download URLs in `vendor/fetch-grammars.sh` point to the official  
-      `github.com/tree-sitter/tree-sitter-*` repos
-- [ ] Release dates in `vendor/fetch-grammars.sh` are not suspiciously recent
-- [ ] `apps/pwa/lib/github.js` makes no requests outside `api.github.com`
-- [ ] `apps/pwa/index.html` loads no external scripts (no CDN links)
