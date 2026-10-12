@@ -230,8 +230,11 @@ What it can do:
 
 Keys in the panel: `j` / `k` move, `y` or `a` accepts, `x` rejects, `r`
 marks reviewed, `c` comments and `z` folds a snippet. In the comment box,
-`Ctrl+Enter` (`Cmd+Enter` on a Mac) saves, and `Esc` hides the box but
-keeps the draft.
+`Ctrl+Enter` (`Cmd+Enter` on a Mac) saves, and `Esc` hides the box. A
+draft you have not saved is there again when you reopen the box or the
+panel. **Cancel** drops it, and so does anything that draws the review
+again: switching the reading order, leaving the Files changed page or
+reloading it.
 
 ## Web app
 
