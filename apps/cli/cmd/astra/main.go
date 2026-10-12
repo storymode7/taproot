@@ -233,7 +233,7 @@ func run(args []string) error {
 		return fmt.Errorf("read diff: %w", err)
 	}
 	if len(files) == 0 {
-		fmt.Println("No changes found.")
+		fmt.Fprintln(os.Stderr, "No changes found."+emptyDiffHint(adapter))
 		return nil
 	}
 
@@ -296,6 +296,22 @@ func run(args []string) error {
 	runner.RepoRoot = repoRoot
 	runner.Skipped = skipped
 	return runner.Run()
+}
+
+// emptyDiffHint explains an empty review of the working tree, which shows
+// what git diff shows: neither staged changes nor untracked files.
+func emptyDiffHint(a *diff.GitDiffAdapter) string {
+	if a.Staged || a.Ref != "" || a.Base != "" {
+		return ""
+	}
+	var hint string
+	if out, err := a.RunGit("diff", "--cached", "--name-only", "-z"); err == nil && out != "" {
+		hint += "\nStaged changes are not shown: astra diff --staged reviews them."
+	}
+	if out, err := a.RunGit("ls-files", "--others", "--exclude-standard", "--directory", "--no-empty-directory", "-z"); err == nil && out != "" {
+		hint += "\nUntracked files are not reviewed: git add them, then run astra diff --staged."
+	}
+	return hint
 }
 
 // skippedFiles lists the changed files that make no snippet, and why.

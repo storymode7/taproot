@@ -202,3 +202,27 @@ func TestRun_GitErrorsNameTheProblem(t *testing.T) {
 		t.Errorf("without git: %v", err)
 	}
 }
+
+func TestRun_NoChangesSaysWhatIsLeftOut(t *testing.T) {
+	r := newRepo(t, "")
+	r.write("a.py", "def a():\n    return 1\n")
+	r.commit("base")
+	check := func(want string, args ...string) {
+		t.Helper()
+		out, errOut, err := runIn(t, r.dir, args...)
+		if err != nil || out != "" || errOut != want {
+			t.Errorf("astra %q: stdout %q, stderr %q, %v; want only stderr %q", args, out, errOut, err, want)
+		}
+	}
+	check("No changes found.\n", "diff", "--no-tty")
+
+	r.write("a.py", "def a():\n    return 2\n")
+	r.git("add", "a.py")
+	r.write("new.py", "x = 1\n")
+	check("No changes found.\n"+
+		"Staged changes are not shown: astra diff --staged reviews them.\n"+
+		"Untracked files are not reviewed: git add them, then run astra diff --staged.\n", "diff", "--no-tty")
+
+	r.git("commit", "-qm", "a")
+	check("No changes found.\n", "diff", "--staged", "--no-tty")
+}

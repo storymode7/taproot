@@ -21,8 +21,10 @@ type GitDiffAdapter struct {
 	// If empty, the current working directory is used.
 	RepoRoot string
 
-	// Ref is the git ref to diff against (e.g. "origin/main", "HEAD~1").
-	// If empty, uses the working tree (unstaged + staged changes).
+	// Ref is the git ref to diff the working tree against (e.g.
+	// "origin/main", "HEAD~1"). With Ref, Base and Staged unset, the diff
+	// is the index against the working tree, as plain git diff shows it:
+	// unstaged changes only.
 	Ref string
 
 	// Base, when set, reviews committed work the way a PR shows it: the
