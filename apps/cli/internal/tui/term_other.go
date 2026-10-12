@@ -16,6 +16,9 @@ func enableRawMode() (*rawMode, error) {
 
 func (*rawMode) restore() {}
 
+// IsTerminal reports false: there are no terminal settings to read here.
+func IsTerminal(*os.File) bool { return false }
+
 func stdinReadable(int) bool { return true }
 
 func notifyResize(chan<- os.Signal) {}

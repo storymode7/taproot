@@ -47,6 +47,23 @@ func (r *rawMode) restore() {
 		uintptr(r.fd), ioctlSetTermios, uintptr(unsafe.Pointer(&r.saved)))
 }
 
+// IsTerminal reports whether f is a terminal: whether it has terminal
+// settings to read. A character device such as /dev/null has none.
+func IsTerminal(f *os.File) bool {
+	conn, err := f.SyscallConn()
+	if err != nil {
+		return false
+	}
+	var errno syscall.Errno
+	var t syscall.Termios
+	if err := conn.Control(func(fd uintptr) {
+		_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, fd, ioctlGetTermios, uintptr(unsafe.Pointer(&t)))
+	}); err != nil {
+		return false
+	}
+	return errno == 0
+}
+
 // notifyResize sends a signal on c whenever the terminal is resized.
 func notifyResize(c chan<- os.Signal) {
 	signal.Notify(c, syscall.SIGWINCH)

@@ -10,7 +10,8 @@ import (
 )
 
 // TestNoDeltaFlag runs `astra diff --no-tty` with a fake delta first on PATH
-// and checks that --no-delta keeps it from running.
+// and checks that --no-delta keeps it from running on a terminal, and that
+// it never runs for /dev/null, a character device that is no terminal.
 func TestNoDeltaFlag(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -56,34 +57,33 @@ func TestNoDeltaFlag(t *testing.T) {
 	}
 	t.Chdir(repo)
 
-	// A character device as stdout makes --no-tty print highlighted output.
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stdout := os.Stdout
-	os.Stdout = devNull
 	t.Cleanup(func() {
 		os.Stdout = stdout
 		devNull.Close()
 		tui.NoDelta = false
 	})
-
-	for _, c := range []struct {
-		args      []string
-		wantDelta bool
-	}{
-		{[]string{"diff", "--no-tty"}, true},
-		{[]string{"diff", "--no-tty", "--no-delta"}, false},
-	} {
+	check := func(out *os.File, wantDelta bool, args ...string) {
+		t.Helper()
 		os.Remove(calls)
+		os.Stdout = out
 		tui.NoDelta = false
-		if err := run(c.args); err != nil {
-			t.Fatalf("run %v: %v", c.args, err)
+		if err := run(args); err != nil {
+			t.Fatalf("run %v: %v", args, err)
 		}
 		_, err := os.Stat(calls)
-		if called := err == nil; called != c.wantDelta {
-			t.Errorf("astra %v: delta ran = %v, want %v", c.args, called, c.wantDelta)
+		if called := err == nil; called != wantDelta {
+			t.Errorf("astra %v to %s: delta ran = %v, want %v", args, out.Name(), called, wantDelta)
 		}
 	}
+
+	check(devNull, false, "diff", "--no-tty")
+	// A terminal as stdout makes --no-tty print highlighted output.
+	term := openTerminal(t)
+	check(term, true, "diff", "--no-tty")
+	check(term, false, "diff", "--no-tty", "--no-delta")
 }
