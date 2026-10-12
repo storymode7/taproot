@@ -38,9 +38,10 @@ hands-on test on a Mac yet.
    else in the diff calls. Their children are the changed entities they
    call, in call order. An entity with several changed callers appears
    once, and the other callers show a reference to it. Tests come after
-   the code they test, and each snippet names the tests that call it. A
-   snippet whose callers did not change names them, for example "called by
-   unchanged main.go::main".
+   the code they test, and each snippet names the changed tests that call
+   it. A snippet also names its unchanged callers in the files the diff
+   touches, for example "called by unchanged main.go::main". Astra reads
+   only those files, so callers and tests in other files are not shown.
 
 The engine is the Go package in `core/`. The CLI links it directly. The
 extension and the web app run the same code compiled to WebAssembly
