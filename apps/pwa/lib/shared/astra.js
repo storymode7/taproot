@@ -187,7 +187,7 @@ const EXT_LANG = {
 
 export function detectLanguage(filename) {
   const ext = filename.split(".").pop()?.toLowerCase();
-  return EXT_LANG[ext] ?? null;
+  return Object.hasOwn(EXT_LANG, ext) ? EXT_LANG[ext] : null;
 }
 
 // ---------------------------------------------------------------------------

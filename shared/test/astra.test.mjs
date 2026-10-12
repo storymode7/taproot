@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { initAstra } from "../lib/astra.js";
+import { detectLanguage, initAstra } from "../lib/astra.js";
 
 const root = new URL("../../", import.meta.url);
 
@@ -96,6 +96,17 @@ test("files without a diff are listed, deleted files go to the core", async () =
   assert.deepEqual(reordered.skipped, skipped);
   assert.deepEqual(sent[0].files.map((f) => [f.path, f.isDeleted, f.hunks.length]), [["svc/auth.go", true, 1], ["src/app.js", false, 1]]);
   assert.deepEqual(fetched, ["src/app.js"]);
+});
+
+test("a file named after an Object.prototype key is in no language", async () => {
+  const fetched = [];
+  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async (f) => (fetched.push(f.filename), "function main() {\n  b();\n}\n") });
+  const odd = ["docs/notes.__proto__", "x.constructor"].map((filename) => ({ filename, status: "added", patch: "@@ -0,0 +1 @@\n+hi" }));
+  assert.deepEqual(odd.map((f) => detectLanguage(f.filename)), [null, null]);
+
+  const review = await astra.buildReview([edit, ...odd]);
+  assert.deepEqual(fetched, ["src/app.js"]);
+  assert.deepEqual(review.snippets.map((s) => s.filePath).sort(), ["docs/notes.__proto__", "src/app.js", "x.constructor"]);
 });
 
 test("files the core skips are listed with the ones the browser skips", async () => {
