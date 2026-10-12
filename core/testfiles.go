@@ -5,6 +5,7 @@ import "strings"
 // isTestPath reports whether a file holds tests, by the naming conventions
 // of the supported languages. Tests call the code under review, so they are
 // always call-graph roots; the forest moves them after the code instead.
+// Storybook stories render the components they show the same way.
 func isTestPath(p string) bool {
 	base := p
 	if i := strings.LastIndex(p, "/"); i >= 0 {
@@ -17,6 +18,7 @@ func isTestPath(p string) bool {
 		strings.HasSuffix(base, "_test.py"),
 		base == "conftest.py", base == "tests.py", base == "tests.rs",
 		strings.Contains(base, ".test."), strings.Contains(base, ".spec."),
+		strings.Contains(base, ".stories."),
 		strings.HasSuffix(base, ".java") && (strings.HasPrefix(base, "Test") ||
 			strings.HasSuffix(base, "Test.java") || strings.HasSuffix(base, "Tests.java") ||
 			strings.HasSuffix(base, "IT.java")),

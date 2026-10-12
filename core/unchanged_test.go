@@ -171,3 +171,26 @@ func describe(x float64) string {
 		t.Errorf("UnchangedCallers = %v, want %v", describe.UnchangedCallers, want)
 	}
 }
+
+func TestAnnotateUnchangedCallers_TypedHook(t *testing.T) {
+	// A hook with a return type is a function, so its unchanged callers
+	// are found.
+	src := `export const useCart = (): CartState => {
+  return load2();
+};
+
+export function Page() {
+  return useCart();
+}
+`
+	files := []*FileDiff{{
+		Path: "src/cart.tsx", OldPath: "src/cart.tsx", Language: "typescript", Source: []byte(src),
+		Hunks: []Hunk{{OldStart: 2, OldLines: 1, NewStart: 2, NewLines: 1,
+			Lines: []string{"@@ -2,1 +2,1 @@", "-  return load();", "+  return load2();"}}},
+	}}
+	snippets := BuildSnippets(files)
+	AnnotateUnchangedCallers(files, snippets)
+	if len(snippets) != 1 || !reflect.DeepEqual(snippets[0].UnchangedCallers, []string{"src/cart.tsx::Page"}) {
+		t.Errorf("useCart unchanged callers: %v", snippets[0].UnchangedCallers)
+	}
+}

@@ -15,14 +15,17 @@ import "sort"
 // for call sites naming a changed snippet and records them in the target
 // snippet's UnchangedCallers as "path::Entity" (deduped, sorted).
 //
-// Only snippets of kind function/class/type are annotation targets, resolved
-// by last dotted segment with the same same-file/same-dir preference as
-// BuildCallEdges. Lines of an unchanged entity that fall inside a nested
+// A call site names a snippet of kind function/class/type, else of kind
+// var/const (a var holding a function), resolved by last dotted segment
+// with the same same-file/same-dir preference as BuildCallEdges. An
+// entity's own declaration line is not a call. Lines of an unchanged entity
+// that fall inside a nested
 // entity (e.g. methods inside a class span) are skipped so containers don't
 // double-count their members' calls.
 func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 	// Call-site targets: last dotted segment → changed snippets declaring it.
 	table := make(map[string][]*Snippet)
+	vars := make(map[string][]*Snippet)
 	// Changed entities per file, to tell unchanged entities apart. They are
 	// keyed by span as well as name: an unchanged entity can share its name
 	// with a changed one (Go methods on two receivers).
@@ -43,9 +46,11 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 		switch s.NodeType {
 		case "function", "class", "type":
 			table[name] = append(table[name], s)
+		case "var", "const":
+			vars[name] = append(vars[name], s)
 		}
 	}
-	if len(table) == 0 {
+	if len(table) == 0 && len(vars) == 0 {
 		return
 	}
 
@@ -64,6 +69,7 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 		}
 		lines := maskCode(splitLines(f.Source), f.Language)
 		decls := declSites(lines, 1, entities, f.Language)
+		jsx := jsxAllowed(f.Path, f.Language)
 		// Same-file/same-dir disambiguation reuses resolveTargets; only the
 		// caller's FilePath matters to it.
 		from := &Snippet{FilePath: f.Path, Language: f.Language}
@@ -79,14 +85,16 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 					continue
 				}
 				declared := decls[j]
-				for _, c := range callSites(lines[j-1], f.Language) {
+				for _, c := range callSites(lines[j-1], f.Language, jsx) {
 					if c.name == declared && !c.member {
 						declared = ""
 						continue
 					}
 					targets, ok := table[c.name]
 					if !ok {
-						continue
+						if targets, ok = vars[c.name]; !ok {
+							continue
+						}
 					}
 					for _, t := range resolveTargets(from, targets) {
 						if seen[t.ID] == nil {

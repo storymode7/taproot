@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // entitySnippet builds a minimal entity snippet for call-scan tests.
 func entitySnippet(id, path, lang, symbol, nodeType string, startLine int, body ...string) *Snippet {
@@ -607,5 +610,94 @@ func TestBuildCallEdges_VarDeclarationIsNotAReference(t *testing.T) {
 	v := entitySnippet("v", "pkg/config.py", "python", "retries", "var", 1, "retries = 3")
 	if _, ok := edgeSet(BuildCallEdges([]*Snippet{method, v}))["m->v"]; !ok {
 		t.Error("Client.retries lost its reference to the retries var")
+	}
+}
+
+func TestBuildCallEdges_CallToAVarHoldingAFunction(t *testing.T) {
+	// A factory hook or a memo component is a var; calling it is a call,
+	// also from another directory.
+	store := entitySnippet("s", "src/store/cart.ts", "typescript", "useStore", "var", 3,
+		"export const useStore = create<S>()((set) => ({ n: 0 }));")
+	hook := entitySnippet("h", "src/hooks/cart.ts", "typescript", "useCart", "function", 5,
+		"export const useCart = (): CartState => {", "  return useStore();", "};")
+	page := entitySnippet("p", "src/components/Page.tsx", "typescript", "Page", "function", 1,
+		"export function Page() {", "  const cart = useCart();", "  const n = useStore().n;", "}")
+	got := edgeSet(BuildCallEdges([]*Snippet{store, hook, page}))
+	for _, want := range []string{"h->s", "p->h", "p->s"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("missing edge %s, got %v", want, got)
+		}
+	}
+}
+
+func TestBuildCallEdges_JSXElementIsACallSite(t *testing.T) {
+	page := entitySnippet("p", "src/pages/CartPage.tsx", "typescript", "CartPage", "function", 10,
+		"export function CartPage({ items }: Props) {",
+		"  if (!items.length) return <Empty />;",
+		"  return (",
+		"    <ul>",
+		"      {items.map((i) => <CartItem key={i.id} item={i} />)}",
+		"      {open ? <Summary items={items} /> : null}",
+		"    </ul>",
+		"  );",
+		"}")
+	item := entitySnippet("i", "src/components/CartItem.tsx", "typescript", "CartItem", "function", 3,
+		"export function CartItem({ item }: { item: Item }) {", "  return <li>{item.name}</li>;", "}")
+	empty := entitySnippet("e", "src/components/Empty.tsx", "typescript", "Empty", "function", 1,
+		"export const Empty = () => <p>Nothing here</p>;")
+	// memo and forwardRef components are vars.
+	summary := entitySnippet("s", "src/components/Summary.tsx", "typescript", "Summary", "var", 1,
+		"export const Summary = memo(function Summary({ items }: Props) {", "  return <b>{items.length}</b>;", "});")
+	got := edgeSet(BuildCallEdges([]*Snippet{page, item, empty, summary}))
+	for want, line := range map[string]int{"p->i": 14, "p->e": 11, "p->s": 15} {
+		if e, ok := got[want]; !ok || e.CallLine != line {
+			t.Errorf("edge %s: %+v (found %v), want call line %d", want, e, ok, line)
+		}
+	}
+}
+
+func TestBuildCallEdges_GenericsAndCastsAreNotJSX(t *testing.T) {
+	item := entitySnippet("i", "src/model.ts", "typescript", "Item", "class", 1, "export class Item {}")
+	tsx := entitySnippet("x", "src/use.tsx", "typescript", "useItems", "function", 1,
+		"export function useItems(n: number): Promise<Item[]> {",
+		"  const [items] = useState<Item>(null);",
+		"  const byId = new Map<string, Item>();",
+		"  if (n < Item.max) return load() as Array<Item>;",
+		"}")
+	ts := entitySnippet("t", "src/legacy.ts", "typescript", "teardown", "function", 1,
+		"export function teardown(sub: unknown) {", "  (<Item> sub).close();", "}")
+	if edges := BuildCallEdges([]*Snippet{item, tsx, ts}); len(edges) != 0 {
+		t.Errorf("generics or casts read as JSX elements: %v", edges)
+	}
+}
+
+func TestBuildCallEdges_ImportsCallNothing(t *testing.T) {
+	imports := entitySnippet("m", "src/CartHeader.tsx", "typescript", "imports", "imports", 1,
+		`import { Badge } from "./Badge";`)
+	badge := entitySnippet("b", "src/Badge.tsx", "typescript", "Badge", "var", 1,
+		"export const Badge = memo(({ n }: P) => <span>{n}</span>);")
+	if edges := BuildCallEdges([]*Snippet{imports, badge}); len(edges) != 0 {
+		t.Errorf("an import made an edge: %v", edges)
+	}
+}
+
+func TestBuildForest_StoriesAndTestsRenderingAComponent(t *testing.T) {
+	// A story or a test rendering a component is noted on it; it never
+	// becomes the component's parent in place of the page that uses it.
+	page := entitySnippet("p", "src/CartPage.tsx", "typescript", "CartPage", "function", 1,
+		"export function CartPage() {", "  return <CartItem />;", "}")
+	item := entitySnippet("i", "src/CartItem.tsx", "typescript", "CartItem", "function", 1,
+		"export function CartItem() {", "  return <li />;", "}")
+	story := entitySnippet("s", "src/CartItem.stories.tsx", "typescript", "Template", "function", 3,
+		"const Template = (args) => <CartItem {...args} />;")
+	test := entitySnippet("t", "src/CartItem.test.tsx", "typescript", "renders", "function", 3,
+		"test(\"renders\", () => {", "  render(<CartItem />);", "});")
+	snippets := []*Snippet{page, item, story, test}
+	forest := BuildForest(snippets, BuildCallEdges(snippets))
+	if n := forest.ByID["i"]; n.Parent == nil || n.Parent.Snippet.ID != "p" {
+		t.Errorf("CartItem's parent is not CartPage")
+	}
+	if got := strings.Join(item.TestedBy, ","); got != "Template,renders" {
+		t.Errorf("CartItem.TestedBy = %q", got)
 	}
 }

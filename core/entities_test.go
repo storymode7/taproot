@@ -199,6 +199,52 @@ const TIMEOUT = 5000;
 	}
 }
 
+func TestExtractEntities_TS_TypedArrowConstsAreFunctions(t *testing.T) {
+	// A return type, a type predicate or a generic parameter list between
+	// the parameters and the arrow still makes a function.
+	src := `export const useStore = create<S>()((set) => ({ n: 0 }));
+
+export const useCart = (): CartState => {
+  return useStore();
+};
+
+export const fetchUser = async (id: string): Promise<User> => {
+  return api(id);
+};
+
+export const pick = <T,>(xs: T[]): T => xs[0];
+
+export const isStr = (x: unknown): x is string => typeof x === "string";
+
+export const Row = ({ item }: RowProps): JSX.Element => (
+  <li>
+    {item.name}
+  </li>
+);
+`
+	want := map[string][3]any{
+		"useStore":  {"var", 1, 1},
+		"useCart":   {"function", 3, 5},
+		"fetchUser": {"function", 7, 9},
+		"pick":      {"function", 11, 11},
+		"isStr":     {"function", 13, 13},
+		"Row":       {"function", 15, 19},
+	}
+	for _, e := range ExtractEntities([]byte(src), "typescript") {
+		w, ok := want[e.Name]
+		if !ok {
+			continue
+		}
+		if got := [3]any{e.Kind, e.StartLine, e.EndLine}; got != w {
+			t.Errorf("%s: got %v, want %v", e.Name, got, w)
+		}
+		delete(want, e.Name)
+	}
+	if len(want) > 0 {
+		t.Errorf("missing entities %v", want)
+	}
+}
+
 func TestExtractEntities_TS_ClassMethods(t *testing.T) {
 	src := `export class Store<T> {
   private items: T[] = [];

@@ -355,9 +355,9 @@ var (
 	reJSEnum = regexp.MustCompile(`^(?:export\s+)?(?:const\s+)?enum\s+(\w+)`)
 	// const/let/var foo = ...  or  export const foo = ...
 	reJSVar = regexp.MustCompile(`^(?:export\s+)?(?:const|let|var)\s+(\w+)`)
-	// function-valued initializer: = [async] (…) =>  /  = [async] ident =>  /  = [async] function
+	// function-valued initializer: = [async] [<T,>] (…) [: ReturnType] =>  /  = [async] ident =>  /  = [async] function
 	// (multi-line parameter lists before the arrow are not recognized)
-	reJSFuncVal = regexp.MustCompile(`=\s*(?:async\s+)?(?:function\b|\(.*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)`)
+	reJSFuncVal = regexp.MustCompile(`=\s*(?:async\s+)?(?:function\b|(?:<[^()]*>\s*)?\(.*\)\s*(?::[^=]+)?=>|[A-Za-z_$][\w$]*\s*=>)`)
 	// method inside a class body: [static async get set ...] [*] name[<T>](
 	// (generics allow one nesting level: <T extends Base<K>>)
 	reJSMethod = regexp.MustCompile(`^(?:(?:static|async|get|set|public|private|protected|readonly|override)\s+)*\*?\s*(#?[A-Za-z_$][\w$]*)\s*(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\s*\(`)

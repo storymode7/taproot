@@ -11,6 +11,8 @@
 //   - followed by "(":            foo(...), pkg.Foo(...), x.foo(...)
 //   - followed by "{" (Go only):  Foo{...} composite literal
 //   - preceded by "new":          new Foo   (JS/TS/Java)
+//   - a JSX element:              <Foo ...> renders component Foo
+//     (JavaScript, and TypeScript in .tsx)
 //
 // An entity's own declaration line (def save(, render() {) has the same
 // shape, so the first such use of its own name that is not a member call is
@@ -18,6 +20,10 @@
 // UserService.save) delegates and never resolves to the caller itself; a
 // bare call or one through self, this, cls, super or a Go method's receiver
 // may be recursion and resolves as any other call.
+//
+// A call site resolves to a changed function, class or type, else to a
+// changed var/const: a var can hold a function (a factory hook, a memo or
+// forwardRef component).
 //
 // Bare type references (var c Config) are deliberately not matched — calls
 // and constructions are the edges that define reading order. Changed
@@ -82,8 +88,12 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 	}
 
 	for _, s := range snippets {
+		if s.NodeType == "imports" {
+			continue // an import names what a file uses; it calls nothing
+		}
 		nested := nestedSpans(s, snippets)
 		masked := maskCode(s.Body, s.Language)
+		jsx := jsxAllowed(s.FilePath, s.Language)
 		inner := s.inner
 		if inner == nil {
 			inner = []Entity{{Name: s.SymbolPath, StartLine: s.StartLine, EndLine: s.EndLine}}
@@ -95,7 +105,7 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 			if inSpans(callLine, nested) {
 				continue
 			}
-			sites := callSites(line, s.Language)
+			sites := callSites(line, s.Language, jsx)
 			names := make([]string, 0, len(sites))
 			declared := decls[callLine]
 			for _, c := range sites {
@@ -106,7 +116,9 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 				}
 				targets, ok := table[c.name]
 				if !ok {
-					continue
+					if targets, ok = varTable[c.name]; !ok {
+						continue
+					}
 				}
 				if c.member && !self[c.recv] {
 					targets = without(targets, s)
@@ -242,7 +254,7 @@ func declSites(lines []string, first int, entities []Entity, lang string) map[in
 			if inSpans(l, nested) {
 				continue
 			}
-			for _, c := range callSites(lines[l-first], lang) {
+			for _, c := range callSites(lines[l-first], lang, false) {
 				if c.name == name && !c.member {
 					sites[l] = name
 					break scan
@@ -330,10 +342,16 @@ type callSite struct {
 	recv   string // what a member call goes through: the identifier before the ".", "super" for super(...)
 }
 
+// jsxAllowed reports whether a file can hold JSX: JavaScript, or
+// TypeScript in a .tsx file (in a .ts file, <T>x is a type assertion).
+func jsxAllowed(path, lang string) bool {
+	return lang == "javascript" || lang == "typescript" && strings.HasSuffix(path, ".tsx")
+}
+
 // callSites returns the identifiers used as call/construction sites on one
-// source line. Callers pass lines through maskCode first, so strings and
-// comments are already blank.
-func callSites(line, lang string) []callSite {
+// source line, JSX elements among them when jsx is set. Callers pass lines
+// through maskCode first, so strings and comments are already blank.
+func callSites(line, lang string, jsx bool) []callSite {
 	var sites []callSite
 	runes := []rune(line)
 	n := len(runes)
@@ -368,6 +386,12 @@ func callSites(line, lang string) []callSite {
 		}
 		if !isCall && prevWord == "new" {
 			isCall = true // new Foo  (JS/TS/Java)
+		}
+		// <Child ...> renders its component; an identifier before the "<"
+		// makes it a generic (useState<Item>) or a comparison instead.
+		if !isCall && jsx && start > 0 && runes[start-1] == '<' && word[0] >= 'A' && word[0] <= 'Z' &&
+			(start < 2 || !isIdentPart(runes[start-2])) {
+			isCall = true
 		}
 		if isCall {
 			c := callSite{name: word}
