@@ -885,14 +885,20 @@ func (r *Runner) render() {
 	}
 	head := fmt.Sprintf("%s Astra%s  %d/%d reviewed ", bold+blue+"⭐", reset, done, total)
 	tail := fmt.Sprintf(" %d%%  %s%s%s%s", pct, dim, autoLabel, reset, applyLabel)
-	// In a narrow terminal the bar shrinks before the labels are cut.
-	barW := min(20, max(0, cols-1-strWidth(stripANSI(head+tail))))
-	filled := pct * barW / 100
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
 	notShown := ""
 	if len(r.Skipped) > 0 {
 		notShown = fmt.Sprintf("  %s%d not shown%s", yellow, len(r.Skipped), reset)
 	}
+	// In a narrow terminal the bar shrinks before the labels are cut, and
+	// down to a quarter of its width for the count of files not shown,
+	// which gives way below that.
+	room := cols - 1 - strWidth(stripANSI(head+tail))
+	barW := min(20, max(0, room))
+	if fit := room - strWidth(stripANSI(notShown)); fit >= 5 {
+		barW = min(barW, fit)
+	}
+	filled := pct * barW / 100
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
 	fmt.Println(ansiTruncate(head+dim+bar+reset+tail+notShown, cols-1))
 	fmt.Println(dim + strings.Repeat("─", cols) + reset)
 

@@ -131,8 +131,12 @@ func TestRender_HeaderCountsFilesNotShown(t *testing.T) {
 	r := testRunner(t, manySnippets(3, 5)...)
 	r.applyMode = true
 	r.Skipped = []core.SkippedFile{{Path: "logo.png", Reason: "binary"}, {Path: "b.py", OldPath: "a.py", Reason: "renamed"}}
-	if lines := frame(t, r, 24, 120); !strings.Contains(lines[0], "2 not shown") {
-		t.Errorf("header does not count the files not shown: %q", stripANSI(lines[0]))
+	for _, cols := range []int{120, 80} {
+		lines := frame(t, r, 24, cols)
+		assertFits(t, lines, 24, cols)
+		if h := stripANSI(lines[0]); !strings.Contains(h, "2 not shown") || !strings.Contains(h, "[staging]") {
+			t.Errorf("%d columns: header does not count the files not shown: %q", cols, h)
+		}
 	}
 	lines := frame(t, r, 24, 60)
 	assertFits(t, lines, 24, 60)
