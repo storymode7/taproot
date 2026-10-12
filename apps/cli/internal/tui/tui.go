@@ -960,7 +960,7 @@ func (r *Runner) render() {
 			fmt.Println(ansiTruncate(l, cols))
 		}
 		if end < len(lines) {
-			fmt.Println(dim + ansiTruncate(fmt.Sprintf("… %d more lines (j/k to scroll)", len(lines)-end), cols-1) + reset)
+			fmt.Println(dim + ansiTruncate(fmt.Sprintf("… %s (j/k to scroll)", plural(len(lines)-end, "more line")), cols-1) + reset)
 		}
 	}
 

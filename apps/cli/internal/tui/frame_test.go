@@ -58,6 +58,17 @@ func TestRender_FrameFitsTerminal(t *testing.T) {
 	}
 }
 
+func TestRender_CountsLinesBelowThePane(t *testing.T) {
+	useHighlighter(t, HighlightBuiltin)
+	// At 24 rows one tree row leaves the diff pane 18 rows.
+	for size, want := range map[int]string{18: "… 1 more line (j/k to scroll)", 19: "… 2 more lines (j/k to scroll)"} {
+		r := testRunner(t, manySnippets(1, size)...)
+		if got := stripANSI(strings.Join(frame(t, r, 24, 80), "\n")); !strings.Contains(got, want+"\n") {
+			t.Errorf("%d diff lines below a header: frame lacks %q:\n%s", size, want, got)
+		}
+	}
+}
+
 func TestRender_StageErrorStaysOnOneLine(t *testing.T) {
 	r := testRunner(t, manySnippets(3, 40)...)
 	r.applyMode = true
