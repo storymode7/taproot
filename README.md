@@ -42,6 +42,8 @@ hands-on test on a Mac yet.
    it. A snippet also names its unchanged callers in the files the diff
    touches, for example "called by unchanged main.go::main". Astra reads
    only those files, so callers and tests in other files are not shown.
+   The tree follows calls, so changed types, struct fields and decorators
+   appear as snippets of their own: accept them too before you commit.
 
 The engine is the Go package in `core/`. The CLI links it directly. The
 extension and the web app run the same code compiled to WebAssembly
