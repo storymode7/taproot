@@ -52,8 +52,8 @@ OPTIONS
   --no-apply           Record verdicts only; leave the git index alone.
                        By default y stages the snippet and x/r on an accepted
                        snippet unstages it, like git add -p. Staging is off
-                       anyway with --staged, --ref or --base, since those
-                       don't review the working tree.
+                       anyway with --staged, --ref or --base: only the default
+                       review diffs the working tree against the index.
   --no-tty             Print diff to stdout without interactive UI (plain
                        text when piped or when NO_COLOR is set)
   --no-delta           Skip delta; use bat or built-in highlighting instead.
@@ -68,7 +68,9 @@ OPTIONS
 
 ENVIRONMENT
   ASTRA_THEME          dark | light  (default: from COLORFGBG, else dark)
-  ASTRA_DELTA_THEME    Syntax theme for delta, e.g. "OneHalfDark"
+  ASTRA_DELTA_THEME    Syntax theme for delta, e.g. "OneHalfDark", in Astra's
+                       own style: ignored when your gitconfig sets delta's
+                       look, unless you pass --no-delta-config
   VISUAL / EDITOR      Editor for the o key (default: vi)
 
 KEYBOARD SHORTCUTS (interactive mode)
