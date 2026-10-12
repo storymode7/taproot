@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // splitHunkAtEntities splits a hunk into sub-hunks so that no sub-hunk spans
@@ -26,6 +27,8 @@ import (
 //     Such a line becomes a deletion in its old entity and an addition in its
 //     new one; equal lines at the ends of one entity's change then pair up
 //     again, so each entity keeps its own boundary lines.
+//   - Entities that a line outside every hunk ties together (tieEntities)
+//     make one piece, in which git's unchanged lines stay unchanged.
 //   - Within a run of changed lines, each entity's lines sit together where
 //     that entity is, so what one piece adds lands in the right place
 //     whichever other pieces are applied.
@@ -120,12 +123,15 @@ type hunkSplit struct {
 }
 
 // oldFile is what the split knows of a file's pre-image: its entities, the
-// smallest one at each line, and each entity's counterpart among the
-// post-image entities (none for an entity that is gone).
+// smallest one at each line, each entity's counterpart among the
+// post-image entities (none for an entity that is gone), and the
+// post-image entities tied to another one, each mapped to the first of
+// its group.
 type oldFile struct {
 	entities []Entity
 	byLine   []int
 	match    map[*Entity]*Entity
+	tied     map[*Entity]*Entity
 }
 
 // at returns the smallest pre-image entity containing an old line.
@@ -134,6 +140,17 @@ func (o *oldFile) at(line int) *Entity {
 		return nil
 	}
 	return &o.entities[o.byLine[line]]
+}
+
+// root returns the first entity of the group a post-image entity is tied
+// to, else the entity itself.
+func (o *oldFile) root(e *Entity) *Entity {
+	if o != nil {
+		if r, ok := o.tied[e]; ok {
+			return r
+		}
+	}
+	return e
 }
 
 // readOldFile rebuilds a file's pre-image from its post-image and hunks,
@@ -152,6 +169,7 @@ func readOldFile(post []byte, hunks []Hunk, lang string, cur []Entity) *oldFile 
 	o := &oldFile{entities: ExtractEntities([]byte(strings.Join(text, "\n")), lang)}
 	o.byLine = smallestByLine(o.entities, len(pre))
 	o.match = matchEntities(o, cur, pre)
+	o.tied = tieEntities(o, cur, pre)
 	return o
 }
 
@@ -239,13 +257,17 @@ func smallestByLine(entities []Entity, n int) []int {
 }
 
 // matchEntities pairs each pre-image entity with its post-image
-// counterpart. Lines kept outside every hunk are far from any change and
-// cannot be paired otherwise, so an entity whose such lines all fall in one
-// post-image entity pairs with it. Of the rest, an entity whose kind and
-// name occur once on each side pairs by name; the others pair one to one
-// with the post-image entity holding most of their kept non-blank lines, a
-// same-named one on a tie, and what is left with the next same-named one in
-// order.
+// counterpart. An entity whose kind and name occur once on each side keeps
+// them, so it pairs by name. Lines kept outside every hunk are far from
+// any change and cannot be paired otherwise, so of the rest an entity whose
+// such lines all fall in one post-image entity pairs with it, and then an
+// entity whose kind and name are now unique on each side pairs by name. The
+// others pair one to one with the post-image entity holding most of their
+// kept lines, a same-named one on a tie, and what is left with the next
+// same-named one in order. Only lines with a letter or a digit count as
+// evidence: a closing brace is in every entity. An entity still without a
+// counterpart pairs with the one its non-blank lines outside every hunk
+// all fall in, as an entity that is gone but for its closing line does.
 func matchEntities(o *oldFile, cur []Entity, pre []preLine) map[*Entity]*Entity {
 	old := o.entities
 	match := make(map[*Entity]*Entity)
@@ -255,11 +277,48 @@ func matchEntities(o *oldFile, cur []Entity, pre []preLine) map[*Entity]*Entity 
 		taken[ci] = true
 	}
 
+	key := func(e Entity) string { return e.Kind + "\x00" + e.Name }
+	byName := func() {
+		nOld, nCur := make(map[string]int), make(map[string]int)
+		curByKey := make(map[string]int)
+		for oi, e := range old {
+			if match[&old[oi]] == nil {
+				nOld[key(e)]++
+			}
+		}
+		for ci, e := range cur {
+			if !taken[ci] {
+				nCur[key(e)]++
+				curByKey[key(e)] = ci
+			}
+		}
+		for oi, e := range old {
+			if k := key(e); match[&old[oi]] == nil && nOld[k] == 1 && nCur[k] == 1 {
+				pair(oi, curByKey[k])
+			}
+		}
+	}
+	byName()
+
 	curBy := smallestByLine(cur, maxEnd(cur))
 	shared := make([]map[int]int, len(old))
-	fixed := make([]int, len(old)) // the one entity outside lines fall in; -1 none yet, -2 several
+	// The one entity outside lines fall in, -1 for none yet and -2 for
+	// several: fixed counts the lines with a letter or digit, near every
+	// non-blank line.
+	fixed, near := make([]int, len(old)), make([]int, len(old))
 	for i := range fixed {
-		fixed[i] = -1
+		fixed[i], near[i] = -1, -1
+	}
+	note := func(f []int, oi, ci int) {
+		switch f[oi] {
+		case -1:
+			if f[oi] = ci; ci < 0 {
+				f[oi] = -2
+			}
+		case ci:
+		default:
+			f[oi] = -2
+		}
 	}
 	for p, l := range pre {
 		if l.kept == 0 || strings.TrimSpace(l.text) == "" {
@@ -273,15 +332,13 @@ func matchEntities(o *oldFile, cur []Entity, pre []preLine) map[*Entity]*Entity 
 			continue
 		}
 		if l.outside {
-			switch fixed[oi] {
-			case -1:
-				if fixed[oi] = ci; ci < 0 {
-					fixed[oi] = -2
-				}
-			case ci:
-			default:
-				fixed[oi] = -2
-			}
+			note(near, oi, ci)
+		}
+		if weak(l.text) {
+			continue
+		}
+		if l.outside {
+			note(fixed, oi, ci)
 		}
 		if ci >= 0 {
 			if shared[oi] == nil {
@@ -291,30 +348,11 @@ func matchEntities(o *oldFile, cur []Entity, pre []preLine) map[*Entity]*Entity 
 		}
 	}
 	for oi := range old {
-		if fixed[oi] >= 0 {
+		if match[&old[oi]] == nil && fixed[oi] >= 0 {
 			pair(oi, fixed[oi])
 		}
 	}
-
-	key := func(e Entity) string { return e.Kind + "\x00" + e.Name }
-	nOld, nCur := make(map[string]int), make(map[string]int)
-	curByKey := make(map[string]int)
-	for oi, e := range old {
-		if match[&old[oi]] == nil {
-			nOld[key(e)]++
-		}
-	}
-	for ci, e := range cur {
-		if !taken[ci] {
-			nCur[key(e)]++
-			curByKey[key(e)] = ci
-		}
-	}
-	for oi, e := range old {
-		if k := key(e); match[&old[oi]] == nil && nOld[k] == 1 && nCur[k] == 1 {
-			pair(oi, curByKey[k])
-		}
-	}
+	byName()
 
 	for oi := range old {
 		if match[&old[oi]] != nil {
@@ -353,7 +391,53 @@ func matchEntities(o *oldFile, cur []Entity, pre []preLine) map[*Entity]*Entity 
 			}
 		}
 	}
+	for oi := range old {
+		if match[&old[oi]] == nil && near[oi] >= 0 {
+			pair(oi, near[oi])
+		}
+	}
 	return match
+}
+
+// tieEntities ties post-image entities whose changes cannot be staged
+// apart. A line kept outside every hunk stays where it is whichever pieces
+// are applied, so when a non-blank one lies in another post-image entity
+// than the counterpart of its pre-image entity, as the body of an extracted
+// function does below the function it came from, neither entity's piece
+// applies without the other's. It maps each tied entity to the first of
+// its group.
+func tieEntities(o *oldFile, cur []Entity, pre []preLine) map[*Entity]*Entity {
+	curBy := smallestByLine(cur, maxEnd(cur))
+	lead := make(map[*Entity]*Entity)
+	var find func(e *Entity) *Entity
+	find = func(e *Entity) *Entity {
+		if l, ok := lead[e]; ok {
+			r := find(l)
+			lead[e] = r
+			return r
+		}
+		return e
+	}
+	for p, l := range pre {
+		if !l.outside || strings.TrimSpace(l.text) == "" || l.kept >= len(curBy) || curBy[l.kept] < 0 {
+			continue
+		}
+		m, n := o.match[o.at(p+1)], &cur[curBy[l.kept]]
+		if m == nil {
+			continue
+		}
+		a, b := find(m), find(n)
+		if b.StartLine < a.StartLine {
+			a, b = b, a
+		}
+		if a != b {
+			lead[b] = a
+		}
+	}
+	for e := range lead {
+		lead[e] = find(e)
+	}
+	return lead
 }
 
 func maxEnd(entities []Entity) int {
@@ -393,6 +477,12 @@ func (s *hunkSplit) leadInto(p int) *Entity {
 
 func blank(l diffLine) bool {
 	return l.kind != ' ' && strings.TrimSpace(l.text[1:]) == ""
+}
+
+// weak reports whether a line has no letter or digit: blank, or only
+// punctuation such as a closing brace.
+func weak(text string) bool {
+	return !strings.ContainsFunc(text, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) })
 }
 
 // content is a line without its sigil.
@@ -444,15 +534,16 @@ func (s *hunkSplit) runEnd(b int) int {
 }
 
 // unpair splits each unchanged non-blank line whose pre-image entity has
-// another counterpart than the post-image entity it falls in into a
-// deletion and an addition, each with the marker when both files end on it.
+// another counterpart than the post-image entity it falls in, and one not
+// tied to it, into a deletion and an addition, each with the marker when
+// both files end on it.
 func (s *hunkSplit) unpair() {
 	L := s.lines
 	out := make([]diffLine, 0, len(L))
 	for i := 0; i < len(L); i++ {
 		l := L[i]
 		if l.kind != ' ' || strings.TrimSpace(content(l)) == "" ||
-			s.old.match[s.old.at(l.old)] == s.entityAt(l.new) {
+			s.old.root(s.old.match[s.old.at(l.old)]) == s.old.root(s.entityAt(l.new)) {
 			out = append(out, l)
 			continue
 		}
@@ -549,6 +640,10 @@ func (s *hunkSplit) assignOwners() {
 			L[i].owner = L[i-1].owner
 		}
 	}
+	// Tied entities stage as one piece, the first one's.
+	for i := range L {
+		L[i].owner = s.old.root(L[i].owner)
+	}
 }
 
 // blankOwners gives the blank lines added in one run of changed lines the
@@ -582,7 +677,7 @@ func (s *hunkSplit) blankOwners(run []diffLine, skipSplit bool) {
 		case seen:
 			run[i].owner = prev
 		case run[i].owner == nil:
-			run[i].owner = s.leadInto(run[i].new)
+			run[i].owner = s.old.root(s.leadInto(run[i].new))
 		}
 	}
 }

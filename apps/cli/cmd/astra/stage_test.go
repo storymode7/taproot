@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -25,7 +28,7 @@ type stageFixture struct {
 	renames map[string]string
 }
 
-var stageFixtures = []stageFixture{
+var stageFixtures = append([]stageFixture{
 	{name: "go: a function grows above a new one, its caller changes", files: map[string][2]string{"m.go": {
 		"package main\n\nfunc alpha() int {\n\treturn 1\n}\n\nfunc gamma() int {\n\ta := 1\n\tb := 2\n\tc := 3\n\treturn a + b + c\n}\n\nfunc main() {\n\tprintln(gamma())\n}\n",
 		"package main\n\nfunc alpha() int {\n\tx := 1\n\ty := 2\n\treturn x + y\n}\n\nfunc helper() int {\n\treturn 4\n}\n\nfunc gamma() int {\n\ta := 1\n\tb := 2\n\tc := 3\n\treturn a + b + c\n}\n\nfunc main() {\n\tprintln(gamma() + helper())\n}\n",
@@ -78,6 +81,29 @@ var stageFixtures = []stageFixture{
 		"def a():\n    return 1\n\n\ndef b():\n    return 2\n\n\ndef c():\n    return 3\n",
 		"def a():\n    return 1\n\n\ndef b():\n    return 20\n\n\ndef c():\n    return 30\n",
 	}}, renames: map[string]string{"b.py": "a.py"}},
+}, extractFixtures...)
+
+// extractFixtures move the body of a function into a new function below
+// it, which the old function then calls. git keeps the old declaration and
+// the moved body unchanged, and the old function's closing line, outside
+// the hunk, becomes the new function's.
+var extractFixtures = []stageFixture{
+	{name: "go: a function's body moves into a new one below it", files: map[string][2]string{"cart.go": {
+		"package main\n\n// Total adds up the item prices.\nfunc Total(items []int) int {\n\ttotal := 0\n\tfor _, it := range items {\n\t\ttotal += it\n\t}\n\treturn total\n}\n\nfunc main() {\n\t_ = Total(nil)\n}\n",
+		"package main\n\n// Total adds up the item prices.\nfunc Total(items []int) int {\n\treturn sumPositive(items)\n}\n\n// sumPositive adds up the items, skipping refunds.\nfunc sumPositive(items []int) int {\n\ttotal := 0\n\tfor _, it := range items {\n\t\tif it < 0 {\n\t\t\tcontinue\n\t\t}\n\t\ttotal += it\n\t}\n\treturn total\n}\n\nfunc main() {\n\t_ = Total(nil)\n}\n",
+	}}},
+	{name: "go: the same below a function that changes too", files: map[string][2]string{"m.go": {
+		"package main\n\nfunc Discount(total int) int {\n\treturn total / 10\n}\n\n// Total adds up the item prices.\nfunc Total(items []int) int {\n\ttotal := 0\n\tfor _, it := range items {\n\t\ttotal += it\n\t}\n\treturn total\n}\n\nfunc main() {\n\t_ = Total(nil) - Discount(0)\n}\n",
+		"package main\n\nfunc Discount(total int) int {\n\treturn total / 5\n}\n\n// Total adds up the item prices.\nfunc Total(items []int) int {\n\treturn sumPositive(items)\n}\n\n// sumPositive adds up the items, skipping refunds.\nfunc sumPositive(items []int) int {\n\ttotal := 0\n\tfor _, it := range items {\n\t\tif it < 0 {\n\t\t\tcontinue\n\t\t}\n\t\ttotal += it\n\t}\n\treturn total\n}\n\nfunc main() {\n\t_ = Total(nil) - Discount(0)\n}\n",
+	}}},
+	{name: "python: the same below a function that changes too", files: map[string][2]string{"m.py": {
+		"def discount(total):\n    return total / 10\n\n\ndef f(items):\n    total = 0\n    for it in items:\n        total += it\n    total *= 2\n    total += 1\n    return total\n\n\ndef main():\n    print(f([1, 2]) - discount(0))\n",
+		"def discount(total):\n    return total / 5\n\n\ndef f(items):\n    return g(items)\n\n\ndef g(items):\n    total = 0\n    for it in items:\n        if it < 0:\n            continue\n        total += it\n    total *= 2\n    total += 1\n    return total\n\n\ndef main():\n    print(f([1, 2]) - discount(0))\n",
+	}}},
+	{name: "javascript: the same below a function that changes too", files: map[string][2]string{"m.js": {
+		"export function discount(total) {\n  return total / 10;\n}\n\n// total adds up the item prices.\nexport function total(items) {\n  let sum = 0;\n  for (const it of items) {\n    sum += it;\n  }\n  return sum;\n}\n\nexport function main() {\n  return total([]) - discount(0);\n}\n",
+		"export function discount(total) {\n  return total / 5;\n}\n\n// total adds up the item prices.\nexport function total(items) {\n  return sumPositive(items);\n}\n\n// sumPositive adds up the items, skipping refunds.\nfunction sumPositive(items) {\n  let sum = 0;\n  for (const it of items) {\n    if (it < 0) {\n      continue;\n    }\n    sum += it;\n  }\n  return sum;\n}\n\nexport function main() {\n  return total([]) - discount(0);\n}\n",
+	}}},
 }
 
 // setUp makes the fixture's repository: the old texts committed, the new
@@ -368,6 +394,119 @@ func TestStage_EachSnippetAloneParses(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestStage_ExtractedFunctionKeepsGitsLines: the snippets of a function
+// whose body moved into a new one change exactly the lines git diff
+// changes, and staging any one of them alone leaves a file that parses.
+// Go is parsed and type-checked here; python3 and node check Python and
+// JavaScript when they are installed.
+func TestStage_ExtractedFunctionKeepsGitsLines(t *testing.T) {
+	for _, fx := range extractFixtures {
+		t.Run(fx.name, func(t *testing.T) {
+			r := fx.setUp(t)
+			index, err := os.ReadFile(filepath.Join(r.dir, ".git", "index"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			snippets := openStageSession(t, r).snippets
+			for p := range fx.files {
+				var lines []string
+				for _, s := range snippets {
+					if s.FilePath == p {
+						lines = append(lines, s.DiffLines...)
+					}
+				}
+				got, want := changedLines(lines), changedLines(strings.Split(r.git("diff", "--", p), "\n"))
+				if strings.Join(got, "\n") != strings.Join(want, "\n") {
+					t.Errorf("%s: the snippets change\n%s\ngit diff changes\n%s", p, strings.Join(got, "\n"), strings.Join(want, "\n"))
+				}
+			}
+			for i := range snippets {
+				if err := os.WriteFile(filepath.Join(r.dir, ".git", "index"), index, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				sess := openStageSession(t, r)
+				s := sess.snippets[i]
+				if err := sess.stage(s, true); err != nil {
+					t.Fatalf("y on %q: %v", s.SymbolPath, err)
+				}
+				checkParses(t, s.FilePath, indexText(r, s.FilePath), "staging only "+s.SymbolPath)
+			}
+		})
+	}
+}
+
+// changedLines lists the deleted and added lines of a diff, each with its
+// line number on its own side, sorted. Lines before the first @@ header
+// are skipped.
+func changedLines(lines []string) []string {
+	var out []string
+	in := false
+	var o, n int
+	for _, l := range lines {
+		if m := reFrag.FindStringSubmatch(l); m != nil {
+			in = true
+			o, _ = strconv.Atoi(m[1])
+			n, _ = strconv.Atoi(m[3])
+			if m[2] == "0" {
+				o++
+			}
+			if m[4] == "0" {
+				n++
+			}
+			continue
+		}
+		switch {
+		case !in || strings.HasPrefix(l, `\`):
+		case strings.HasPrefix(l, "-"):
+			out = append(out, fmt.Sprintf("-%d %s", o, l[1:]))
+			o++
+		case strings.HasPrefix(l, "+"):
+			out = append(out, fmt.Sprintf("+%d %s", n, l[1:]))
+			n++
+		default:
+			o++
+			n++
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// checkParses fails the test when text, the content of path, does not
+// parse: Go must also type-check, and Python and JavaScript are left
+// unchecked when python3 or node is not installed.
+func checkParses(t *testing.T, path, text, what string) {
+	t.Helper()
+	var check []string
+	switch filepath.Ext(path) {
+	case ".go":
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, path, text, 0)
+		if err == nil {
+			_, err = (&types.Config{}).Check("main", fset, []*ast.File{f}, nil)
+		}
+		if err != nil {
+			t.Errorf("%s leaves %s that does not compile: %v\n%s", what, path, err, text)
+		}
+		return
+	case ".py":
+		check = []string{"python3", "-I", "-c", "import ast, sys; ast.parse(sys.stdin.read())"}
+	case ".js":
+		check = []string{"node", "--input-type=module", "--check"}
+	default:
+		return
+	}
+	if _, err := exec.LookPath(check[0]); err != nil {
+		t.Logf("%s not installed: %s not checked", check[0], path)
+		return
+	}
+	cmd := exec.Command(check[0], check[1:]...)
+	cmd.Stdin = strings.NewReader(text)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Errorf("%s leaves %s that does not parse: %v\n%s\n%s", what, path, err, out, text)
 	}
 }
 

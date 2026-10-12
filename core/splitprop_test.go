@@ -493,6 +493,11 @@ func splitStagingProperty(t *testing.T, seed int64, iterations int) int {
 			t.Fatalf("case %d (%s): %s\nold:\n%s\nnew:\n%s\ndiff:\n%s", iter, lang, fmt.Sprintf(format, args...),
 				oldText, newText, strings.Join(hunkText, "\n"))
 		}
+		var allLines []string
+		for _, h := range hunks {
+			allLines = append(allLines, h.Lines...)
+		}
+		checkNamedContext(t, lang, oldText, newText, allLines, snippets)
 		frags := make([][]fragment, len(snippets))
 		for k, s := range snippets {
 			f, err := fragments(s.DiffLines)

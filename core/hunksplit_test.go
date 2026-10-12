@@ -1,6 +1,12 @@
 package core
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -213,6 +219,7 @@ func runNoEOLCase(t *testing.T, tc noEOLCase) {
 		t.Fatalf("snippets %q, want %q", got, tc.symbols)
 	}
 	checkStaging(t, tc.oldText, tc.newText, snippets, tc.alone)
+	checkNamedContext(t, tc.lang, tc.oldText, tc.newText, tc.hunk.Lines, snippets)
 }
 
 func TestSplitHunk_NoNewlineMarkers(t *testing.T) {
@@ -306,7 +313,7 @@ type stagingCase struct {
 	alone                              map[string]string
 }
 
-func runStagingCase(t *testing.T, tc stagingCase) {
+func runStagingCase(t *testing.T, tc stagingCase) []*Snippet {
 	t.Helper()
 	frags, err := fragments(tc.hunk)
 	if err != nil || len(frags) != 1 {
@@ -320,6 +327,105 @@ func runStagingCase(t *testing.T, tc stagingCase) {
 		t.Fatalf("snippets %q, want %q", got, tc.symbols)
 	}
 	checkStaging(t, tc.oldText, tc.newText, snippets, tc.alone)
+	checkNamedContext(t, tc.lang, tc.oldText, tc.newText, tc.hunk, snippets)
+	return snippets
+}
+
+// walkLines calls fn for each line of a diff's fragments with its kind
+// (' ', '-' or '+') and its old and new line numbers: for an added line the
+// next old line, for a deleted one the next new line.
+func walkLines(t *testing.T, lines []string, fn func(kind byte, oldLine, newLine int, text string)) {
+	t.Helper()
+	frags, err := fragments(lines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range frags {
+		o, n := f.oldStart, f.newStart
+		if f.oldCount == 0 {
+			o++
+		}
+		if f.newCount == 0 {
+			n++
+		}
+		for _, l := range f.body {
+			if strings.HasPrefix(l, `\`) {
+				continue
+			}
+			kind, text := byte(' '), ""
+			if l != "" {
+				text = l[1:]
+				if l[0] == '-' || l[0] == '+' {
+					kind = l[0]
+				}
+			}
+			fn(kind, o, n, text)
+			if kind != '+' {
+				o++
+			}
+			if kind != '-' {
+				n++
+			}
+		}
+	}
+}
+
+// changedLines lists a diff's deleted and added lines, each with its line
+// number on its own side, sorted.
+func changedLines(t *testing.T, lines []string) []string {
+	t.Helper()
+	var out []string
+	walkLines(t, lines, func(kind byte, o, n int, text string) {
+		switch kind {
+		case '-':
+			out = append(out, fmt.Sprintf("-%d %s", o, text))
+		case '+':
+			out = append(out, fmt.Sprintf("+%d %s", n, text))
+		}
+	})
+	sort.Strings(out)
+	return out
+}
+
+// checkNamedContext checks that no snippet deletes and adds back a line
+// that git leaves unchanged when the line's old and new entities pair by
+// name: they have the same kind and name, which no other entity on either
+// side has.
+func checkNamedContext(t *testing.T, lang, oldText, newText string, hunk []string, snippets []*Snippet) {
+	t.Helper()
+	oldEnts, newEnts := ExtractEntities([]byte(oldText), lang), ExtractEntities([]byte(newText), lang)
+	oldBy, newBy := smallestByLine(oldEnts, len(textLines(oldText))), smallestByLine(newEnts, len(textLines(newText)))
+	key := func(e Entity) string { return e.Kind + "\x00" + e.Name }
+	count := make(map[string][2]int)
+	for _, e := range oldEnts {
+		c := count[key(e)]
+		c[0]++
+		count[key(e)] = c
+	}
+	for _, e := range newEnts {
+		c := count[key(e)]
+		c[1]++
+		count[key(e)] = c
+	}
+	byName := func(o, n int) bool {
+		if o >= len(oldBy) || n >= len(newBy) || oldBy[o] < 0 || newBy[n] < 0 {
+			return false
+		}
+		k := key(oldEnts[oldBy[o]])
+		return k == key(newEnts[newBy[n]]) && count[k] == [2]int{1, 1}
+	}
+	deleted, added := make(map[int]bool), make(map[int]bool)
+	for _, s := range snippets {
+		walkLines(t, s.DiffLines, func(kind byte, o, n int, _ string) {
+			deleted[o] = deleted[o] || kind == '-'
+			added[n] = added[n] || kind == '+'
+		})
+	}
+	walkLines(t, hunk, func(kind byte, o, n int, text string) {
+		if kind == ' ' && byName(o, n) && (deleted[o] || added[n]) {
+			t.Errorf("git leaves old line %d, new line %d %q unchanged in one entity, but a snippet changes it", o, n, text)
+		}
+	})
 }
 
 func TestSplitHunk_BlankLinesBelongToTheCodeTheyTouch(t *testing.T) {
@@ -466,5 +572,83 @@ func TestSplitHunk_EachEntityGetsItsOwnOldLinesBack(t *testing.T) {
 	}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { runStagingCase(t, tc) })
+	}
+}
+
+func TestSplitHunk_ExtractedFunctionKeepsGitsLines(t *testing.T) {
+	// The body of a function moves into a new function below it, which the
+	// old one now calls, and the function above them changes too. git keeps
+	// the old declaration and the moved body unchanged, and the old
+	// function's last line, outside the hunk, ends the new function. That
+	// line cannot move, so the two functions stage together: one snippet
+	// that changes exactly the lines git changes.
+	cases := []stagingCase{{
+		name: "go", path: "m.go", lang: "go",
+		oldText: "package main\n\nfunc Discount(total int) int {\n\treturn total / 10\n}\n\n// Total adds up the item prices.\nfunc Total(items []int) int {\n\ttotal := 0\n\tfor _, it := range items {\n\t\ttotal += it\n\t}\n\treturn total\n}\n\nfunc main() {\n\t_ = Total(nil) - Discount(0)\n}\n",
+		newText: "package main\n\nfunc Discount(total int) int {\n\treturn total / 5\n}\n\n// Total adds up the item prices.\nfunc Total(items []int) int {\n\treturn sumPositive(items)\n}\n\n// sumPositive adds up the items, skipping refunds.\nfunc sumPositive(items []int) int {\n\ttotal := 0\n\tfor _, it := range items {\n\t\tif it < 0 {\n\t\t\tcontinue\n\t\t}\n\t\ttotal += it\n\t}\n\treturn total\n}\n\nfunc main() {\n\t_ = Total(nil) - Discount(0)\n}\n",
+		hunk: []string{"@@ -1,13 +1,21 @@", " package main", " ", " func Discount(total int) int {", "-\treturn total / 10",
+			"+\treturn total / 5", " }", " ", " // Total adds up the item prices.", " func Total(items []int) int {",
+			"+\treturn sumPositive(items)", "+}", "+", "+// sumPositive adds up the items, skipping refunds.",
+			"+func sumPositive(items []int) int {", " \ttotal := 0", " \tfor _, it := range items {", "+\t\tif it < 0 {",
+			"+\t\t\tcontinue", "+\t\t}", " \t\ttotal += it", " \t}", " \treturn total"},
+		symbols: []string{"Discount", "Total"},
+	}, {
+		name: "python", path: "m.py", lang: "python",
+		oldText: "def discount(total):\n    return total / 10\n\n\ndef f(items):\n    total = 0\n    for it in items:\n        total += it\n    total *= 2\n    total += 1\n    return total\n\n\ndef main():\n    print(f([1, 2]) - discount(0))\n",
+		newText: "def discount(total):\n    return total / 5\n\n\ndef f(items):\n    return g(items)\n\n\ndef g(items):\n    total = 0\n    for it in items:\n        if it < 0:\n            continue\n        total += it\n    total *= 2\n    total += 1\n    return total\n\n\ndef main():\n    print(f([1, 2]) - discount(0))\n",
+		hunk: []string{"@@ -1,10 +1,16 @@", " def discount(total):", "-    return total / 10", "+    return total / 5", " ", " ",
+			" def f(items):", "+    return g(items)", "+", "+", "+def g(items):", "     total = 0", "     for it in items:",
+			"+        if it < 0:", "+            continue", "         total += it", "     total *= 2", "     total += 1"},
+		symbols: []string{"discount", "f"},
+	}, {
+		name: "javascript", path: "m.js", lang: "javascript",
+		oldText: "export function discount(total) {\n  return total / 10;\n}\n\n// total adds up the item prices.\nexport function total(items) {\n  let sum = 0;\n  for (const it of items) {\n    sum += it;\n  }\n  return sum;\n}\n\nexport function main() {\n  return total([]) - discount(0);\n}\n",
+		newText: "export function discount(total) {\n  return total / 5;\n}\n\n// total adds up the item prices.\nexport function total(items) {\n  return sumPositive(items);\n}\n\n// sumPositive adds up the items, skipping refunds.\nfunction sumPositive(items) {\n  let sum = 0;\n  for (const it of items) {\n    if (it < 0) {\n      continue;\n    }\n    sum += it;\n  }\n  return sum;\n}\n\nexport function main() {\n  return total([]) - discount(0);\n}\n",
+		hunk: []string{"@@ -1,11 +1,19 @@", " export function discount(total) {", "-  return total / 10;", "+  return total / 5;",
+			" }", " ", " // total adds up the item prices.", " export function total(items) {", "+  return sumPositive(items);",
+			"+}", "+", "+// sumPositive adds up the items, skipping refunds.", "+function sumPositive(items) {", "   let sum = 0;",
+			"   for (const it of items) {", "+    if (it < 0) {", "+      continue;", "+    }", "     sum += it;", "   }",
+			"   return sum;"},
+		symbols: []string{"discount", "total"},
+	}, {
+		name: "typescript", path: "m.ts", lang: "typescript",
+		oldText: "export function discount(total: number): number {\n  return total / 10;\n}\n\n// total adds up the item prices.\nexport function total(items: number[]): number {\n  let sum = 0;\n  for (const it of items) {\n    sum += it;\n  }\n  return sum;\n}\n\nexport function main(): number {\n  return total([]) - discount(0);\n}\n",
+		newText: "export function discount(total: number): number {\n  return total / 5;\n}\n\n// total adds up the item prices.\nexport function total(items: number[]): number {\n  return sumPositive(items);\n}\n\n// sumPositive adds up the items, skipping refunds.\nfunction sumPositive(items: number[]): number {\n  let sum = 0;\n  for (const it of items) {\n    if (it < 0) {\n      continue;\n    }\n    sum += it;\n  }\n  return sum;\n}\n\nexport function main(): number {\n  return total([]) - discount(0);\n}\n",
+		hunk: []string{"@@ -1,11 +1,19 @@", " export function discount(total: number): number {", "-  return total / 10;",
+			"+  return total / 5;", " }", " ", " // total adds up the item prices.",
+			" export function total(items: number[]): number {", "+  return sumPositive(items);", "+}", "+",
+			"+// sumPositive adds up the items, skipping refunds.", "+function sumPositive(items: number[]): number {",
+			"   let sum = 0;", "   for (const it of items) {", "+    if (it < 0) {", "+      continue;", "+    }",
+			"     sum += it;", "   }", "   return sum;"},
+		symbols: []string{"discount", "total"},
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.alone = map[string]string{
+				tc.symbols[0]: strings.Replace(tc.oldText, "total / 10", "total / 5", 1),
+				tc.symbols[1]: strings.Replace(tc.newText, "total / 5", "total / 10", 1),
+			}
+			snippets := runStagingCase(t, tc)
+			var lines []string
+			for _, s := range snippets {
+				lines = append(lines, s.DiffLines...)
+			}
+			if got, want := changedLines(t, lines), changedLines(t, tc.hunk); strings.Join(got, "\n") != strings.Join(want, "\n") {
+				t.Errorf("the snippets change\n%s\ngit changes\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+			}
+			if tc.lang != "go" {
+				return
+			}
+			for symbol, text := range tc.alone {
+				fset := token.NewFileSet()
+				f, err := parser.ParseFile(fset, tc.path, text, 0)
+				if err == nil {
+					_, err = (&types.Config{}).Check("main", fset, []*ast.File{f}, nil)
+				}
+				if err != nil {
+					t.Errorf("staging %q alone gives a file that does not compile: %v", symbol, err)
+				}
+			}
+		})
 	}
 }
