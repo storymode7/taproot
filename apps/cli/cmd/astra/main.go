@@ -10,6 +10,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -83,8 +84,20 @@ STATE
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "astra: %v\n", err)
+		if errors.As(err, new(usageError)) {
+			os.Exit(2)
+		}
 		os.Exit(1)
 	}
+}
+
+// usageError is a mistake on the command line; astra exits 2 for it.
+type usageError string
+
+func (e usageError) Error() string { return string(e) }
+
+func usagef(format string, args ...any) error {
+	return usageError(fmt.Sprintf(format, args...))
 }
 
 func run(args []string) error {
@@ -96,32 +109,32 @@ func run(args []string) error {
 	var noApply bool
 
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--help", "-h":
+		arg := args[i]
+		switch name, value, inline := strings.Cut(arg, "="); name {
+		case "--ref", "--base", "--head", "--preset":
+			if !inline && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				value = args[i]
+			}
+			if value == "" || strings.HasPrefix(value, "-") {
+				return usagef("%s requires an argument", name)
+			}
+			switch name {
+			case "--ref":
+				ref = value
+			case "--base":
+				base = value
+			case "--head":
+				head = value
+			default:
+				presetName = value
+			}
+			continue
+		}
+		switch arg {
+		case "--help", "-h", "help":
 			fmt.Print(usage)
 			return nil
-		case "--ref":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--ref requires an argument")
-			}
-			i++
-			ref = args[i]
-		case "--base", "--head":
-			if i+1 >= len(args) {
-				return fmt.Errorf("%s requires an argument", args[i])
-			}
-			if args[i] == "--base" {
-				base = args[i+1]
-			} else {
-				head = args[i+1]
-			}
-			i++
-		case "--preset":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--preset requires an argument")
-			}
-			i++
-			presetName = args[i]
 		case "--no-tty":
 			noTTY = true
 		case "--staged", "--cached":
@@ -139,11 +152,17 @@ func run(args []string) error {
 		case "--no-delta-config":
 			tui.NoDeltaConfig = true
 		case "diff":
-			// subcommand, no-op (default action)
-		default:
-			if strings.HasPrefix(args[i], "--") {
-				return fmt.Errorf("unknown flag: %s", args[i])
+			// the only subcommand
+			if i > 0 {
+				return usagef("unexpected argument %q", arg)
 			}
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return usagef("unknown flag: %s (see astra --help)", arg)
+			}
+			return usagef("unexpected argument %q; to review a branch or commit, use\n"+
+				"  --base <ref>   its changes since it forked, as a PR shows them\n"+
+				"  --ref <ref>    the working tree against it, like git diff <ref>", arg)
 		}
 	}
 	tui.DetectHighlighter()
@@ -154,13 +173,13 @@ func run(args []string) error {
 	}
 
 	if staged && (ref != "" || base != "") {
-		return fmt.Errorf("--staged can't be combined with --ref or --base")
+		return usagef("--staged can't be combined with --ref or --base")
 	}
 	if ref != "" && base != "" {
-		return fmt.Errorf("--ref and --base are exclusive: --base reviews committed work since the fork point, --ref diffs the working tree")
+		return usagef("--ref and --base are exclusive: --base reviews committed work since the fork point, --ref diffs the working tree")
 	}
 	if head != "" && base == "" {
-		return fmt.Errorf("--head needs --base (e.g. --base main --head %s)", head)
+		return usagef("--head needs --base (e.g. --base main --head %s)", head)
 	}
 	applyMode := !noApply && !staged && ref == "" && base == ""
 
@@ -297,7 +316,7 @@ func parsePreset(name string) (core.Preset, error) {
 	case "clusters":
 		return core.PresetClusters, nil
 	default:
-		return 0, fmt.Errorf("unknown preset %q (want: top-down, bottom-up, clusters)", name)
+		return 0, usagef("unknown preset %q (want: top-down, bottom-up, clusters)", name)
 	}
 }
 

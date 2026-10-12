@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -105,5 +106,59 @@ func TestRun_NamesUnmergedFiles(t *testing.T) {
 	}
 	if !strings.HasPrefix(out, "Not shown: conflict m.py\n") || strings.Contains(out, "<<<<<<<") || !strings.Contains(out, "o.py:2 :: o") {
 		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestRun_RejectsArgumentsItDoesNotKnow(t *testing.T) {
+	dir := t.TempDir() // not a repository: a bad command line must fail before git runs
+	for _, args := range [][]string{
+		{"diff", "main"},
+		{"diff", "HEAD~1"},
+		{"main"},
+		{"foo"},
+		{"-v"},
+		{"-s"},
+		{"diff", "-staged"},
+		{"diff", "--staged", "extra"},
+		{"diff", "diff"},
+		{"diff", "--no-tty=1"},
+		{"diff", "--base="},
+		{"diff", "--ref"},
+		{"diff", "--ref", "--staged"},
+		{"diff", "--preset", "sideways"},
+		{"diff", "--staged", "--ref", "main"},
+		{"diff", "--head", "feature"},
+	} {
+		_, _, err := runIn(t, dir, args...)
+		var ue usageError
+		if !errors.As(err, &ue) {
+			t.Errorf("astra %q: err = %v, want a usage error", args, err)
+		}
+	}
+	_, _, err := runIn(t, dir, "diff", "main")
+	if err == nil || !strings.Contains(err.Error(), `"main"`) || !strings.Contains(err.Error(), "--base") || !strings.Contains(err.Error(), "--ref") {
+		t.Errorf("astra diff main: %v, want a hint naming --base and --ref", err)
+	}
+}
+
+func TestRun_FlagValueAfterEquals(t *testing.T) {
+	r := newRepo(t, "")
+	r.write("a.py", "def a():\n    return 1\n")
+	r.commit("base")
+	r.git("checkout", "-qb", "feature")
+	r.write("a.py", "def a():\n    return 2\n")
+	r.commit("feature")
+
+	spaced, _, err := runIn(t, r.dir, "diff", "--base", "main", "--no-tty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined, _, err := runIn(t, r.dir, "diff", "--base=main", "--no-tty")
+	if err != nil || joined != spaced || !strings.Contains(joined, "a.py:2 :: a") {
+		t.Errorf("--base=main printed %q, %v; want what --base main prints, %q", joined, err, spaced)
+	}
+	help, _, err := runIn(t, r.dir, "help")
+	if err != nil || !strings.HasPrefix(help, "astra — ") {
+		t.Errorf("astra help printed %q, %v; want the usage", help, err)
 	}
 }
