@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -200,6 +201,10 @@ type Runner struct {
 	// Skipped lists the changed files with no snippet: the header counts
 	// them, and the hint line names them until the first key.
 	Skipped []core.SkippedFile
+	// Reviewed reads a file's reviewed version when that is not the
+	// working tree (--base, --staged), for the o key; nil otherwise.
+	Reviewed func(path string) ([]byte, error)
+	copies   string // temp dir of the read-only copies o opened
 
 	tree       *treeState
 	cursor     int // index into tree.visible
@@ -244,6 +249,7 @@ func (r *Runner) Run() error {
 		return nil
 	}
 	r.raw = raw
+	defer r.removeCopies()
 	// The alternate screen keeps frames out of the scrollback and gives the
 	// shell its screen back on exit.
 	fmt.Print("\033[?1049h")
@@ -352,6 +358,12 @@ func (r *Runner) openInEditor() {
 	if n == nil {
 		return
 	}
+	path, note, err := r.editorPath(n.Snippet)
+	if err != nil {
+		r.status = "o: " + err.Error()
+		r.render()
+		return
+	}
 	editor := os.Getenv("VISUAL")
 	if editor == "" {
 		editor = os.Getenv("EDITOR")
@@ -359,7 +371,6 @@ func (r *Runner) openInEditor() {
 	if editor == "" {
 		editor = "vi"
 	}
-	path := filepath.Join(r.RepoRoot, n.Snippet.FilePath)
 	name, args := editorArgs(editor, path, firstChangedLine(n.Snippet))
 
 	// Editors that use the alternate screen leave it on exit, so step out first.
@@ -367,15 +378,71 @@ func (r *Runner) openInEditor() {
 	fmt.Print("\033[?25h\033[?1049l")
 	cmd := exec.Command(name, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	if raw, rerr := enableRawMode(); rerr == nil {
 		r.raw = raw
 	}
 	fmt.Print("\033[?1049h")
+	r.status = note
 	if err != nil {
 		r.status = fmt.Sprintf("%s: %v", editor, err)
 	}
 	r.render()
+}
+
+// editorPath is the file o opens for s: the working-tree file when it is
+// the reviewed version, else a read-only copy of the reviewed version, so
+// the editor never shows other code at the snippet's line, and saving
+// never creates a file the checked-out branch does not have.
+func (r *Runner) editorPath(s *core.Snippet) (path, note string, err error) {
+	if s.IsDeleted {
+		return "", "", fmt.Errorf("%s is deleted in this review", s.FilePath)
+	}
+	// A crafted tree can name a path outside the repository.
+	if !filepath.IsLocal(s.FilePath) {
+		return "", "", fmt.Errorf("%s is outside the repository", s.FilePath)
+	}
+	path = filepath.Join(r.RepoRoot, s.FilePath)
+	fi, statErr := os.Stat(path)
+	regular := statErr == nil && fi.Mode().IsRegular()
+	if r.Reviewed == nil {
+		if !regular {
+			return "", "", fmt.Errorf("%s is not a file in the working tree", s.FilePath)
+		}
+		return path, "", nil
+	}
+	want, err := r.Reviewed(s.FilePath)
+	if err != nil {
+		return "", "", fmt.Errorf("no reviewed version of %s to open: %v", s.FilePath, err)
+	}
+	if regular {
+		if have, err := os.ReadFile(path); err == nil && bytes.Equal(have, want) {
+			return path, "", nil
+		}
+	}
+	if r.copies == "" {
+		if r.copies, err = os.MkdirTemp("", "astra-"); err != nil {
+			return "", "", err
+		}
+	}
+	// The copy keeps the file's name, so the editor knows its language.
+	path = filepath.Join(r.copies, s.FilePath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", "", err
+	}
+	os.Remove(path) // a copy o opened before is read-only
+	if err := os.WriteFile(path, want, 0o444); err != nil {
+		return "", "", err
+	}
+	return path, "opened the reviewed " + s.FilePath + " as a read-only copy", nil
+}
+
+// removeCopies deletes the copies o opened.
+func (r *Runner) removeCopies() {
+	if r.copies != "" {
+		os.RemoveAll(r.copies)
+		r.copies = ""
+	}
 }
 
 // editorArgs builds the command that opens path at line, using the syntax

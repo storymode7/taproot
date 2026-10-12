@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -231,5 +232,42 @@ func TestRun_NamesFilesNotShownAtStart(t *testing.T) {
 	p.ctl.Write([]byte("q"))
 	if v := waitDone(t, done); v != nil {
 		t.Fatalf("Run = %v", v)
+	}
+}
+
+func TestRun_OpensTheReviewedVersion(t *testing.T) {
+	p := openPTY(t, 24, 120)
+	repo, dir := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "m.py"), []byte("checked out\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	log, editor := filepath.Join(dir, "log"), filepath.Join(dir, "ed")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + log + "'\ncat \"$2\" >> '" + log + "'\n"
+	if err := os.WriteFile(editor, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VISUAL", editor)
+	r := testRunner(t, &core.Snippet{ID: "m", FilePath: "m.py", SymbolPath: "f", NodeType: "function", StartLine: 1,
+		DiffLines: []string{"@@ -1,1 +1,2 @@", " def f():", "+    return 2"}})
+	r.RepoRoot = repo
+	r.Reviewed = func(string) ([]byte, error) { return []byte("def f():\n    return 2\n"), nil }
+	done := runTUI(r)
+	off := p.waitFor(t, 0, "quit")
+	p.ctl.Write([]byte("o"))
+	p.waitFor(t, off, "opened the reviewed m.py as a read-only copy")
+	got, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.SplitN(string(got), "\n", 3)
+	if args[0] != "+2" || filepath.Base(args[1]) != "m.py" || args[2] != "def f():\n    return 2\n" {
+		t.Errorf("the editor got %q", got)
+	}
+	p.ctl.Write([]byte("q"))
+	if v := waitDone(t, done); v != nil {
+		t.Fatalf("Run = %v", v)
+	}
+	if _, err := os.Stat(args[1]); !os.IsNotExist(err) {
+		t.Errorf("the copy outlived the session: %v", err)
 	}
 }

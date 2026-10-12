@@ -302,6 +302,11 @@ func run(args []string) error {
 	runner := tui.NewRunner(forest, store, !noAutoAdvance, applyMode, stage)
 	runner.RepoRoot = repoRoot
 	runner.Skipped = skipped
+	if staged || base != "" {
+		runner.Reviewed = func(path string) ([]byte, error) {
+			return adapter.FileBlob(diff.BlobRequest{Path: path})
+		}
+	}
 	return runner.Run()
 }
 
