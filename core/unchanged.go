@@ -63,6 +63,7 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 			continue
 		}
 		lines := maskCode(splitLines(f.Source), f.Language)
+		decls := declSites(lines, 1, entities, f.Language)
 		// Same-file/same-dir disambiguation reuses resolveTargets; only the
 		// caller's FilePath matters to it.
 		from := &Snippet{FilePath: f.Path, Language: f.Language}
@@ -77,8 +78,13 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 				if inSpans(j, nested) {
 					continue
 				}
-				for _, name := range callSites(lines[j-1], f.Language) {
-					targets, ok := table[name]
+				declared := decls[j]
+				for _, c := range callSites(lines[j-1], f.Language) {
+					if c.name == declared && !c.member {
+						declared = ""
+						continue
+					}
+					targets, ok := table[c.name]
 					if !ok {
 						continue
 					}

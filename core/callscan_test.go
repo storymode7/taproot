@@ -413,3 +413,199 @@ func TestBuildCallEdges_NoCrossLanguageEdges(t *testing.T) {
 		t.Errorf("JS → TS calls are one family, got %v", got)
 	}
 }
+
+func TestBuildCallEdges_DeclarationLineIsNotACall(t *testing.T) {
+	// Same-named members of two classes both changed: each one's own
+	// declaration line names the other in call shape.
+	cases := []struct{ name, path, lang, member, decl string }{
+		{"python __init__", "pets.py", "python", "__init__", "def __init__(self, name):"},
+		{"rust new", "lib.rs", "rust", "new", "pub fn new() -> Self {"},
+		{"js render", "ui.js", "javascript", "render", "render() {"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := entitySnippet("a", tc.path, tc.lang, "A."+tc.member, "function", 2, tc.decl, "  x()")
+			b := entitySnippet("b", tc.path, tc.lang, "B."+tc.member, "function", 8, tc.decl, "  y()")
+			if edges := BuildCallEdges([]*Snippet{a, b}); len(edges) != 0 {
+				t.Errorf("declaration lines made edges: %v", edges)
+			}
+		})
+	}
+}
+
+func TestBuildCallEdges_UnchangedMethodDeclarationInAChangedClass(t *testing.T) {
+	// Dog changed only at class level; its unchanged __init__ is scanned as
+	// part of the Dog snippet and must not read as a call to Cat.__init__.
+	src := `class Cat:
+    def __init__(self, name):
+        self.name = name.title()
+
+
+class Dog:
+    sound = "woof!"
+
+    def __init__(self, name):
+        self.name = name
+`
+	files := []*FileDiff{{
+		Path: "pets.py", OldPath: "pets.py", Language: "python", Source: []byte(src),
+		Hunks: []Hunk{
+			{OldStart: 3, OldLines: 1, NewStart: 3, NewLines: 1, Lines: []string{"@@ -3,1 +3,1 @@", "-        self.name = name", "+        self.name = name.title()"}},
+			{OldStart: 7, OldLines: 1, NewStart: 7, NewLines: 1, Lines: []string{"@@ -7,1 +7,1 @@", `-    sound = "woof"`, `+    sound = "woof!"`}},
+		},
+	}}
+	snippets := BuildSnippets(files)
+	if got := symbolPaths(snippets); len(got) != 2 {
+		t.Fatalf("snippets %v, want Cat.__init__ and Dog", got)
+	}
+	if edges := BuildCallEdges(snippets); len(edges) != 0 {
+		t.Errorf("Dog's unchanged def __init__( made an edge: %v", edges)
+	}
+}
+
+func TestAnnotateUnchangedCallers_DeclarationIsNotACaller(t *testing.T) {
+	src := `class Cat:
+    def __init__(self, name):
+        self.name = name.title()
+
+
+class Dog:
+    def __init__(self, name):
+        self.name = name
+`
+	files := []*FileDiff{{
+		Path: "pets.py", OldPath: "pets.py", Language: "python", Source: []byte(src),
+		Hunks: []Hunk{{OldStart: 3, OldLines: 1, NewStart: 3, NewLines: 1,
+			Lines: []string{"@@ -3,1 +3,1 @@", "-        self.name = name", "+        self.name = name.title()"}}},
+	}}
+	snippets := BuildSnippets(files)
+	AnnotateUnchangedCallers(files, snippets)
+	if len(snippets) != 1 || len(snippets[0].UnchangedCallers) != 0 {
+		t.Errorf("unchanged Dog.__init__ reported as a caller: %v", snippets[0].UnchangedCallers)
+	}
+}
+
+func TestBuildCallEdges_DelegationToASameNamedMethodLinks(t *testing.T) {
+	// A method that forwards to a same-named method of another object calls
+	// that method; it must not resolve to itself.
+	cases := []struct {
+		name           string
+		caller, callee *Snippet
+		wantEdge       bool
+	}{{
+		name: "python self.repo.save",
+		caller: entitySnippet("c", "app/service.py", "python", "UserService.save", "function", 5,
+			"def save(self, u):", "    self.repo.save(u)"),
+		callee: entitySnippet("r", "app/repo.py", "python", "UserRepo.save", "function", 3,
+			"def save(self, u):", "    db.put(u)"),
+		wantEdge: true,
+	}, {
+		name: "go s.store.Get",
+		caller: entitySnippet("c", "users/service.go", "go", "Get", "function", 9,
+			"func (s *Service) Get(id string) User {", "\treturn s.store.Get(id)", "}"),
+		callee: entitySnippet("r", "users/store.go", "go", "Get", "function", 4,
+			"func (st *Store) Get(id string) User {", "\treturn st.m[id]", "}"),
+		wantEdge: true,
+	}, {
+		name: "js arrow wrapper",
+		caller: entitySnippet("c", "api/save.js", "javascript", "save", "function", 1,
+			"const save = (x) => repo.save(x)"),
+		callee: entitySnippet("r", "api/repo.js", "javascript", "Repo.save", "function", 2,
+			"save(x) {", "  this.items.push(x)", "}"),
+		wantEdge: true,
+	}, {
+		// Recursion through the receiver of a Go method stays a self call.
+		name: "go receiver recursion",
+		caller: entitySnippet("c", "a/parse.go", "go", "parseExpr", "function", 3,
+			"func (p *parser) parseExpr() Expr {", "\treturn p.parseExpr()", "}"),
+		callee: entitySnippet("r", "b/parse.go", "go", "parseExpr", "function", 3,
+			"func (q *other) parseExpr() Expr {", "\treturn nil", "}"),
+	}, {
+		name: "python super().save",
+		caller: entitySnippet("c", "shop/models.py", "python", "Order.save", "function", 3,
+			"def save(self, *args, **kwargs):", "    super().save(*args, **kwargs)"),
+		callee: entitySnippet("r", "shop/repo.py", "python", "AuditRepo.save", "function", 3,
+			"def save(self, row):", "    log(row)"),
+	}, {
+		name: "js super.render",
+		caller: entitySnippet("c", "ui/fancy.js", "javascript", "FancyButton.render", "function", 2,
+			"render() {", "  return super.render();", "}"),
+		callee: entitySnippet("r", "ui/chart.js", "javascript", "Chart.render", "function", 2,
+			"render() {", "  draw();", "}"),
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, got := edgeSet(BuildCallEdges([]*Snippet{tc.caller, tc.callee}))["c->r"]
+			if got != tc.wantEdge {
+				t.Errorf("edge caller->callee = %v, want %v", got, tc.wantEdge)
+			}
+		})
+	}
+}
+
+func TestBuildCallEdges_OwnNameCallsStayInTheirFile(t *testing.T) {
+	// Recursion and calls on self, this or a sibling overload resolve to the
+	// caller's own file as before: never to same-named entities elsewhere.
+	cases := []struct {
+		name string
+		a, b *Snippet
+	}{{
+		"bare recursion",
+		entitySnippet("a", "a/walk.go", "go", "walk", "function", 1, "func walk(n *Node) {", "\tfor _, c := range n.Kids {", "\t\twalk(c)", "\t}", "}"),
+		entitySnippet("b", "b/walk.go", "go", "walk", "function", 1, "func walk(n *Node) {", "\tvisit(n)", "}"),
+	}, {
+		"js recursion in synced copies",
+		entitySnippet("a", "shared/lib/render.js", "javascript", "renderTree", "function", 1, "function renderTree(kids) {", "  kids.forEach(k => renderTree(k.kids));", "}"),
+		entitySnippet("b", "apps/pwa/lib/shared/render.js", "javascript", "renderTree", "function", 1, "function renderTree(kids) {", "  kids.forEach(k => renderTree(k.kids));", "}"),
+	}, {
+		"python self.visit",
+		entitySnippet("a", "x/a.py", "python", "A.visit", "function", 2, "def visit(self, node):", "    for c in node.kids:", "        self.visit(c)"),
+		entitySnippet("b", "y/b.py", "python", "B.visit", "function", 2, "def visit(self, node):", "    print(node)"),
+	}, {
+		"java bare overload",
+		entitySnippet("a", "io/A.java", "java", "A.write", "function", 2, "void write(byte[] b) {", "    write(b, 0, b.length);", "}"),
+		entitySnippet("b", "io/B.java", "java", "B.write", "function", 2, "void write(byte[] b) {", "    out.flush();", "}"),
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if edges := BuildCallEdges([]*Snippet{tc.a, tc.b}); len(edges) != 0 {
+				t.Errorf("own-name call linked to another file: %v", edges)
+			}
+		})
+	}
+}
+
+func TestBuildCallEdges_VarDeclarationIsNotAReference(t *testing.T) {
+	// Each declaration names itself; same-named vars of sibling files must
+	// not link (Python __all__, per-platform Go consts, JS module styles).
+	cases := []struct {
+		name string
+		a, b *Snippet
+	}{{
+		"python __all__",
+		entitySnippet("a", "pkg/a.py", "python", "__all__", "var", 1, `__all__ = ["load", "load_all"]`),
+		entitySnippet("b", "pkg/b.py", "python", "__all__", "var", 1, `__all__ = ["save", "save_all"]`),
+	}, {
+		"go per-arch consts",
+		entitySnippet("a", "goarch/zgoarch_riscv64.go", "go", "IsLoong64", "const", 9, "const IsLoong64 = 0"),
+		entitySnippet("b", "goarch/zgoarch_wasm.go", "go", "IsLoong64", "const", 9, "const IsLoong64 = 0"),
+	}, {
+		"js module styles",
+		entitySnippet("a", "src/components/Header.js", "javascript", "styles", "var", 3, "const styles = makeStyles({ root: {} });"),
+		entitySnippet("b", "src/components/Footer.js", "javascript", "styles", "var", 3, "const styles = makeStyles({ root: {} });"),
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if edges := BuildCallEdges([]*Snippet{tc.a, tc.b}); len(edges) != 0 {
+				t.Errorf("declarations linked to each other: %v", edges)
+			}
+		})
+	}
+	// A method named like a var still reads it.
+	method := entitySnippet("m", "pkg/client.py", "python", "Client.retries", "function", 4,
+		"def retries(self):", "    return config.retries")
+	v := entitySnippet("v", "pkg/config.py", "python", "retries", "var", 1, "retries = 3")
+	if _, ok := edgeSet(BuildCallEdges([]*Snippet{method, v}))["m->v"]; !ok {
+		t.Error("Client.retries lost its reference to the retries var")
+	}
+}

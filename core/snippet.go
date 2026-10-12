@@ -84,6 +84,10 @@ type Snippet struct {
 	// #[cfg(test)] module; BuildForest treats it like a test file.
 	IsTest bool
 
+	// inner holds the entities within the snippet's span, its own among
+	// them: the call scanner skips their declaration lines.
+	inner []Entity
+
 	// Status tracks review progress.
 	Status SnippetStatus
 }
@@ -273,6 +277,11 @@ func entitySnippets(f *FileDiff, entities []Entity, src []byte) []*Snippet {
 			Status:     StatusPending,
 		}
 		if g.entity != nil {
+			for _, e := range entities {
+				if e.StartLine >= startLine && e.EndLine <= endLine {
+					s.inner = append(s.inner, e)
+				}
+			}
 			ord := ordinal[g.entity]
 			if g.entity.Kind == "imports" {
 				ord = 1

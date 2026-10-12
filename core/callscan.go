@@ -12,6 +12,13 @@
 //   - followed by "{" (Go only):  Foo{...} composite literal
 //   - preceded by "new":          new Foo   (JS/TS/Java)
 //
+// An entity's own declaration line (def save(, render() {) has the same
+// shape, so the first such use of its own name that is not a member call is
+// skipped. A call through another object (self.repo.save( inside
+// UserService.save) delegates and never resolves to the caller itself; a
+// bare call or one through self, this, cls, super or a Go method's receiver
+// may be recursion and resolves as any other call.
+//
 // Bare type references (var c Config) are deliberately not matched — calls
 // and constructions are the edges that define reading order. Changed
 // var/const entities are the exception: they have no call syntax, so any
@@ -24,6 +31,7 @@
 package core
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -75,22 +83,41 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 
 	for _, s := range snippets {
 		nested := nestedSpans(s, snippets)
-		for i, line := range maskCode(s.Body, s.Language) {
+		masked := maskCode(s.Body, s.Language)
+		inner := s.inner
+		if inner == nil {
+			inner = []Entity{{Name: s.SymbolPath, StartLine: s.StartLine, EndLine: s.EndLine}}
+		}
+		decls := declSites(masked, s.StartLine, inner, s.Language)
+		self := selfReceivers(masked, s.Language)
+		for i, line := range masked {
 			callLine := s.StartLine + i
 			if inSpans(callLine, nested) {
 				continue
 			}
 			sites := callSites(line, s.Language)
-			for _, name := range sites {
-				if targets, ok := table[name]; ok {
-					addEdges(s, targets, callLine)
+			names := make([]string, 0, len(sites))
+			declared := decls[callLine]
+			for _, c := range sites {
+				names = append(names, c.name)
+				if c.name == declared && !c.member {
+					declared = ""
+					continue
 				}
+				targets, ok := table[c.name]
+				if !ok {
+					continue
+				}
+				if c.member && !self[c.recv] {
+					targets = without(targets, s)
+				}
+				addEdges(s, targets, callLine)
 			}
 			if len(varTable) == 0 {
 				continue
 			}
 			for _, tok := range identTokens(line, s.Language) {
-				if len(tok) < 3 || refStopwords[tok] || contains(sites, tok) {
+				if len(tok) < 3 || refStopwords[tok] || contains(names, tok) {
 					continue
 				}
 				if targets, ok := varTable[tok]; ok {
@@ -171,6 +198,61 @@ func varRefTargets(from *Snippet, candidates []*Snippet) []*Snippet {
 	return out
 }
 
+func without(list []*Snippet, s *Snippet) []*Snippet {
+	out := make([]*Snippet, 0, len(list))
+	for _, t := range list {
+		if t != s {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// reGoReceiver matches a Go method declaration and captures its receiver.
+var reGoReceiver = regexp.MustCompile(`^\s*func\s*\(\s*(\w+)\s`)
+
+// selfReceivers returns the names through which an entity calls its own
+// members: self, this, cls, super, and a Go method's receiver, which its
+// first code line declares.
+func selfReceivers(masked []string, lang string) map[string]bool {
+	self := map[string]bool{"self": true, "this": true, "cls": true, "Self": true, "super": true}
+	if lang == "go" {
+		for _, l := range masked {
+			if m := reGoReceiver.FindStringSubmatch(l); m != nil {
+				self[m[1]] = true
+			}
+			if strings.TrimSpace(l) != "" {
+				break
+			}
+		}
+	}
+	return self
+}
+
+// declSites returns, by line, the declarations among lines (masked, the
+// first at line first): for each entity, the first use of its own name in
+// call shape that is not a member call, outside the entities nested in it.
+func declSites(lines []string, first int, entities []Entity, lang string) map[int]string {
+	sites := make(map[int]string)
+	for i, e := range entities {
+		name := lastSegment(e.Name)
+		nested := entityNestedSpans(entities, i)
+	scan:
+		for l := max(e.StartLine, first); l <= e.EndLine && l-first < len(lines); l++ {
+			if inSpans(l, nested) {
+				continue
+			}
+			for _, c := range callSites(lines[l-first], lang) {
+				if c.name == name && !c.member {
+					sites[l] = name
+					break scan
+				}
+			}
+		}
+	}
+	return sites
+}
+
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {
@@ -241,11 +323,18 @@ var refStopwords = map[string]bool{
 	"map": true, "print": true, "len": true,
 }
 
+// callSite is one call or construction site on a line.
+type callSite struct {
+	name   string
+	member bool   // the name follows "." (x.name(, super().name()
+	recv   string // what a member call goes through: the identifier before the ".", "super" for super(...)
+}
+
 // callSites returns the identifiers used as call/construction sites on one
 // source line. Callers pass lines through maskCode first, so strings and
 // comments are already blank.
-func callSites(line, lang string) []string {
-	var names []string
+func callSites(line, lang string) []callSite {
+	var sites []callSite
 	runes := []rune(line)
 	n := len(runes)
 	i := 0
@@ -281,11 +370,48 @@ func callSites(line, lang string) []string {
 			isCall = true // new Foo  (JS/TS/Java)
 		}
 		if isCall {
-			names = append(names, word)
+			c := callSite{name: word}
+			c.member, c.recv = receiver(runes, start)
+			sites = append(sites, c)
 		}
 		prevWord = word
 	}
-	return names
+	return sites
+}
+
+// receiver reports whether the identifier at runes[start] follows a "."
+// and, if so, what it is called through: the identifier before the "." (a
+// "?" or "!" after it allowed), or "super" for super(...).name.
+func receiver(runes []rune, start int) (member bool, recv string) {
+	k := start - 1
+	if k < 0 || runes[k] != '.' {
+		return false, ""
+	}
+	k--
+	for k >= 0 && (runes[k] == '?' || runes[k] == '!') {
+		k--
+	}
+	call := k >= 0 && runes[k] == ')'
+	for depth := 0; call && k >= 0; {
+		if runes[k] == ')' {
+			depth++
+		} else if runes[k] == '(' {
+			depth--
+		}
+		k--
+		if depth == 0 {
+			break
+		}
+	}
+	e := k + 1
+	for k >= 0 && isIdentPart(runes[k]) {
+		k--
+	}
+	recv = string(runes[k+1 : e])
+	if call && recv != "super" {
+		recv = ""
+	}
+	return true, recv
 }
 
 // identTokens returns every identifier token on one masked source line
