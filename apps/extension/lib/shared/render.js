@@ -70,12 +70,12 @@ export function renderReview(container, review, store, opts = {}) {
     const warn = el("div", "astra-banner");
     warn.textContent =
       `Couldn't load the full source of ${review.missingSource.length} file(s), ` +
-      `so they show as plain hunks without call structure: ${review.missingSource.join(", ")}`;
+      `so they show as plain hunks without call structure: ${review.missingSource.map(displaySafe).join(", ")}`;
     main.appendChild(warn);
   }
   if (review.skipped?.length) {
     const names = review.skipped.map((f) =>
-      `${f.oldPath ? `${f.oldPath} → ` : ""}${f.path} (${SKIP_REASON[f.reason] ?? f.reason})`);
+      `${f.oldPath ? `${displaySafe(f.oldPath)} → ` : ""}${displaySafe(f.path)} (${SKIP_REASON[f.reason] ?? f.reason})`);
     main.appendChild(el("div", "astra-banner", `Not shown here, review on GitHub: ${names.join(", ")}`));
   }
   if (!order.length) {
@@ -205,7 +205,7 @@ function renderTree(nodes, byId, store, onPick) {
     }
     const name = el("button", "astra-tree-name", label(s));
     name.type = "button";
-    name.title = `${s.filePath}${s.symbolPath ? " :: " + s.symbolPath : ""}`;
+    name.title = displaySafe(`${s.filePath}${s.symbolPath ? " :: " + s.symbolPath : ""}`);
     row.append(twisty, dot, name);
     if (n.ref) {
       row.classList.add("ref");
@@ -237,9 +237,9 @@ function paintDot(dot, status) {
 }
 
 function label(s) {
-  const base = s.filePath.split("/").pop();
+  const base = displaySafe(s.filePath.split("/").pop());
   if (s.isDeleted) return `${base} (deleted)`;
-  if (s.symbolPath) return s.symbolPath;
+  if (s.symbolPath) return displaySafe(s.symbolPath);
   return s.nodeType === "imports" ? `${base} (imports)` : base;
 }
 
@@ -265,7 +265,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
     <div class="astra-title">
       ${crumbs.length ? `<span class="astra-crumbs">${crumbs.map(esc).join(" › ")} ›</span>` : ""}
       <strong class="astra-symbol">${esc(label(snippet))}</strong>
-      <span class="astra-path">${esc(snippet.filePath)}</span>
+      <span class="astra-path">${esc(displaySafe(snippet.filePath))}</span>
     </div>
     <span class="astra-stat"><span class="add">+${adds}</span> <span class="del">−${dels}</span></span>
     <span class="astra-status">${STATUS_LABEL[state.status]}</span>
@@ -284,7 +284,8 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
   if (snippet.testedBy?.length) notes.push(["Tested by", snippet.testedBy]);
   if (notes.length) {
     const box = el("div", "astra-notes");
-    box.innerHTML = notes.map(([k, v]) => {
+    box.innerHTML = notes.map(([k, names]) => {
+      const v = names.map(displaySafe);
       const shown = v.slice(0, 4).map((x) => `<code>${esc(x)}</code>`).join(", ");
       const more = v.length > 4 ? ` <span title="${esc(v.slice(4).join("\n"))}">+${v.length - 4} more</span>` : "";
       return `<span><b>${esc(k)}</b> ${shown}${more}</span>`;
@@ -373,7 +374,7 @@ function diffTable(snippet, highlight) {
   const table = el("table", "astra-diff");
   const rows = [];
   let oldN = 0, newN = 0;
-  for (const line of snippet.diffLines) {
+  for (const line of snippet.diffLines.map(displaySafe)) {
     const m = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);
     if (m) {
       oldN = Number(m[1]);
@@ -417,6 +418,18 @@ function el(tag, cls, text) {
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+// As in the CLI: C0 as Control Pictures, DEL as ␡, C1 and bidi controls
+// as �, so a line cannot display reordered. A trailing CR ends a CRLF line.
+function displaySafe(s) {
+  return String(s).replace(/\r$/, "").replace(
+    /[\0-\x08\x0a-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+    (c) => {
+      const n = c.charCodeAt(0);
+      return n < 0x20 ? String.fromCharCode(0x2400 + n) : n === 0x7f ? "\u2421" : "\ufffd";
+    },
+  );
 }
 
 function esc(s) {
