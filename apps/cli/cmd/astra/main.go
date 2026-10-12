@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/storymode7/astra/apps/cli/internal/diff"
@@ -56,6 +57,7 @@ OPTIONS
   --no-delta-config    Ignore ~/.gitconfig delta settings and use Astra's
                        GitHub-style theme (the default unless your gitconfig
                        sets delta's look).
+  -V, --version        Show the version
 
 ENVIRONMENT
   ASTRA_THEME          dark | light  (default: from COLORFGBG, else dark)
@@ -80,6 +82,21 @@ STATE
   Review state is saved per diff under .git/astra/reviews/: one small
   file per commit range (or working tree at its HEAD) you have marked.
 `
+
+// version is set by a release build: go build -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
+// buildVersion is version, or when no release build set it, the module
+// version Go recorded: a tag for go install, a pseudo-version for go build.
+func buildVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return version
+}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -134,6 +151,9 @@ func run(args []string) error {
 		switch arg {
 		case "--help", "-h", "help":
 			fmt.Print(usage)
+			return nil
+		case "--version", "-V", "version":
+			fmt.Println("astra", buildVersion())
 			return nil
 		case "--no-tty":
 			noTTY = true
