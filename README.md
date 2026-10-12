@@ -325,7 +325,8 @@ because SECURITY.md sends reports there. Then make each release by hand:
    `git describe --tags --always --dirty`, which is the tag on a tagged
    commit. To set it, run `make dist VERSION=v0.1.0`. `make dist` needs
    git, go, node, zip and sha256sum.
-4. `make dist` runs the sync check and the parity check, then writes
+4. `make dist` stops when `git status` lists any change, so commit or
+   stash first. It runs the sync check and the parity check, then writes
    `dist/`:
    - `astra-<VERSION>-linux-amd64`, `-linux-arm64`, `-darwin-amd64` and
      `-darwin-arm64`, built with `CGO_ENABLED=0`, `-trimpath` and
