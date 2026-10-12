@@ -179,3 +179,11 @@ func TestApplyCached_IgnoresUserApplyConfig(t *testing.T) {
 		t.Errorf("staged %q, want %q", got, newSrc)
 	}
 }
+
+func TestGit_ErrorIsGitsMessage(t *testing.T) {
+	r := newGitRepo(t, "")
+	_, err := (&GitDiffAdapter{RepoRoot: r.dir}).RunGit("rev-parse", "--verify", "nope")
+	if err == nil || strings.HasSuffix(err.Error(), "\n") || !strings.HasSuffix(err.Error(), "fatal: Needed a single revision") {
+		t.Errorf("err = %q, want git's message without the trailing newline", err)
+	}
+}

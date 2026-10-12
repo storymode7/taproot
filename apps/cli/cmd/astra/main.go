@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime/debug"
 	"strings"
 
@@ -205,11 +206,17 @@ func run(args []string) error {
 
 	// Find git repo root.
 	repoRoot, err := findRepoRoot()
+	if errors.Is(err, exec.ErrNotFound) {
+		return errors.New("git is not installed or not on PATH")
+	}
 	if err != nil {
 		return fmt.Errorf("not inside a git repository: %w", err)
 	}
 
 	adapter := &diff.GitDiffAdapter{RepoRoot: repoRoot, Ref: ref, Base: base, Head: head, Staged: staged}
+	if err := checkRefs(adapter); err != nil {
+		return err
+	}
 
 	gitDir, err := adapter.RunGit("rev-parse", "--absolute-git-dir")
 	if err != nil {
@@ -298,6 +305,28 @@ func skippedFiles(files []*core.FileDiff) []core.SkippedFile {
 		plain[i] = *f
 	}
 	return core.SkippedFiles(plain)
+}
+
+// checkRefs names the flag whose branch or commit git cannot find, where
+// git diff would fail with advice about paths.
+func checkRefs(a *diff.GitDiffAdapter) error {
+	resolves := func(ref string) bool {
+		_, err := a.RunGit("rev-parse", "--verify", "--quiet", ref+"^{commit}")
+		return err == nil
+	}
+	if a.Base != "" && a.Head == "" && !resolves("HEAD") {
+		return errors.New("--base reviews commits, and this branch has none yet (--staged reviews what is staged)")
+	}
+	for _, f := range [][2]string{{"--base", a.Base}, {"--head", a.Head}, {"--ref", a.Ref}} {
+		if f[1] == "" || resolves(f[1]) {
+			continue
+		}
+		if !resolves("HEAD") {
+			return fmt.Errorf("%s %s: no such branch, tag or commit; this branch has no commits yet", f[0], f[1])
+		}
+		return fmt.Errorf("%s %s: no such branch, tag or commit", f[0], f[1])
+	}
+	return nil
 }
 
 // reviewScope names the diff under review by commit SHAs, so review state

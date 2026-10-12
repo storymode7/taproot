@@ -162,3 +162,43 @@ func TestRun_FlagValueAfterEquals(t *testing.T) {
 		t.Errorf("astra help printed %q, %v; want the usage", help, err)
 	}
 }
+
+func TestRun_GitErrorsNameTheProblem(t *testing.T) {
+	r := newRepo(t, "")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"diff", "--base", "main"}, "--base reviews commits, and this branch has none yet (--staged reviews what is staged)"},
+		{[]string{"diff", "--ref", "HEAD"}, "--ref HEAD: no such branch, tag or commit; this branch has no commits yet"},
+	} {
+		if _, _, err := runIn(t, r.dir, c.args...); err == nil || err.Error() != c.want {
+			t.Errorf("astra %q in a repository with no commits: %v, want %q", c.args, err, c.want)
+		}
+	}
+
+	r.write("a.py", "def a():\n    return 1\n")
+	r.commit("base")
+	r.write("main/x.py", "x = 1\n") // a directory named like the branch
+	r.commit("dir")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"diff", "--base", "nope"}, "--base nope: no such branch, tag or commit"},
+		{[]string{"diff", "--base", "main", "--head", "nope"}, "--head nope: no such branch, tag or commit"},
+		{[]string{"diff", "--ref", "nope"}, "--ref nope: no such branch, tag or commit"},
+	} {
+		if _, _, err := runIn(t, r.dir, c.args...); err == nil || err.Error() != c.want {
+			t.Errorf("astra %q: %v, want %q", c.args, err, c.want)
+		}
+	}
+	if _, stderr, err := runIn(t, r.dir, "diff", "--ref", "main", "--no-tty"); err != nil {
+		t.Errorf("--ref main with a main/ directory: %v %s", err, stderr)
+	}
+
+	t.Setenv("PATH", t.TempDir())
+	if _, _, err := runIn(t, r.dir, "diff"); err == nil || err.Error() != "git is not installed or not on PATH" {
+		t.Errorf("without git: %v", err)
+	}
+}
