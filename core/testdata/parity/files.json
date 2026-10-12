@@ -1,0 +1,112 @@
+{
+  "files": [
+    {
+      "path": "assets/logo.png",
+      "oldPath": "assets/logo.png",
+      "language": "",
+      "hunks": [],
+      "isBinary": true,
+      "source": "",
+      "entities": []
+    },
+    {
+      "path": "auth/legacy.go",
+      "oldPath": "auth/legacy.go",
+      "language": "go",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 5,
+          "newStart": 0,
+          "newLines": 0,
+          "lines": [
+            "@@ -1,5 +0,0 @@",
+            "-package auth",
+            "-",
+            "-func LegacyCheck(token string) bool {",
+            "-\treturn token != \"\"",
+            "-}"
+          ]
+        }
+      ],
+      "isDeleted": true,
+      "oldMode": "100644",
+      "source": "",
+      "entities": []
+    },
+    {
+      "path": "dist/bundle.min.js",
+      "oldPath": "dist/bundle.min.js",
+      "language": "javascript",
+      "hunks": [],
+      "source": "",
+      "entities": []
+    },
+    {
+      "path": "empty.py",
+      "oldPath": "empty.py",
+      "language": "python",
+      "hunks": [],
+      "isNew": true,
+      "newMode": "100644",
+      "source": "",
+      "entities": []
+    },
+    {
+      "path": "merge.py",
+      "oldPath": "merge.py",
+      "language": "python",
+      "isConflict": true,
+      "hunks": [],
+      "source": "",
+      "entities": []
+    },
+    {
+      "path": "new_name.py",
+      "oldPath": "old_name.py",
+      "language": "python",
+      "hunks": [],
+      "source": "def helper():\n    return 1\n",
+      "entities": []
+    },
+    {
+      "path": "run.sh",
+      "oldPath": "run.sh",
+      "language": "",
+      "hunks": [],
+      "oldMode": "100644",
+      "newMode": "100755",
+      "source": "",
+      "entities": []
+    },
+    {
+      "path": "util.js",
+      "oldPath": "util.js",
+      "language": "javascript",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldLines": 3,
+          "newStart": 1,
+          "newLines": 7,
+          "lines": [
+            "@@ -1,3 +1,7 @@",
+            " function a() {",
+            "   return 1",
+            "+}",
+            "+",
+            "+function b() {",
+            "+  return a() + 1",
+            " }",
+            "\\ No newline at end of file"
+          ]
+        }
+      ],
+      "source": "function a() {\n  return 1\n}\n\nfunction b() {\n  return a() + 1\n}",
+      "entities": []
+    }
+  ],
+  "options": {
+    "order": "pre"
+  }
+}

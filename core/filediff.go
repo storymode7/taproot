@@ -1,5 +1,7 @@
 package core
 
+import "sort"
+
 // FileDiff is a single changed file within a PR or working-tree diff.
 // Adapters (local git, GitHub session, GitHub public API) produce these;
 // the core is pure — it never does I/O of its own.
@@ -19,14 +21,18 @@ type FileDiff struct {
 	IsNew bool
 	// IsDeleted is true when the file was removed in this diff.
 	IsDeleted bool
+	// OldMode and NewMode are the file's modes as the diff gives them
+	// ("100644", "100755"), empty when it gives none.
+	OldMode, NewMode string
+	// IsConflict marks an unmerged file (a combined "diff --cc" section).
+	IsConflict bool
 	// Source is the full post-image content of the file, when the adapter
 	// can provide it. Entity extraction and call scanning need it; leave
 	// nil to fall back to one-snippet-per-hunk.
 	Source []byte
-	// Entities optionally carries pre-parsed entity spans (e.g. from
-	// web-tree-sitter in the browser surfaces). When set they are used
-	// as-is; when nil the core extracts entities from Source with its
-	// language-aware heuristics.
+	// Entities optionally carries entity spans parsed elsewhere. When set
+	// they are used as-is; when nil the core extracts entities from Source
+	// with its language-aware heuristics, as it does for every surface.
 	Entities []Entity
 }
 
@@ -38,4 +44,53 @@ type Hunk struct {
 	NewStart, NewLines int
 	// Lines holds the raw unified-diff lines (each prefixed with ' ', '+', or '-').
 	Lines []string
+}
+
+// SkippedFile is a changed file the review cannot show as snippets.
+type SkippedFile struct {
+	Path    string `json:"path"`
+	OldPath string `json:"oldPath,omitempty"`
+	Reason  string `json:"reason"`
+}
+
+// SkippedFiles lists, sorted by path, the files BuildSnippets makes no
+// snippet for, each with the reason: "binary", "renamed" (moved, its text
+// unchanged), "mode" (only its mode changed), "empty" (an empty file added
+// or deleted), "conflict" (unmerged) or "no-diff" (no hunks otherwise).
+// OldPath is set for a renamed file.
+func SkippedFiles(files []FileDiff) []SkippedFile {
+	var out []SkippedFile
+	for i := range files {
+		f := &files[i]
+		r := skipReason(f)
+		if r == "" {
+			continue
+		}
+		sf := SkippedFile{Path: f.Path, Reason: r}
+		if f.OldPath != f.Path {
+			sf.OldPath = f.OldPath
+		}
+		out = append(out, sf)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
+// skipReason says why a file makes no snippet, "" when it makes some.
+func skipReason(f *FileDiff) string {
+	switch {
+	case f.IsConflict:
+		return "conflict"
+	case f.IsBinary:
+		return "binary"
+	case len(f.Hunks) > 0:
+		return ""
+	case f.OldPath != "" && f.OldPath != f.Path:
+		return "renamed"
+	case f.OldMode != "" && f.NewMode != "" && f.OldMode != f.NewMode:
+		return "mode"
+	case f.IsNew || f.IsDeleted:
+		return "empty"
+	}
+	return "no-diff"
 }

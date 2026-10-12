@@ -1,6 +1,9 @@
 package core
 
 import (
+	"encoding/json"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -11,15 +14,87 @@ func TestBuildSnippets_Nil(t *testing.T) {
 	}
 }
 
-func TestBuildSnippets_SkipsDeletedBinaryEmpty(t *testing.T) {
+func TestBuildSnippets_DeletedFileIsOneSnippet(t *testing.T) {
+	// A deleted file is reviewed like any change: one snippet holding its
+	// hunks, numbered from the old side since it has no new one.
+	lines := []string{"@@ -1,3 +0,0 @@", "-package auth", "-", "-func Check() bool { return true }"}
 	files := []*FileDiff{
-		{Path: "deleted.go", OldPath: "deleted.go", IsDeleted: true, Hunks: []Hunk{{Lines: []string{"@@ -1,1 +0,0 @@", "-line"}}}},
-		{Path: "binary.png", OldPath: "binary.png", IsBinary: true},
+		{Path: "auth/check.go", OldPath: "auth/check.go", Language: "go", IsDeleted: true, OldMode: "100644",
+			Hunks: []Hunk{{OldStart: 1, OldLines: 3, NewStart: 0, NewLines: 0, Lines: lines}}},
+		{Path: "logo.png", OldPath: "logo.png", IsBinary: true},
 		{Path: "empty.go", OldPath: "empty.go", Hunks: []Hunk{}},
 	}
 	snippets := BuildSnippets(files)
-	if len(snippets) != 0 {
-		t.Errorf("expected 0 snippets, got %d", len(snippets))
+	if len(snippets) != 1 {
+		t.Fatalf("expected the deleted file's snippet only, got %v", symbolPaths(snippets))
+	}
+	s := snippets[0]
+	if s.SymbolPath != "(deleted)" || s.NodeType != "file" || !s.IsDeleted || s.StartLine != 1 || s.EndLine != 3 {
+		t.Errorf("deleted snippet = %q %q deleted=%v lines %d-%d", s.SymbolPath, s.NodeType, s.IsDeleted, s.StartLine, s.EndLine)
+	}
+	if s.ID != snippetID("auth/check.go", "(deleted)", 0) {
+		t.Errorf("ID = %s", s.ID)
+	}
+	if strings.Join(s.DiffLines, "\n") != strings.Join(lines, "\n") {
+		t.Errorf("DiffLines = %q", s.DiffLines)
+	}
+}
+
+func TestSkippedFiles(t *testing.T) {
+	files := []FileDiff{
+		{Path: "src/a.go", OldPath: "src/a.go", Hunks: []Hunk{{Lines: []string{"@@ -1 +1 @@", "-a", "+b"}}}},
+		{Path: "z/logo.png", OldPath: "z/logo.png", IsBinary: true, IsDeleted: true},
+		{Path: "new_name.py", OldPath: "old_name.py"},
+		{Path: "run.sh", OldPath: "run.sh", OldMode: "100644", NewMode: "100755"},
+		{Path: "empty.py", OldPath: "empty.py", IsNew: true, NewMode: "100644"},
+		{Path: "gone.txt", OldPath: "gone.txt", IsDeleted: true, OldMode: "100644"},
+		{Path: "m.py", OldPath: "m.py", IsConflict: true},
+		{Path: "vendor/big.js", OldPath: "vendor/big.js"},
+	}
+	want := []SkippedFile{
+		{Path: "empty.py", Reason: "empty"},
+		{Path: "gone.txt", Reason: "empty"},
+		{Path: "m.py", Reason: "conflict"},
+		{Path: "new_name.py", OldPath: "old_name.py", Reason: "renamed"},
+		{Path: "run.sh", Reason: "mode"},
+		{Path: "vendor/big.js", Reason: "no-diff"},
+		{Path: "z/logo.png", Reason: "binary"},
+	}
+	if got := SkippedFiles(files); !reflect.DeepEqual(got, want) {
+		t.Errorf("SkippedFiles =\n%+v\nwant\n%+v", got, want)
+	}
+	ptrs := make([]*FileDiff, len(files))
+	for i := range files {
+		ptrs[i] = &files[i]
+	}
+	if got := symbolPaths(BuildSnippets(ptrs)); len(got) != 1 {
+		t.Errorf("a skipped file made snippets: %v", got)
+	}
+}
+
+func TestProcess_SkippedAndDeletedOnTheWire(t *testing.T) {
+	out, err := ProcessJSON(`{"files": [
+		{"path": "auth.go", "oldPath": "auth.go", "language": "go", "isDeleted": true,
+		 "hunks": [{"oldStart": 1, "oldLines": 1, "newStart": 0, "newLines": 0, "lines": ["@@ -1,1 +0,0 @@", "-package auth"]}]},
+		{"path": "run.sh", "oldPath": "run.sh", "oldMode": "100644", "newMode": "100755"},
+		{"path": "m.py", "oldPath": "m.py", "isConflict": true}
+	]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp ProcessResponse
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Snippets) != 1 || !resp.Snippets[0].IsDeleted || resp.Snippets[0].SymbolPath != "(deleted)" {
+		t.Errorf("snippets = %+v", resp.Snippets)
+	}
+	want := []SkippedFile{{Path: "m.py", Reason: "conflict"}, {Path: "run.sh", Reason: "mode"}}
+	if !reflect.DeepEqual(resp.Skipped, want) {
+		t.Errorf("skipped = %+v, want %+v", resp.Skipped, want)
+	}
+	if !strings.Contains(out, `"isDeleted":true`) || strings.Count(out, "isDeleted") != 1 {
+		t.Errorf("isDeleted must be on the deleted snippet only: %s", out)
 	}
 }
 

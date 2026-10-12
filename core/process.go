@@ -24,15 +24,18 @@ type ProcessOptions struct {
 // WireFile mirrors FileDiff with JSON-friendly types (Source as a string,
 // not base64).
 type WireFile struct {
-	Path      string       `json:"path"`
-	OldPath   string       `json:"oldPath"`
-	Language  string       `json:"language"`
-	IsNew     bool         `json:"isNew"`
-	IsDeleted bool         `json:"isDeleted"`
-	IsBinary  bool         `json:"isBinary"`
-	Hunks     []WireHunk   `json:"hunks"`
-	Source    string       `json:"source"`
-	Entities  []WireEntity `json:"entities"`
+	Path       string       `json:"path"`
+	OldPath    string       `json:"oldPath"`
+	Language   string       `json:"language"`
+	IsNew      bool         `json:"isNew"`
+	IsDeleted  bool         `json:"isDeleted"`
+	IsBinary   bool         `json:"isBinary"`
+	OldMode    string       `json:"oldMode,omitempty"`
+	NewMode    string       `json:"newMode,omitempty"`
+	IsConflict bool         `json:"isConflict,omitempty"`
+	Hunks      []WireHunk   `json:"hunks"`
+	Source     string       `json:"source"`
+	Entities   []WireEntity `json:"entities"`
 }
 
 // WireHunk mirrors Hunk.
@@ -44,7 +47,8 @@ type WireHunk struct {
 	Lines    []string `json:"lines"`
 }
 
-// WireEntity mirrors Entity (pre-parsed spans from e.g. web-tree-sitter).
+// WireEntity mirrors Entity. No surface sends entities any more (the core
+// extracts them from Source); the field keeps older requests valid.
 type WireEntity struct {
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
@@ -61,6 +65,7 @@ type WireSnippet struct {
 	SymbolPath       string   `json:"symbolPath"`
 	NodeType         string   `json:"nodeType"`
 	IsNew            bool     `json:"isNew"`
+	IsDeleted        bool     `json:"isDeleted,omitempty"`
 	StartLine        int      `json:"startLine"`
 	EndLine          int      `json:"endLine"`
 	Depth            int      `json:"depth"`
@@ -85,12 +90,14 @@ type WireNode struct {
 	Children     []WireNode `json:"children,omitempty"`
 }
 
-// ProcessResponse is the full result of one review computation.
+// ProcessResponse is the full result of one review computation. Skipped
+// lists the changed files that make no snippet (see SkippedFiles).
 type ProcessResponse struct {
 	Snippets  []WireSnippet `json:"snippets"`
 	Edges     []WireEdge    `json:"edges"`
 	Tree      WireTree      `json:"tree"`
 	FlatOrder []string      `json:"flatOrder"`
+	Skipped   []SkippedFile `json:"skipped,omitempty"`
 }
 
 // WireTree wraps the forest roots.
@@ -103,13 +110,16 @@ func Process(req ProcessRequest) ProcessResponse {
 	files := make([]*FileDiff, 0, len(req.Files))
 	for _, wf := range req.Files {
 		f := &FileDiff{
-			Path:      wf.Path,
-			OldPath:   wf.OldPath,
-			Language:  wf.Language,
-			IsNew:     wf.IsNew,
-			IsDeleted: wf.IsDeleted,
-			IsBinary:  wf.IsBinary,
-			Source:    []byte(wf.Source),
+			Path:       wf.Path,
+			OldPath:    wf.OldPath,
+			Language:   wf.Language,
+			IsNew:      wf.IsNew,
+			IsDeleted:  wf.IsDeleted,
+			IsBinary:   wf.IsBinary,
+			OldMode:    wf.OldMode,
+			NewMode:    wf.NewMode,
+			IsConflict: wf.IsConflict,
+			Source:     []byte(wf.Source),
 		}
 		for _, h := range wf.Hunks {
 			f.Hunks = append(f.Hunks, Hunk{
@@ -139,11 +149,16 @@ func Process(req ProcessRequest) ProcessResponse {
 	flat := forest.Flatten(order)
 
 	resp := ProcessResponse{}
+	plain := make([]FileDiff, len(files))
+	for i, f := range files {
+		plain[i] = *f
+	}
+	resp.Skipped = SkippedFiles(plain)
 	for _, s := range flat {
 		resp.Snippets = append(resp.Snippets, WireSnippet{
 			ID: s.ID, FilePath: s.FilePath, OldPath: s.OldPath,
 			Language: s.Language, SymbolPath: s.SymbolPath,
-			NodeType: s.NodeType, IsNew: s.IsNew,
+			NodeType: s.NodeType, IsNew: s.IsNew, IsDeleted: s.IsDeleted,
 			StartLine: s.StartLine, EndLine: s.EndLine, Depth: s.Depth,
 			DiffLines: s.DiffLines, UnchangedCallers: s.UnchangedCallers,
 			TestedBy: s.TestedBy,

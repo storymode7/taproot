@@ -84,6 +84,10 @@ type Snippet struct {
 	// #[cfg(test)] module; BuildForest treats it like a test file.
 	IsTest bool
 
+	// IsDeleted marks the one snippet of a deleted file: SymbolPath
+	// "(deleted)", NodeType "file", line numbers from the old side.
+	IsDeleted bool
+
 	// inner holds the entities within the snippet's span, its own among
 	// them: the call scanner skips their declaration lines.
 	inner []Entity
@@ -113,16 +117,41 @@ func (s SnippetStatus) String() string {
 // entity; hunks sharing an entity merge into a single Snippet.
 //
 // Files without Source (or with an unsupported language) fall back to one
-// Snippet per raw hunk with no entity grouping.
+// Snippet per raw hunk with no entity grouping. A deleted file is one
+// snippet. Files that make none are listed by SkippedFiles.
 func BuildSnippets(files []*FileDiff) []*Snippet {
 	var snippets []*Snippet
 	for _, f := range files {
-		if f.IsDeleted || f.IsBinary || len(f.Hunks) == 0 {
-			continue
+		switch {
+		case skipReason(f) != "":
+		case f.IsDeleted:
+			snippets = append(snippets, deletedSnippet(f))
+		default:
+			snippets = append(snippets, fileSnippets(f)...)
 		}
-		snippets = append(snippets, fileSnippets(f)...)
 	}
 	return snippets
+}
+
+// deletedSnippet is the one snippet of a deleted file, all its hunks. The
+// file has no post-image, so its lines are numbered from the old side.
+func deletedSnippet(f *FileDiff) *Snippet {
+	s := &Snippet{
+		ID:         snippetID(f.Path, "(deleted)", 0),
+		FilePath:   f.Path,
+		OldPath:    f.OldPath,
+		Language:   f.Language,
+		SymbolPath: "(deleted)",
+		NodeType:   "file",
+		IsDeleted:  true,
+		StartLine:  f.Hunks[0].OldStart,
+		Status:     StatusPending,
+	}
+	for _, h := range f.Hunks {
+		s.DiffLines = append(s.DiffLines, h.Lines...)
+		s.EndLine = h.OldStart + h.OldLines - 1
+	}
+	return s
 }
 
 // fileSnippets builds snippets for one changed file.
@@ -354,9 +383,9 @@ func heuristicSnippets(f *FileDiff) []*Snippet {
 	return snippets
 }
 
-// snippetID computes a stable ID for a snippet without an entity. Nameless
-// snippets (preamble, fallback hunks) have no symbol to key on and fall back
-// to the start line.
+// snippetID computes a stable ID for a snippet without an entity: a deleted
+// file's, by its symbol "(deleted)", or a nameless one (preamble, fallback
+// hunks), which has no symbol to key on and falls back to the start line.
 func snippetID(filePath, symbolPath string, startLine int) string {
 	key := fmt.Sprintf("%s::%s", filePath, symbolPath)
 	if symbolPath == "" {

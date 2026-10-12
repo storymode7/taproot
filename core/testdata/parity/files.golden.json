@@ -1,0 +1,88 @@
+{
+  "snippets": [
+    {
+      "id": "1059eaa0164e58be",
+      "filePath": "auth/legacy.go",
+      "oldPath": "auth/legacy.go",
+      "language": "go",
+      "symbolPath": "(deleted)",
+      "nodeType": "file",
+      "isNew": false,
+      "isDeleted": true,
+      "startLine": 1,
+      "endLine": 5,
+      "depth": 0,
+      "diffLines": [
+        "@@ -1,5 +0,0 @@",
+        "-package auth",
+        "-",
+        "-func LegacyCheck(token string) bool {",
+        "-\treturn token != \"\"",
+        "-}"
+      ]
+    },
+    {
+      "id": "4bc06838acfa2ccf",
+      "filePath": "util.js",
+      "oldPath": "util.js",
+      "language": "javascript",
+      "symbolPath": "b",
+      "nodeType": "function",
+      "isNew": false,
+      "startLine": 5,
+      "endLine": 7,
+      "depth": 0,
+      "diffLines": [
+        "@@ -3,1 +3,5 @@",
+        "+}",
+        "+",
+        "+function b() {",
+        "+  return a() + 1",
+        " }",
+        "\\ No newline at end of file"
+      ]
+    }
+  ],
+  "edges": null,
+  "tree": {
+    "roots": [
+      {
+        "id": "1059eaa0164e58be"
+      },
+      {
+        "id": "4bc06838acfa2ccf"
+      }
+    ]
+  },
+  "flatOrder": [
+    "1059eaa0164e58be",
+    "4bc06838acfa2ccf"
+  ],
+  "skipped": [
+    {
+      "path": "assets/logo.png",
+      "reason": "binary"
+    },
+    {
+      "path": "dist/bundle.min.js",
+      "reason": "no-diff"
+    },
+    {
+      "path": "empty.py",
+      "reason": "empty"
+    },
+    {
+      "path": "merge.py",
+      "reason": "conflict"
+    },
+    {
+      "path": "new_name.py",
+      "oldPath": "old_name.py",
+      "reason": "renamed"
+    },
+    {
+      "path": "run.sh",
+      "reason": "mode"
+    }
+  ]
+}
