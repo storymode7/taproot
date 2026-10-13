@@ -264,8 +264,8 @@ function paintDot(dot, status) {
 function label(s) {
   const base = displaySafe(s.filePath.split("/").pop());
   if (s.isDeleted) return `${base} (deleted)`;
-  if (s.symbolPath) return displaySafe(s.symbolPath);
-  return s.nodeType === "imports" ? `${base} (imports)` : base;
+  if (s.nodeType === "imports") return `imports · ${base}`;
+  return s.symbolPath ? displaySafe(s.symbolPath) : base;
 }
 
 function breadcrumbs(id, parentOf, byId) {

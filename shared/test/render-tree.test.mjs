@@ -94,3 +94,10 @@ test("the heading is not a snippet: progress, j/k and verdicts skip it", () => {
   assert.match(nav.children[0].html, /1 \/ 5 reviewed/);
 });
 
+
+test("imports rows name their file", () => {
+  const { nav, main } = render();
+  const names = nav.children[1].children.filter((li) => li.dataset.id).map((li) => li.children[0].children[2].textContent);
+  assert.deepEqual(names, ["run", "imports · b.go", "imports · d.go", "a.txt", "ci.yml"]);
+  assert.match(main.children.find((e) => cardId(e) === "imp2").children[0].html, /<strong class="astra-symbol">imports · d\.go<\/strong>/);
+});

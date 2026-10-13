@@ -154,3 +154,17 @@ func TestRunBat_SyntaxFromFileName(t *testing.T) {
 		t.Errorf("bat args = %q, want --file-name=web/App.tsx and no --language", args)
 	}
 }
+
+func TestTree_ImportsRowsNameTheirFile(t *testing.T) {
+	r := testRunner(t,
+		&core.Snippet{ID: "a", FilePath: "cmd/a.go", Language: "go", SymbolPath: "imports", NodeType: "imports", StartLine: 3},
+		&core.Snippet{ID: "b", FilePath: "lib/b.go", Language: "go", SymbolPath: "imports", NodeType: "imports", StartLine: 3},
+	)
+	var got []string
+	for _, row := range r.tree.visible {
+		got = append(got, stripANSI(r.tree.renderTreeRow(row, "pending", false, 80)))
+	}
+	if want := []string{"  · cmd/a.go (imports)", "  · lib/b.go (imports)"}; strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("rows = %q, want %q", got, want)
+	}
+}
