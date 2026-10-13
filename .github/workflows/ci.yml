@@ -24,7 +24,7 @@ jobs:
       - name: Cross-compile the CLI
         run: |
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./apps/cli/cmd/astra
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null ./apps/cli/cmd/taproot
           done
 
       - name: Build the WASM entry point

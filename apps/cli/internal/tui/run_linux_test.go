@@ -12,7 +12,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // ptyTerm is a pseudo-terminal whose terminal side is stdin and stdout for
@@ -273,10 +273,10 @@ func TestRun_OpensTheReviewedVersion(t *testing.T) {
 	}
 }
 
-// TestRun_SignalRemovesCopies: a signal ends astra through os.Exit, which
+// TestRun_SignalRemovesCopies: a signal ends taproot through os.Exit, which
 // skips Run's defers. The TUI runs in a child process that SIGTERM ends.
 func TestRun_SignalRemovesCopies(t *testing.T) {
-	if report := os.Getenv("ASTRA_TEST_SIGNAL_REPORT"); report != "" {
+	if report := os.Getenv("TAPROOT_TEST_SIGNAL_REPORT"); report != "" {
 		p := openPTY(t, 24, 80)
 		r := testRunner(t, manySnippets(1, 3)...)
 		r.RepoRoot = t.TempDir()
@@ -300,7 +300,7 @@ func TestRun_SignalRemovesCopies(t *testing.T) {
 	report := filepath.Join(tmp, "copies")
 	var out strings.Builder
 	cmd := exec.Command(os.Args[0], "-test.run=^TestRun_SignalRemovesCopies$")
-	cmd.Env = append(os.Environ(), "ASTRA_TEST_SIGNAL_REPORT="+report, "TMPDIR="+tmp)
+	cmd.Env = append(os.Environ(), "TAPROOT_TEST_SIGNAL_REPORT="+report, "TMPDIR="+tmp)
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)

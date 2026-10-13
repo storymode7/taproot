@@ -16,7 +16,7 @@ const STORE = "reviews";
 
 export class StateStore {
   /**
-   * @param {string} namespace — "astra-pwa" or "astra-ext"
+   * @param {string} namespace — "taproot-pwa" or "taproot-ext"
    */
   constructor(namespace) {
     this._ns = namespace;

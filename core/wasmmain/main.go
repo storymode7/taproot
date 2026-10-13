@@ -4,7 +4,7 @@
 //
 // Exposes one global:
 //
-//	astraCore.process(requestJSON) → responseJSON
+//	taprootCore.process(requestJSON) → responseJSON
 //
 // On error the returned JSON is {"error": "..."}. Build with:
 //
@@ -18,13 +18,13 @@ import (
 	"encoding/json"
 	"syscall/js"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 func main() {
 	process := js.FuncOf(func(this js.Value, args []js.Value) any {
 		if len(args) != 1 {
-			return errJSON("astraCore.process takes exactly one JSON string argument")
+			return errJSON("taprootCore.process takes exactly one JSON string argument")
 		}
 		out, err := core.ProcessJSON(args[0].String())
 		if err != nil {
@@ -32,8 +32,8 @@ func main() {
 		}
 		return out
 	})
-	js.Global().Set("astraCore", map[string]any{})
-	js.Global().Get("astraCore").Set("process", process)
+	js.Global().Set("taprootCore", map[string]any{})
+	js.Global().Get("taprootCore").Set("process", process)
 
 	// Keep the Go runtime alive; the page owns the module's lifetime.
 	select {}

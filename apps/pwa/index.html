@@ -4,18 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="light dark" />
-  <!-- Astra ships GitHub's own light and dark palettes; keep Dark Reader from re-tinting the diff. -->
+  <!-- Taproot ships GitHub's own light and dark palettes; keep Dark Reader from re-tinting the diff. -->
   <meta name="darkreader-lock" />
-  <title>Astra — call-tree PR reviewer</title>
+  <title>Taproot — call-tree PR reviewer</title>
   <meta name="description" content="Shows a pull request as a tree of the changed functions, callers before callees. Runs locally: no backend, no login, no telemetry. Public repos only." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><rect width='128' height='128' rx='28' fill='%230d1117'/><g stroke='%238b949e' stroke-width='4' stroke-linecap='round'><path d='M64 32 L40 64 M64 32 L88 64 M40 64 L28 98 M40 64 L52 98 M88 64 L76 98 M88 64 L100 98'/></g><circle cx='64' cy='32' r='10' fill='%233fb950'/><circle cx='40' cy='64' r='8' fill='%2358a6ff'/><circle cx='88' cy='64' r='8' fill='%2358a6ff'/><g fill='%230d1117' stroke='%2358a6ff' stroke-width='3.5'><circle cx='28' cy='98' r='6'/><circle cx='52' cy='98' r='6'/><circle cx='76' cy='98' r='6'/><circle cx='100' cy='98' r='6'/></g></svg>" />
   <link rel="stylesheet" href="lib/shared/review.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-  <header class="astra-header">
-    <span class="astra-logo">⭐ Astra</span>
-    <span class="astra-tagline">call-tree PR reviewer &mdash; no backend, no login</span>
+  <header class="taproot-header">
+    <span class="taproot-logo">🌱 Taproot</span>
+    <span class="taproot-tagline">call-tree PR reviewer &mdash; no backend, no login</span>
   </header>
 
   <main id="app">
@@ -23,8 +23,8 @@
     <section id="screen-input" class="screen active">
       <h1 id="pr-url-label">Paste a public GitHub PR URL</h1>
       <p class="note">
-        Astra only reads public PRs via GitHub&rsquo;s unauthenticated API.
-        Private repos require the <a href="https://github.com/storymode7/astra#chrome-extension">Chrome extension</a>,
+        Taproot only reads public PRs via GitHub&rsquo;s unauthenticated API.
+        Private repos require the <a href="https://github.com/storymode7/taproot#chrome-extension">Chrome extension</a>,
         which uses your existing GitHub session (no token stored).
       </p>
       <form id="pr-form" novalidate>
@@ -56,8 +56,8 @@
         <span id="ratelimit-when">The limit resets within an hour.</span>
       </p>
       <p>
-        The <a href="https://github.com/storymode7/astra#chrome-extension">Chrome extension</a>
-        uses your GitHub session instead (no token stored by Astra).
+        The <a href="https://github.com/storymode7/taproot#chrome-extension">Chrome extension</a>
+        uses your GitHub session instead (no token stored by Taproot).
       </p>
       <button id="btn-back-ratelimit">← Back</button>
     </section>

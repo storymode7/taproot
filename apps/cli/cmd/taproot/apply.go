@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // fragment is one @@-headed run of a snippet's diff lines: the old lines

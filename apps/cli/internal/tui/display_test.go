@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // reSGR matches the colour escapes the highlighters emit themselves.

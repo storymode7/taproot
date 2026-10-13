@@ -3,7 +3,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-:root { --astra-sticky-top: 49px; }
+:root { --taproot-sticky-top: 49px; }
 
 body {
   margin: 0; min-height: 100vh;
@@ -12,15 +12,15 @@ body {
 }
 
 /* ---------- Header ---------- */
-.astra-header {
+.taproot-header {
   display: flex; align-items: center; gap: 12px;
-  height: var(--astra-sticky-top); padding: 0 16px;
+  height: var(--taproot-sticky-top); padding: 0 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 10;
 }
-.astra-logo { font-weight: 600; font-size: 15px; }
-.astra-tagline { color: var(--text-dim); font-size: 12px; }
+.taproot-logo { font-weight: 600; font-size: 15px; }
+.taproot-tagline { color: var(--text-dim); font-size: 12px; }
 
 /* ---------- Screens ---------- */
 .screen { display: none; padding: 24px 16px; max-width: 760px; margin: 0 auto; }

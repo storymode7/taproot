@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // stageFixture is a repository change: each file's committed and working
@@ -268,7 +268,7 @@ func indexText(r *testRepo, path string) string {
 // each fixture in every order, then x in the same order. After each key
 // the index holds exactly the base text plus the fragments of the
 // snippets accepted so far; accepting all gives the working tree, and
-// rejecting all gives back the index astra started from.
+// rejecting all gives back the index taproot started from.
 func TestStage_EveryOrderGivesBasePlusAccepted(t *testing.T) {
 	for _, fx := range stageFixtures {
 		t.Run(fx.name, func(t *testing.T) {
@@ -531,11 +531,11 @@ func snippetNamed(t *testing.T, d *loaded, symbol string) *core.Snippet {
 	return nil
 }
 
-// TestStage_SeesChangesOutsideAstra: whatever changes the diff on screen
-// outside astra is reported before y, x or r stage anything: an editor,
-// git stash, checkout, add or commit in another shell, or a second astra.
-// astra's own writes are not.
-func TestStage_SeesChangesOutsideAstra(t *testing.T) {
+// TestStage_SeesChangesOutsideTaproot: whatever changes the diff on screen
+// outside taproot is reported before y, x or r stage anything: an editor,
+// git stash, checkout, add or commit in another shell, or a second taproot.
+// taproot's own writes are not.
+func TestStage_SeesChangesOutsideTaproot(t *testing.T) {
 	for _, c := range []struct {
 		name  string
 		act   func(r *testRepo)
@@ -568,7 +568,7 @@ func TestStage_SeesChangesOutsideAstra(t *testing.T) {
 }
 
 // TestStage_RefusesAnIndexItDidNotWrite proves the guard: when a file's
-// index entry is not the one astra found or last wrote, y and x change
+// index entry is not the one taproot found or last wrote, y and x change
 // nothing and say to restart.
 func TestStage_RefusesAnIndexItDidNotWrite(t *testing.T) {
 	for _, act := range [][]string{{"add", "a.go"}, {"stash", "-q"}, {"reset", "-q"}} {
@@ -586,7 +586,7 @@ func TestStage_RefusesAnIndexItDidNotWrite(t *testing.T) {
 				accept bool
 			}{{beta, true}, {alpha, false}} {
 				err := d.stager.stage(k.s, k.accept)
-				if err == nil || err.Error() != "a.go changed in the index outside astra; restart astra to review it again" {
+				if err == nil || err.Error() != "a.go changed in the index outside taproot; restart taproot to review it again" {
 					t.Errorf("%s %q: err = %v, want a refusal that says to restart", map[bool]string{true: "y", false: "x"}[k.accept], k.s.SymbolPath, err)
 				}
 				if after := r.git("ls-files", "-s"); after != before {
@@ -597,7 +597,7 @@ func TestStage_RefusesAnIndexItDidNotWrite(t *testing.T) {
 	}
 }
 
-// TestStage_TwoSessions: a second astra on the same working tree sees the
+// TestStage_TwoSessions: a second taproot on the same working tree sees the
 // first one's y as a change outside it and stages nothing over it.
 func TestStage_TwoSessions(t *testing.T) {
 	r := staleRepo(t)

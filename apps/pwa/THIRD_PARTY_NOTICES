@@ -1,6 +1,6 @@
 Third-party notices
 
-Astra includes the third-party software below. Each entry says where it
+Taproot includes the third-party software below. Each entry says where it
 ships and gives its license.
 
 ------------------------------------------------------------------------
@@ -8,9 +8,9 @@ ships and gives its license.
 Go
 https://go.dev/
 
-The astra CLI binaries and astra-core.wasm contain the Go runtime and
+The taproot CLI binaries and taproot-core.wasm contain the Go runtime and
 standard library. wasm_exec.js is copied from the Go distribution. The
-browser extension and the web app ship astra-core.wasm and wasm_exec.js.
+browser extension and the web app ship taproot-core.wasm and wasm_exec.js.
 
 Copyright 2009 The Go Authors.
 

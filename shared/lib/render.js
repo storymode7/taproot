@@ -20,7 +20,7 @@ const STATUS_LABEL = {
 };
 
 const OTHER_FILES = "Other files";
-const OTHER_FILES_NOTE = "Plain hunks, no call info. Astra reads Go, JavaScript, TypeScript, Python, Java and Rust.";
+const OTHER_FILES_NOTE = "Plain hunks, no call info. Taproot reads Go, JavaScript, TypeScript, Python, Java and Rust.";
 
 const SKIP_REASON = {
   binary: "binary", renamed: "renamed", mode: "mode change", empty: "empty file",
@@ -41,8 +41,8 @@ const SKIP_REASON = {
  */
 export function renderReview(container, review, store, opts = {}) {
   container.innerHTML = "";
-  container.classList.add("astra-review");
-  if (container._astraKeys) document.removeEventListener("keydown", container._astraKeys);
+  container.classList.add("taproot-review");
+  if (container._taprootKeys) document.removeEventListener("keydown", container._taprootKeys);
 
   const snippets = review.snippets ?? [];
   const byId = new Map(snippets.map((s) => [s.id, s]));
@@ -62,16 +62,16 @@ export function renderReview(container, review, store, opts = {}) {
     }
   })(roots, null);
 
-  const nav = el("nav", "astra-tree");
-  const progress = el("div", "astra-progress");
+  const nav = el("nav", "taproot-tree");
+  const progress = el("div", "taproot-progress");
   progress.setAttribute("role", "status");
   nav.appendChild(progress);
   nav.appendChild(renderTree(roots, byId, store, focusSnippet));
 
-  const main = el("div", "astra-files");
-  if (opts.notice) main.appendChild(el("div", "astra-banner", opts.notice));
+  const main = el("div", "taproot-files");
+  if (opts.notice) main.appendChild(el("div", "taproot-banner", opts.notice));
   if (review.missingSource?.length) {
-    const warn = el("div", "astra-banner");
+    const warn = el("div", "taproot-banner");
     warn.textContent =
       `Couldn't load the full source of ${review.missingSource.length} file(s), ` +
       `so they show as plain hunks without call structure: ${review.missingSource.map(displaySafe).join(", ")}`;
@@ -80,10 +80,10 @@ export function renderReview(container, review, store, opts = {}) {
   if (review.skipped?.length) {
     const names = review.skipped.map((f) =>
       `${f.oldPath ? `${displaySafe(f.oldPath)} → ` : ""}${displaySafe(f.path)} (${SKIP_REASON[f.reason] ?? f.reason})`);
-    main.appendChild(el("div", "astra-banner", `Not shown here, review on GitHub: ${names.join(", ")}`));
+    main.appendChild(el("div", "taproot-banner", `Not shown here, review on GitHub: ${names.join(", ")}`));
   }
   if (!order.length) {
-    main.appendChild(el("p", "astra-empty", review.skipped?.length
+    main.appendChild(el("p", "taproot-empty", review.skipped?.length
       ? "No snippets to review: the changed files listed above have no diff to show here."
       : "No snippets to review."));
   }
@@ -119,8 +119,8 @@ export function renderReview(container, review, store, opts = {}) {
     card.classList.remove("status-pending", "status-accepted", "status-rejected", "status-reviewed");
     card.classList.add(`status-${status}`);
     card.classList.toggle("folded", status !== "pending");
-    card.querySelector(".astra-status").textContent = STATUS_LABEL[status];
-    nav.querySelectorAll(`[data-id="${snippet.id}"] > .astra-tree-row:not(.ref) .astra-dot`)
+    card.querySelector(".taproot-status").textContent = STATUS_LABEL[status];
+    nav.querySelectorAll(`[data-id="${snippet.id}"] > .taproot-tree-row:not(.ref) .taproot-dot`)
       .forEach((d) => paintDot(d, status));
     updateProgress();
   }
@@ -134,7 +134,7 @@ export function renderReview(container, review, store, opts = {}) {
     const pct = Math.round((done * 100) / order.length);
     progress.innerHTML =
       `<span>${done} / ${order.length} reviewed</span>` +
-      `<span class="astra-bar"><span style="width:${pct}%"></span></span>`;
+      `<span class="taproot-bar"><span style="width:${pct}%"></span></span>`;
   }
 
   function nextPending(fromId) {
@@ -151,11 +151,11 @@ export function renderReview(container, review, store, opts = {}) {
     const card = cards.get(id);
     if (!card) return;
     cards.get(current)?.classList.remove("current");
-    nav.querySelector(".astra-tree-row.current")?.classList.remove("current");
+    nav.querySelector(".taproot-tree-row.current")?.classList.remove("current");
     current = id;
     card.classList.add("current");
     card.classList.remove("folded");
-    const row = nav.querySelector(`[data-id="${id}"] > .astra-tree-row`);
+    const row = nav.querySelector(`[data-id="${id}"] > .taproot-tree-row`);
     if (row) {
       row.classList.add("current");
       keepInView(nav, row);
@@ -164,7 +164,7 @@ export function renderReview(container, review, store, opts = {}) {
   }
   if (current) {
     cards.get(current).classList.add("current");
-    nav.querySelector(`[data-id="${current}"] > .astra-tree-row`)?.classList.add("current");
+    nav.querySelector(`[data-id="${current}"] > .taproot-tree-row`)?.classList.add("current");
   }
 
   const keys = (e) => {
@@ -185,7 +185,7 @@ export function renderReview(container, review, store, opts = {}) {
     }
     e.preventDefault();
   };
-  container._astraKeys = keys;
+  container._taprootKeys = keys;
   document.addEventListener("keydown", keys);
 }
 
@@ -204,20 +204,20 @@ function renderTree(nodes, byId, store, onPick) {
     }
     const li = el("li");
     li.dataset.id = n.id;
-    const row = el("div", "astra-tree-row");
+    const row = el("div", "taproot-tree-row");
     const kids = n.ref ? [] : (n.children ?? []);
-    const twisty = kids.length ? el("button", "astra-twisty", "▾") : el("span", "astra-twisty");
+    const twisty = kids.length ? el("button", "taproot-twisty", "▾") : el("span", "taproot-twisty");
     if (kids.length) {
       twisty.type = "button";
       twisty.setAttribute("aria-label", `Callees of ${label(s)}`);
       twisty.setAttribute("aria-expanded", "true");
     }
-    const dot = el("span", "astra-dot status-ref");
+    const dot = el("span", "taproot-dot status-ref");
     if (!n.ref) {
       dot.setAttribute("role", "img");
       paintDot(dot, store.get(n.id).status);
     }
-    const name = el("button", "astra-tree-name", label(s));
+    const name = el("button", "taproot-tree-name", label(s));
     name.type = "button";
     name.title = displaySafe(`${s.filePath}${s.symbolPath ? " :: " + s.symbolPath : ""}`);
     row.append(twisty, dot, name);
@@ -251,13 +251,13 @@ function isOtherLanguage(s) {
 }
 
 function otherFilesHeading(tag) {
-  const heading = el(tag, "astra-group");
+  const heading = el(tag, "taproot-group");
   heading.append(el("strong", undefined, OTHER_FILES), el("span", undefined, OTHER_FILES_NOTE));
   return heading;
 }
 
 function paintDot(dot, status) {
-  dot.className = `astra-dot status-${status}`;
+  dot.className = `taproot-dot status-${status}`;
   dot.title = STATUS_LABEL[status];
   dot.setAttribute("aria-label", STATUS_LABEL[status]);
 }
@@ -280,22 +280,22 @@ function breadcrumbs(id, parentOf, byId) {
 // ---------------------------------------------------------------------------
 function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
   const state = store.get(snippet.id);
-  const card = el("article", `astra-card status-${state.status}`);
-  card.id = `astra-${snippet.id}`;
+  const card = el("article", `taproot-card status-${state.status}`);
+  card.id = `taproot-${snippet.id}`;
   if (state.status !== "pending") card.classList.add("folded");
 
   const { adds, dels } = countChanges(snippet.diffLines);
-  const head = el("header", "astra-card-head");
+  const head = el("header", "taproot-card-head");
   head.innerHTML = `
-    <button class="astra-fold" title="Fold (z)" tabindex="-1">▾</button>
-    <div class="astra-title">
-      ${crumbs.length ? `<span class="astra-crumbs">${crumbs.map(esc).join(" › ")} ›</span>` : ""}
-      <strong class="astra-symbol">${esc(label(snippet))}</strong>
-      <span class="astra-path">${esc(displaySafe(snippet.filePath))}</span>
+    <button class="taproot-fold" title="Fold (z)" tabindex="-1">▾</button>
+    <div class="taproot-title">
+      ${crumbs.length ? `<span class="taproot-crumbs">${crumbs.map(esc).join(" › ")} ›</span>` : ""}
+      <strong class="taproot-symbol">${esc(label(snippet))}</strong>
+      <span class="taproot-path">${esc(displaySafe(snippet.filePath))}</span>
     </div>
-    <span class="astra-stat"><span class="add">+${adds}</span> <span class="del">−${dels}</span></span>
-    <span class="astra-status">${STATUS_LABEL[state.status]}</span>
-    <div class="astra-actions">
+    <span class="taproot-stat"><span class="add">+${adds}</span> <span class="del">−${dels}</span></span>
+    <span class="taproot-status">${STATUS_LABEL[state.status]}</span>
+    <div class="taproot-actions">
       <button data-status="accepted" title="Accept (y)">Accept</button>
       <button data-status="rejected" title="Reject (x)">Reject</button>
       <button data-status="reviewed" title="Mark reviewed (r)">Reviewed</button>
@@ -309,7 +309,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
   if (snippet.unchangedCallers?.length) notes.push(["Called by unchanged", snippet.unchangedCallers]);
   if (snippet.testedBy?.length) notes.push(["Tested by", snippet.testedBy]);
   if (notes.length) {
-    const box = el("div", "astra-notes");
+    const box = el("div", "taproot-notes");
     box.innerHTML = notes.map(([k, names]) => {
       const v = names.map(displaySafe);
       const shown = v.slice(0, 4).map((x) => `<code>${esc(x)}</code>`).join(", ");
@@ -319,18 +319,18 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
     card.appendChild(box);
   }
 
-  const body = el("div", "astra-card-body");
+  const body = el("div", "taproot-card-body");
   body.appendChild(diffTable(snippet, opts.highlight));
   card.appendChild(body);
 
-  const comment = el("div", "astra-comment");
-  const saved = el("div", "astra-comment-saved");
-  const form = el("form", "astra-comment-form");
+  const comment = el("div", "taproot-comment");
+  const saved = el("div", "taproot-comment-saved");
+  const form = el("form", "taproot-comment-form");
   form.hidden = true;
   form.innerHTML = `
     <textarea rows="3" placeholder="Leave a comment on this snippet"></textarea>
-    <div class="astra-comment-bar">
-      <span class="astra-hint">${esc(opts.commentHint ?? "")}</span>
+    <div class="taproot-comment-bar">
+      <span class="taproot-hint">${esc(opts.commentHint ?? "")}</span>
       <button type="button" data-cancel>Cancel</button>
       <button type="submit" class="primary">Save comment</button>
     </div>`;
@@ -377,7 +377,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
       onJudge(now === btn.dataset.status ? "pending" : btn.dataset.status);
     } else if (btn?.hasAttribute("data-comment")) {
       card._comment();
-    } else if (btn || (!e.target.closest(".astra-actions, .astra-crumbs, .astra-symbol, .astra-path") && getSelection().isCollapsed)) {
+    } else if (btn || (!e.target.closest(".taproot-actions, .taproot-crumbs, .taproot-symbol, .taproot-path") && getSelection().isCollapsed)) {
       // The chevron or empty header space folds; the names stay selectable.
       card.classList.toggle("folded");
     }
@@ -397,7 +397,7 @@ function countChanges(lines) {
 
 /** GitHub-style unified diff table: old no. | new no. | marker + code. */
 function diffTable(snippet, highlight) {
-  const table = el("table", "astra-diff");
+  const table = el("table", "taproot-diff");
   const rows = [];
   let oldN = 0, newN = 0;
   for (const line of snippet.diffLines.map(displaySafe)) {

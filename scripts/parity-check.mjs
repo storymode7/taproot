@@ -1,6 +1,6 @@
 // Dev-only Go↔WASM parity check (run: make parity). Not a runtime dependency.
 //
-// Loads the vendored astra-core.wasm under node, feeds it every request
+// Loads the vendored taproot-core.wasm under node, feeds it every request
 // fixture in core/testdata/parity/, and byte-compares the responses against
 // the golden files that `go test ./core -run Parity` asserts natively.
 // Identical output here proves the browser surfaces get exactly what the
@@ -17,15 +17,15 @@ new Function(wasmExecSource)();
 
 const go = new Go();
 const { instance } = await WebAssembly.instantiate(
-  readFileSync(join(root, "vendor/core/astra-core.wasm")),
+  readFileSync(join(root, "vendor/core/taproot-core.wasm")),
   go.importObject,
 );
-go.run(instance); // resolves only on exit; astraCore is installed synchronously at startup
+go.run(instance); // resolves only on exit; taprootCore is installed synchronously at startup
 
 // Give the Go runtime a tick to install the global.
 await new Promise((r) => setTimeout(r, 50));
-if (typeof globalThis.astraCore?.process !== "function") {
-  console.error("FAIL: astraCore.process not installed by the WASM module");
+if (typeof globalThis.taprootCore?.process !== "function") {
+  console.error("FAIL: taprootCore.process not installed by the WASM module");
   process.exit(1);
 }
 
@@ -37,7 +37,7 @@ for (const name of readdirSync(dir)) {
   const golden = JSON.parse(
     readFileSync(join(dir, name.replace(/\.json$/, ".golden.json")), "utf8"),
   );
-  const got = JSON.parse(globalThis.astraCore.process(req));
+  const got = JSON.parse(globalThis.taprootCore.process(req));
   const gotCanon = JSON.stringify(got);
   const wantCanon = JSON.stringify(golden);
   if (gotCanon === wantCanon) {

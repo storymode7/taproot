@@ -42,8 +42,8 @@ Requests and limits:
 ## 1. Get the files
 
 ```sh
-git clone https://github.com/storymode7/astra
-cd astra
+git clone https://github.com/storymode7/taproot
+cd taproot
 ```
 
 ## 2. Check the vendored engine
@@ -59,7 +59,7 @@ checksums.txt`. The sync check confirms that `apps/pwa/` holds the same
 engine, shared code and license files as `vendor/core/`, `shared/lib/`
 and the repository root.
 
-The committed `astra-core.wasm` is built from `core/` by `make core-wasm`.
+The committed `taproot-core.wasm` is built from `core/` by `make core-wasm`.
 To run your own build instead, run these commands (`make core-wasm` needs
 Go and `sha256sum`):
 

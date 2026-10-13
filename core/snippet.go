@@ -1,4 +1,4 @@
-// Package core is Astra's pure diff-review engine: snippets, entities, call
+// Package core is Taproot's pure diff-review engine: snippets, entities, call
 // edges, and the review forest. It does no I/O — adapters on each surface
 // (CLI git, extension, PWA) feed it FileDiffs with post-image Source and it
 // returns structure. That purity is what lets one implementation serve the

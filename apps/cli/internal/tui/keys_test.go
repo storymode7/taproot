@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // keysOf returns the keys readKey reports for input.

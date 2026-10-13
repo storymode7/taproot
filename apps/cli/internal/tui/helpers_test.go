@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/apps/cli/internal/state"
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/apps/cli/internal/state"
+	"github.com/storymode7/taproot/core"
 )
 
 // testRunner builds a Runner over snippets, each its own root, with its

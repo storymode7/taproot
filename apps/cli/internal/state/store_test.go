@@ -109,12 +109,12 @@ func TestStore_OneFilePerGitDir(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	files, err := os.ReadDir(filepath.Join(dir, "astra"))
+	files, err := os.ReadDir(filepath.Join(dir, "taproot"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 1 || files[0].Name() != "verdicts.json" {
-		t.Errorf("<gitDir>/astra holds %v, want only verdicts.json", files)
+		t.Errorf("<gitDir>/taproot holds %v, want only verdicts.json", files)
 	}
 }
 
@@ -143,8 +143,8 @@ func TestStore_OpenWithoutSetWritesNothing(t *testing.T) {
 	s, _ := Open(dir)
 	s.Get("id1")
 	s.Reset("id1")
-	if _, err := os.Stat(filepath.Join(dir, "astra")); !os.IsNotExist(err) {
-		t.Errorf("viewing without marking created %s", filepath.Join(dir, "astra"))
+	if _, err := os.Stat(filepath.Join(dir, "taproot")); !os.IsNotExist(err) {
+		t.Errorf("viewing without marking created %s", filepath.Join(dir, "taproot"))
 	}
 }
 
@@ -185,9 +185,9 @@ func TestStore_TwoSessionsKeepEachOthersVerdicts(t *testing.T) {
 			t.Errorf("%s = %q on disk, want %q", k, got, want)
 		}
 	}
-	files, _ := os.ReadDir(filepath.Join(dir, "astra"))
+	files, _ := os.ReadDir(filepath.Join(dir, "taproot"))
 	if len(files) != 1 {
-		t.Errorf("<gitDir>/astra holds %v, want only verdicts.json", files)
+		t.Errorf("<gitDir>/taproot holds %v, want only verdicts.json", files)
 	}
 }
 
@@ -195,7 +195,7 @@ func TestStore_TwoSessionsKeepEachOthersVerdicts(t *testing.T) {
 // memory, says why, and leaves the file as it was.
 func TestStore_UnreadableFileKeepsVerdictsInMemory(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "astra", "verdicts.json")
+	path := filepath.Join(dir, "taproot", "verdicts.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}

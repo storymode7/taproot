@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 func TestEditorPath(t *testing.T) {

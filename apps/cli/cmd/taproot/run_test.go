@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// runIn runs astra in dir with args and returns what it printed to stdout
+// runIn runs taproot in dir with args and returns what it printed to stdout
 // and stderr.
 func runIn(t *testing.T, dir string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
@@ -139,12 +139,12 @@ func TestRun_RejectsArgumentsItDoesNotKnow(t *testing.T) {
 		_, _, err := runIn(t, dir, args...)
 		var ue usageError
 		if !errors.As(err, &ue) {
-			t.Errorf("astra %q: err = %v, want a usage error", args, err)
+			t.Errorf("taproot %q: err = %v, want a usage error", args, err)
 		}
 	}
 	_, _, err := runIn(t, dir, "diff", "main")
 	if err == nil || !strings.Contains(err.Error(), `"main"`) || !strings.Contains(err.Error(), "--base") || !strings.Contains(err.Error(), "--ref") {
-		t.Errorf("astra diff main: %v, want a hint naming --base and --ref", err)
+		t.Errorf("taproot diff main: %v, want a hint naming --base and --ref", err)
 	}
 }
 
@@ -173,7 +173,7 @@ func TestRun_OrderPicksTheReadingOrder(t *testing.T) {
 	} {
 		out, _, err := runIn(t, r.dir, append([]string{"diff", "--no-tty"}, c.args...)...)
 		if got := strings.Join(symbols(out), " "); err != nil || got != c.want {
-			t.Errorf("astra diff %v: order %q, %v; want %q", c.args, got, err, c.want)
+			t.Errorf("taproot diff %v: order %q, %v; want %q", c.args, got, err, c.want)
 		}
 	}
 }
@@ -183,13 +183,13 @@ func TestRun_HelpAndVersionNeedNoRepository(t *testing.T) {
 	for _, args := range [][]string{{"--help"}, {"-h"}, {"diff", "--help"}, {"diff", "--staged", "--help"}} {
 		out, _, err := runIn(t, dir, args...)
 		if err != nil || out != usage {
-			t.Errorf("astra %q printed %q, %v; want the usage", args, out, err)
+			t.Errorf("taproot %q printed %q, %v; want the usage", args, out, err)
 		}
 	}
 	for _, args := range [][]string{{"--version"}, {"-V"}, {"version"}} {
 		out, _, err := runIn(t, dir, args...)
-		if err != nil || out != "astra "+buildVersion()+"\n" {
-			t.Errorf("astra %q printed %q, %v; want the version", args, out, err)
+		if err != nil || out != "taproot "+buildVersion()+"\n" {
+			t.Errorf("taproot %q printed %q, %v; want the version", args, out, err)
 		}
 	}
 }
@@ -211,8 +211,8 @@ func TestRun_FlagValueAfterEquals(t *testing.T) {
 		t.Errorf("--base=main printed %q, %v; want what --base main prints, %q", joined, err, spaced)
 	}
 	help, _, err := runIn(t, r.dir, "help")
-	if err != nil || !strings.HasPrefix(help, "astra — ") {
-		t.Errorf("astra help printed %q, %v; want the usage", help, err)
+	if err != nil || !strings.HasPrefix(help, "taproot — ") {
+		t.Errorf("taproot help printed %q, %v; want the usage", help, err)
 	}
 }
 
@@ -226,7 +226,7 @@ func TestRun_GitErrorsNameTheProblem(t *testing.T) {
 		{[]string{"diff", "--ref", "HEAD"}, "--ref HEAD: no such branch, tag or commit; this branch has no commits yet"},
 	} {
 		if _, _, err := runIn(t, r.dir, c.args...); err == nil || err.Error() != c.want {
-			t.Errorf("astra %q in a repository with no commits: %v, want %q", c.args, err, c.want)
+			t.Errorf("taproot %q in a repository with no commits: %v, want %q", c.args, err, c.want)
 		}
 	}
 
@@ -243,7 +243,7 @@ func TestRun_GitErrorsNameTheProblem(t *testing.T) {
 		{[]string{"diff", "--ref", "nope"}, "--ref nope: no such branch, tag or commit"},
 	} {
 		if _, _, err := runIn(t, r.dir, c.args...); err == nil || err.Error() != c.want {
-			t.Errorf("astra %q: %v, want %q", c.args, err, c.want)
+			t.Errorf("taproot %q: %v, want %q", c.args, err, c.want)
 		}
 	}
 	if _, stderr, err := runIn(t, r.dir, "diff", "--ref", "main", "--no-tty"); err != nil {
@@ -264,7 +264,7 @@ func TestRun_NoChangesSaysWhatIsLeftOut(t *testing.T) {
 		t.Helper()
 		out, errOut, err := runIn(t, r.dir, args...)
 		if err != nil || out != "" || errOut != want {
-			t.Errorf("astra %q: stdout %q, stderr %q, %v; want only stderr %q", args, out, errOut, err, want)
+			t.Errorf("taproot %q: stdout %q, stderr %q, %v; want only stderr %q", args, out, errOut, err, want)
 		}
 	}
 	check("No changes found.\n", "diff", "--no-tty")
@@ -273,8 +273,8 @@ func TestRun_NoChangesSaysWhatIsLeftOut(t *testing.T) {
 	r.git("add", "a.py")
 	r.write("new.py", "x = 1\n")
 	check("No changes found.\n"+
-		"Staged changes are not shown: astra diff --staged reviews them.\n"+
-		"Untracked files are not reviewed: git add them, then run astra diff --staged.\n", "diff", "--no-tty")
+		"Staged changes are not shown: taproot diff --staged reviews them.\n"+
+		"Untracked files are not reviewed: git add them, then run taproot diff --staged.\n", "diff", "--no-tty")
 
 	r.git("commit", "-qm", "a")
 	check("No changes found.\n", "diff", "--staged", "--no-tty")

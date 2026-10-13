@@ -1,6 +1,6 @@
 // Package state manages review state persistence for the CLI.
 //
-// A repository's verdicts live in one file, .git/astra/verdicts.json, each
+// A repository's verdicts live in one file, .git/taproot/verdicts.json, each
 // keyed by a snippet and its exact change (Key). So a verdict follows the
 // change, not the commit: it survives commit, amend and rebase, every
 // review mode sees it, and it resets when the change itself changes. The
@@ -59,7 +59,7 @@ type Store struct {
 // file cannot be read, the error says so and verdicts stay in memory.
 func Open(gitDir string) (*Store, error) {
 	s := &Store{
-		path:     filepath.Join(gitDir, "astra", "verdicts.json"),
+		path:     filepath.Join(gitDir, "taproot", "verdicts.json"),
 		verdicts: make(map[string]*SnippetState),
 	}
 	saved, err := s.read()
@@ -83,7 +83,7 @@ func (s *Store) Get(key string) *SnippetState {
 }
 
 // Set records a verdict and saves it. The file is read again and only this
-// key changes, so another astra on the same repository keeps its verdicts.
+// key changes, so another taproot on the same repository keeps its verdicts.
 func (s *Store) Set(key, status, comment string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

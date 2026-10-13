@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/apps/cli/internal/state"
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/apps/cli/internal/state"
+	"github.com/storymode7/taproot/core"
 )
 
 // manySnippets returns n function snippets with a diff of size added lines.
@@ -49,7 +49,7 @@ func TestRender_FrameFitsTerminal(t *testing.T) {
 			r.cursor, r.diffScroll = cursor, 0
 			lines := frame(t, r, rows, cols)
 			assertFits(t, lines, rows, cols)
-			if !strings.Contains(lines[0], "Astra") {
+			if !strings.Contains(lines[0], "Taproot") {
 				t.Errorf("%dx%d: first row is not the header: %q", rows, cols, stripANSI(lines[0]))
 			}
 			if cols >= 60 && !strings.Contains(lines[0], "[staging]") {
@@ -170,7 +170,7 @@ func TestRenderHelp_FitsTerminal(t *testing.T) {
 		help := strings.TrimPrefix(out[:strings.Index(out, "\033[?25l")], "\033[2J\033[H")
 		lines := strings.Split(help, "\n")
 		assertFits(t, lines, rows, cols)
-		if !strings.Contains(lines[0], "keyboard shortcuts") && !strings.Contains(lines[0], "Astra") {
+		if !strings.Contains(lines[0], "keyboard shortcuts") && !strings.Contains(lines[0], "Taproot") {
 			t.Errorf("%dx%d: first help row = %q, want the title", rows, cols, stripANSI(lines[0]))
 		}
 		if rows >= 24 && (!strings.Contains(help, "Move down the tree") || !strings.Contains(help, "Reject snippet") || !strings.Contains(help, "Quit")) {

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Astra — call-tree PR reviewer",
+  "name": "Taproot — call-tree PR reviewer",
   "version": "0.1.0",
   "description": "Shows a pull request as a tree of the changed functions, callers before callees. Runs locally: no backend, no login, no telemetry.",
 

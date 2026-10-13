@@ -1,8 +1,8 @@
-// astra — call-tree PR reviewer CLI
+// taproot — call-tree PR reviewer CLI
 //
 // Usage:
 //
-//	astra diff [--base <ref> [--head <ref>] | --ref <ref> | --staged] [--order callers-first|callees-first]
+//	taproot diff [--base <ref> [--head <ref>] | --ref <ref> | --staged] [--order callers-first|callees-first]
 //
 // Reads the git diff in the current repository, shows it as a tree of the
 // changed functions, callers before callees, and presents an interactive
@@ -17,18 +17,18 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/storymode7/astra/apps/cli/internal/diff"
-	"github.com/storymode7/astra/apps/cli/internal/state"
-	"github.com/storymode7/astra/apps/cli/internal/tui"
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/apps/cli/internal/diff"
+	"github.com/storymode7/taproot/apps/cli/internal/state"
+	"github.com/storymode7/taproot/apps/cli/internal/tui"
+	"github.com/storymode7/taproot/core"
 )
 
-const usage = `astra — call-tree PR reviewer
+const usage = `taproot — call-tree PR reviewer
 
 USAGE
-  astra diff [options]
+  taproot diff [options]
 
-  With no options, astra reviews your unstaged changes, as git diff
+  With no options, taproot reviews your unstaged changes, as git diff
   shows them: staged changes and untracked files are left out.
 
 OPTIONS
@@ -60,7 +60,7 @@ OPTIONS
                        text when piped or when NO_COLOR is set)
   --no-delta           Skip delta; use bat or built-in highlighting instead.
                        Delta is used automatically when installed.
-  --no-delta-config    Ignore ~/.gitconfig delta settings and use Astra's
+  --no-delta-config    Ignore ~/.gitconfig delta settings and use Taproot's
                        GitHub-style theme (the default unless your gitconfig
                        sets delta's look).
   -h, --help           Show this help
@@ -69,8 +69,8 @@ OPTIONS
   A value can also follow "=", as in --base=main.
 
 ENVIRONMENT
-  ASTRA_THEME          dark | light  (default: from COLORFGBG, else dark)
-  ASTRA_DELTA_THEME    Syntax theme for delta, e.g. "OneHalfDark", in Astra's
+  TAPROOT_THEME        dark | light  (default: from COLORFGBG, else dark)
+  TAPROOT_DELTA_THEME  Syntax theme for delta, e.g. "OneHalfDark", in Taproot's
                        own style: ignored when your gitconfig sets delta's
                        look, unless you pass --no-delta-config
   VISUAL / EDITOR      Editor for the o key (default: vi)
@@ -91,11 +91,11 @@ KEYBOARD SHORTCUTS (interactive mode)
   In the default review (no --staged, --ref or --base), y also stages
   the snippet, like git add -p, and x or r on an accepted snippet
   unstages it. --no-apply records verdicts only. When the index, HEAD or
-  a file changed outside astra (or through o), the next y, x or r reloads
+  a file changed outside taproot (or through o), the next y, x or r reloads
   the diff instead of staging what is no longer there.
 
 STATE
-  Verdicts are saved in .git/astra/verdicts.json, each keyed by the
+  Verdicts are saved in .git/taproot/verdicts.json, each keyed by the
   snippet and its exact change; a snippet whose change is edited is
   pending again. A snippet with a name (a function, type or the
   imports) is keyed by it: its verdict survives commit, amend and
@@ -122,7 +122,7 @@ func buildVersion() string {
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "astra: %v\n", err)
+		fmt.Fprintf(os.Stderr, "taproot: %v\n", err)
 		if errors.As(err, new(usageError)) {
 			os.Exit(2)
 		}
@@ -130,7 +130,7 @@ func main() {
 	}
 }
 
-// usageError is a mistake on the command line; astra exits 2 for it.
+// usageError is a mistake on the command line; taproot exits 2 for it.
 type usageError string
 
 func (e usageError) Error() string { return string(e) }
@@ -199,7 +199,7 @@ func run(args []string) error {
 			}
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return usagef("unknown flag: %s (see astra --help)", arg)
+				return usagef("unknown flag: %s (see taproot --help)", arg)
 			}
 			return usagef("unexpected argument %q; to review a branch or commit, use\n"+
 				"  --base <ref>   its changes since it forked, as a PR shows them\n"+
@@ -225,7 +225,7 @@ func run(args []string) error {
 		return nil
 	}
 	if showVersion {
-		fmt.Println("astra", buildVersion())
+		fmt.Println("taproot", buildVersion())
 		return nil
 	}
 	tui.DetectHighlighter()
@@ -253,7 +253,7 @@ func run(args []string) error {
 	var notice string
 	if err != nil {
 		notice = err.Error()
-		fmt.Fprintln(os.Stderr, "astra: "+notice)
+		fmt.Fprintln(os.Stderr, "taproot: "+notice)
 	}
 
 	rv := &review{adapter: adapter, store: store, applyMode: applyMode}
@@ -384,10 +384,10 @@ func emptyDiffHint(a *diff.GitDiffAdapter) string {
 	}
 	var hint string
 	if out, err := a.RunGit("diff", "--cached", "--name-only", "-z"); err == nil && out != "" {
-		hint += "\nStaged changes are not shown: astra diff --staged reviews them."
+		hint += "\nStaged changes are not shown: taproot diff --staged reviews them."
 	}
 	if out, err := a.RunGit("ls-files", "--others", "--exclude-standard", "--directory", "--no-empty-directory", "-z"); err == nil && out != "" {
-		hint += "\nUntracked files are not reviewed: git add them, then run astra diff --staged."
+		hint += "\nUntracked files are not reviewed: git add them, then run taproot diff --staged."
 	}
 	return hint
 }

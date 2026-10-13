@@ -1,16 +1,16 @@
 # Build outputs
 /dist/
-/astra
-apps/cli/astra
-apps/cli/astra.exe
-/apps/cli/cmd/astra/astra
+/taproot
+apps/cli/taproot
+apps/cli/taproot.exe
+/apps/cli/cmd/taproot/taproot
 
 # Go
 *.test
 *.out
 
 # Review state (per-repo, not committed)
-.git/astra/
+.git/taproot/
 
 # OS
 .DS_Store

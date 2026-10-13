@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { detectLanguage, initAstra } from "../lib/astra.js";
+import { detectLanguage, initTaproot } from "../lib/taproot.js";
 
 const root = new URL("../../", import.meta.url);
 
@@ -50,13 +50,13 @@ const patch = `@@ -3,14 +3,14 @@
  }`;
 
 test("browsers send no entities, so the core finds methods and their calls", async () => {
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => source });
-  const core = await astra.loadCore();
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async () => source });
+  const core = await taproot.loadCore();
   const process = core.process;
   const sent = [];
   core.process = (req) => { sent.push(JSON.parse(req)); return process(req); };
 
-  const review = await astra.buildReview([{ filename: "src/Checkout.java", status: "modified", patch }]);
+  const review = await taproot.buildReview([{ filename: "src/Checkout.java", status: "modified", patch }]);
   core.process = process;
 
   assert.deepEqual(sent[0].files.map((f) => f.entities), [[]]);
@@ -76,14 +76,14 @@ const removed = { filename: "svc/auth.go", status: "removed", patch: "@@ -1,3 +0
 
 test("files without a diff are listed, deleted files go to the core", async () => {
   const fetched = [];
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async (f) => (fetched.push(f.filename), "function main() {\n  b();\n}\n") });
-  const core = await astra.loadCore();
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async (f) => (fetched.push(f.filename), "function main() {\n  b();\n}\n") });
+  const core = await taproot.loadCore();
   const process = core.process;
   const sent = [];
   core.process = (req) => { sent.push(JSON.parse(req)); return process(req); };
 
-  const review = await astra.buildReview([removed, ...noDiff, edit]);
-  const reordered = await astra.reorderReview(review, "post");
+  const review = await taproot.buildReview([removed, ...noDiff, edit]);
+  const reordered = await taproot.reorderReview(review, "post");
   core.process = process;
 
   const skipped = [
@@ -100,60 +100,60 @@ test("files without a diff are listed, deleted files go to the core", async () =
 
 test("a file named after an Object.prototype key is in no language", async () => {
   const fetched = [];
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async (f) => (fetched.push(f.filename), "function main() {\n  b();\n}\n") });
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async (f) => (fetched.push(f.filename), "function main() {\n  b();\n}\n") });
   const odd = ["docs/notes.__proto__", "x.constructor"].map((filename) => ({ filename, status: "added", patch: "@@ -0,0 +1 @@\n+hi" }));
   assert.deepEqual(odd.map((f) => detectLanguage(f.filename)), [null, null]);
 
-  const review = await astra.buildReview([edit, ...odd]);
+  const review = await taproot.buildReview([edit, ...odd]);
   assert.deepEqual(fetched, ["src/app.js"]);
   assert.deepEqual(review.snippets.map((s) => s.filePath).sort(), ["docs/notes.__proto__", "src/app.js", "x.constructor"]);
 });
 
 test("files the core skips are listed with the ones the browser skips", async () => {
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
-  const core = await astra.loadCore();
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async () => null });
+  const core = await taproot.loadCore();
   const process = core.process;
   core.process = (req) => JSON.stringify({ ...JSON.parse(process(req)), skipped: [{ path: "b.bin", reason: "binary" }] });
-  const review = await astra.buildReview([{ filename: "c.png", status: "added" }, edit]);
+  const review = await taproot.buildReview([{ filename: "c.png", status: "added" }, edit]);
   core.process = process;
   assert.deepEqual(review.skipped, [{ path: "b.bin", reason: "binary" }, { path: "c.png", reason: "no-patch" }]);
 });
 
 test("the core puts files in other languages after the imports of the files it reads", async () => {
   const src = 'import { b } from "./b.js";\n\nexport function main() {\n  b();\n}\n';
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => src });
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async () => src });
   const imports = { filename: "src/z.js", status: "modified", patch: '@@ -1 +1 @@\n-import { a } from "./a.js";\n+import { b } from "./b.js";' };
   const notes = { filename: "NOTES.txt", status: "modified", patch: "@@ -1 +1 @@\n-a\n+b" };
   for (const order of ["pre", "post"]) {
-    const review = await astra.buildReview([notes, imports], order);
+    const review = await taproot.buildReview([notes, imports], order);
     assert.deepEqual(review.snippets.map((s) => [s.filePath, s.symbolPath, s.language]),
       [["src/z.js", "imports", "javascript"], ["NOTES.txt", "", ""]]);
   }
 });
 
 test("a reorder uses the files of the review it is given", async () => {
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
-  const first = await astra.buildReview([edit]);
-  await astra.buildReview([{ filename: "other.txt", status: "modified", patch: "@@ -1 +1 @@\n-a\n+b" }]);
-  const reordered = await astra.reorderReview(first, "post");
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async () => null });
+  const first = await taproot.buildReview([edit]);
+  await taproot.buildReview([{ filename: "other.txt", status: "modified", patch: "@@ -1 +1 @@\n-a\n+b" }]);
+  const reordered = await taproot.reorderReview(first, "post");
   assert.deepEqual(reordered.snippets.map((s) => s.filePath), ["src/app.js"]);
 });
 
 test("an aborted build stops before the core runs", async () => {
   const ctrl = new AbortController();
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => (ctrl.abort(), null) });
-  const core = await astra.loadCore();
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async () => (ctrl.abort(), null) });
+  const core = await taproot.loadCore();
   const process = core.process;
   let calls = 0;
   core.process = (req) => (calls++, process(req));
-  await assert.rejects(astra.buildReview([edit], "pre", { signal: ctrl.signal }), { name: "AbortError" });
+  await assert.rejects(taproot.buildReview([edit], "pre", { signal: ctrl.signal }), { name: "AbortError" });
   core.process = process;
   assert.equal(calls, 0);
 });
 
 test("sources are fetched six at a time, and the core gets the files in PR order", async () => {
   let inFlight = 0, most = 0;
-  const astra = initAstra({
+  const taproot = initTaproot({
     coreBase: "vendor/core",
     fetchSource: async (f) => {
       most = Math.max(most, ++inFlight);
@@ -162,7 +162,7 @@ test("sources are fetched six at a time, and the core gets the files in PR order
       return `package p\n\nfunc F() int {\n\treturn ${f.filename.slice(1, 3)}\n}\n`;
     },
   });
-  const core = await astra.loadCore();
+  const core = await taproot.loadCore();
   const process = core.process;
   const sent = [];
   core.process = (req) => { sent.push(JSON.parse(req)); return process(req); };
@@ -171,7 +171,7 @@ test("sources are fetched six at a time, and the core gets the files in PR order
     patch: "@@ -1,5 +1,5 @@\n package p\n \n func F() int {\n-\treturn 0\n+\treturn 1\n }",
   }));
   const progress = [];
-  await astra.buildReview(files, "pre", { onProgress: (done, total) => progress.push(`${done}/${total}`) });
+  await taproot.buildReview(files, "pre", { onProgress: (done, total) => progress.push(`${done}/${total}`) });
   core.process = process;
 
   assert.equal(most, 6);

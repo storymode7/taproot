@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/apps/cli/internal/diff"
-	"github.com/storymode7/astra/apps/cli/internal/state"
+	"github.com/storymode7/taproot/apps/cli/internal/diff"
+	"github.com/storymode7/taproot/apps/cli/internal/state"
 )
 
 // judge gives the snippet of symbol a verdict the way y, x and r do: in a
@@ -45,12 +45,12 @@ func (r *testRepo) judge(t *testing.T, a *diff.GitDiffAdapter, applyMode bool, s
 
 var reStatusLine = regexp.MustCompile(`^\s*--- \d+/\d+  .* :: (\S+)  \[(\w+)\]$`)
 
-// statuses runs astra --no-tty with args and returns each symbol's status.
+// statuses runs taproot --no-tty with args and returns each symbol's status.
 func (r *testRepo) statuses(t *testing.T, args ...string) map[string]string {
 	t.Helper()
 	out, _, err := runIn(t, r.dir, append([]string{"diff", "--no-tty"}, args...)...)
 	if err != nil {
-		t.Fatalf("astra %q: %v", args, err)
+		t.Fatalf("taproot %q: %v", args, err)
 	}
 	got := map[string]string{}
 	for _, l := range strings.Split(out, "\n") {
@@ -104,9 +104,9 @@ func TestVerdicts_FollowTheChange(t *testing.T) {
 	if got, want := r.statuses(t), map[string]string{"beta": "pending", "gamma": "reviewed"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("after beta is edited again: %v, want %v", got, want)
 	}
-	files, err := os.ReadDir(filepath.Join(r.dir, ".git", "astra"))
+	files, err := os.ReadDir(filepath.Join(r.dir, ".git", "taproot"))
 	if err != nil || len(files) != 1 || files[0].Name() != "verdicts.json" {
-		t.Errorf(".git/astra holds %v, %v; want only verdicts.json", files, err)
+		t.Errorf(".git/taproot holds %v, %v; want only verdicts.json", files, err)
 	}
 }
 
@@ -178,7 +178,7 @@ func TestVerdicts_UnreadableStateDoesNotBlockReview(t *testing.T) {
 	r.write("a.py", funcs("10", "2", "3"))
 	r.commit("feature")
 
-	path := filepath.Join(r.dir, ".git", "astra", "verdicts.json")
+	path := filepath.Join(r.dir, ".git", "taproot", "verdicts.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}

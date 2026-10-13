@@ -1,5 +1,5 @@
 /**
- * app.js — Astra PWA entry point
+ * app.js — Taproot PWA entry point
  *
  * Vanilla JS ES module. No framework, no build step, no npm.
  * The review engine is vendored WASM in vendor/core/, next to this file.
@@ -43,7 +43,7 @@ let shown = null;
 // The review whose state the store holds, and the navigation in progress.
 let storeScope = null;
 let navigation = null;
-const store = new StateStore("astra-pwa");
+const store = new StateStore("taproot-pwa");
 const urlInput = document.getElementById("pr-url");
 const errEl = document.getElementById("input-error");
 const loadingMsg = document.querySelector(".loading-msg");

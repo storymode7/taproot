@@ -8,8 +8,8 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/storymode7/astra/apps/cli/internal/diff"
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/apps/cli/internal/diff"
+	"github.com/storymode7/taproot/core"
 )
 
 // stager stages the snippets of a working-tree review. On each y, x or r
@@ -24,7 +24,7 @@ type stager struct {
 	order []*stagedFile
 }
 
-// stagedFile is one changed file of the review and the index entries astra
+// stagedFile is one changed file of the review and the index entries taproot
 // expects it to have: the ones it found, or the ones it last wrote.
 type stagedFile struct {
 	path, oldPath string // oldPath differs for a rename
@@ -129,8 +129,8 @@ func (st *stager) fingerprint(path string) string {
 	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
 
-// changed names what changed outside astra since the diff was read: HEAD,
-// an index entry astra did not write, or a working-tree file. It returns
+// changed names what changed outside taproot since the diff was read: HEAD,
+// an index entry taproot did not write, or a working-tree file. It returns
 // "" when the diff on screen is still the one git would show.
 func (st *stager) changed() string {
 	if headSHA(st.git) != st.head {
@@ -162,7 +162,7 @@ func (st *stager) changed() string {
 }
 
 // stage stages s (accept) or takes it back out of the index. It refuses,
-// changing nothing, when the file's index entries are not the ones astra
+// changing nothing, when the file's index entries are not the ones taproot
 // found or last wrote.
 func (st *stager) stage(s *core.Snippet, accept bool) error {
 	sf := st.files[s.FilePath]
@@ -194,7 +194,7 @@ func (st *stager) stage(s *core.Snippet, accept bool) error {
 	}
 	for _, p := range sf.paths() {
 		if now[p] != sf.expect[p] {
-			return fmt.Errorf("%s changed in the index outside astra; restart astra to review it again", p)
+			return fmt.Errorf("%s changed in the index outside taproot; restart taproot to review it again", p)
 		}
 	}
 	if err := sf.write(st.git, want, len(next) == 0); err != nil {

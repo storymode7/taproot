@@ -10,7 +10,7 @@ import { renderReview } from "../lib/shared/render.js";
 import hljs from "../vendor/highlight.min.js";
 import { StateStore } from "../lib/shared/state.js";
 
-const store = new StateStore("astra-ext");
+const store = new StateStore("taproot-ext");
 let currentReview = null;
 let currentSnippets = [];
 
@@ -43,7 +43,7 @@ async function handleFiles({ owner, repo, prNumber, files }) {
     setStatus("");
   } catch (err) {
     setStatus(`Parse error: ${err.message}`);
-    console.error("[astra]", err);
+    console.error("[taproot]", err);
   }
 }
 
@@ -67,7 +67,7 @@ document.getElementById("order-select").addEventListener("change", async (e) => 
 });
 
 document.getElementById("btn-close").addEventListener("click", () => {
-  window.parent.postMessage({ type: "astra-close" }, "https://github.com");
+  window.parent.postMessage({ type: "taproot-close" }, "https://github.com");
 });
 
 // ---------------------------------------------------------------------------

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/apps/cli/internal/diff"
-	"github.com/storymode7/astra/apps/cli/internal/state"
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/apps/cli/internal/diff"
+	"github.com/storymode7/taproot/apps/cli/internal/state"
+	"github.com/storymode7/taproot/core"
 )
 
 // testRepo is a throwaway git repository whose git sees no user or system

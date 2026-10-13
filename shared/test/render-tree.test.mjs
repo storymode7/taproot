@@ -64,16 +64,16 @@ function render() {
 }
 
 // What a list of elements shows: a snippet's id, or the heading's text.
-const rows = (els) => els.map((e) => e.dataset.id ?? (e.className === "astra-group" ? `[${e.text}]` : null)).filter(Boolean);
-const cardId = (e) => e.id?.replace(/^astra-/, "");
+const rows = (els) => els.map((e) => e.dataset.id ?? (e.className === "taproot-group" ? `[${e.text}]` : null)).filter(Boolean);
+const cardId = (e) => e.id?.replace(/^taproot-/, "");
 
-const heading = "[Other files Plain hunks, no call info. Astra reads Go, JavaScript, TypeScript, Python, Java and Rust.]";
+const heading = "[Other files Plain hunks, no call info. Taproot reads Go, JavaScript, TypeScript, Python, Java and Rust.]";
 
 test("files in other languages sit under one heading in the tree and among the cards", () => {
   const { nav, main } = render();
   const tree = nav.children[1];
   assert.deepEqual(rows(tree.children), ["fn", "imp", "imp2", heading, "txt", "yml"]);
-  const cards = main.children.map((e) => cardId(e) ?? (e.className === "astra-group" ? `[${e.text}]` : null));
+  const cards = main.children.map((e) => cardId(e) ?? (e.className === "taproot-group" ? `[${e.text}]` : null));
   assert.deepEqual(cards, ["fn", "imp", "imp2", heading, "txt", "yml"]);
 });
 
@@ -99,5 +99,5 @@ test("imports rows name their file", () => {
   const { nav, main } = render();
   const names = nav.children[1].children.filter((li) => li.dataset.id).map((li) => li.children[0].children[2].textContent);
   assert.deepEqual(names, ["run", "imports · b.go", "imports · d.go", "a.txt", "ci.yml"]);
-  assert.match(main.children.find((e) => cardId(e) === "imp2").children[0].html, /<strong class="astra-symbol">imports · d\.go<\/strong>/);
+  assert.match(main.children.find((e) => cardId(e) === "imp2").children[0].html, /<strong class="taproot-symbol">imports · d\.go<\/strong>/);
 });

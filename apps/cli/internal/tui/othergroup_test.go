@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // mixedSnippets is a function, the imports of a Go file, and hunks of two
-// files in languages Astra does not read.
+// files in languages Taproot does not read.
 func mixedSnippets() []*core.Snippet {
 	return []*core.Snippet{
 		{ID: "txt", FilePath: "a.txt", NodeType: "hunk", StartLine: 1, DiffLines: []string{"@@ -1 +1 @@", "-a", "+b"}},
@@ -35,7 +35,7 @@ func TestTree_OtherFilesHaveAHeadingTheCursorSkips(t *testing.T) {
 	lines := frame(t, r, 24, 120)
 	at := -1
 	for i, l := range lines {
-		if strings.HasPrefix(stripANSI(l), "Other files  Plain hunks, no call info. Astra reads Go, JavaScript, TypeScript, Python, Java and Rust.") {
+		if strings.HasPrefix(stripANSI(l), "Other files  Plain hunks, no call info. Taproot reads Go, JavaScript, TypeScript, Python, Java and Rust.") {
 			at = i
 		}
 	}

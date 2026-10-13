@@ -1,14 +1,14 @@
 /**
- * lib/pipeline-ext.js — extension adapter for the shared Astra pipeline.
+ * lib/pipeline-ext.js — extension adapter for the shared Taproot pipeline.
  *
  * All review logic (entity mapping, hunk splitting, call edges, review
- * tree, ordering) runs in the Go core (vendor/core/astra-core.wasm) —
+ * tree, ordering) runs in the Go core (vendor/core/taproot-core.wasm) —
  * identical to the CLI and PWA. This file only wires extension-specific
  * paths (chrome.runtime.getURL) and session fetching into
- * shared/astra.js (a synced copy of /shared/lib/astra.js).
+ * shared/taproot.js (a synced copy of /shared/lib/taproot.js).
  */
 
-import { initAstra } from "./shared/astra.js";
+import { initTaproot } from "./shared/taproot.js";
 
 function vendorUrl(path) {
   return chrome.runtime.getURL(`vendor/${path}`);
@@ -20,7 +20,7 @@ async function fetchSource(file) {
   return file.source ?? null;
 }
 
-export const { buildReview, reorderReview } = initAstra({
+export const { buildReview, reorderReview } = initTaproot({
   coreBase: vendorUrl("core"),
   fetchSource,
 });

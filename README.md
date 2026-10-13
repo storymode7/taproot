@@ -1,11 +1,11 @@
-# Astra
+# Taproot
 
-Astra turns a diff into a call tree of the changed code. You read the entry
+Taproot turns a diff into a call tree of the changed code. You read the entry
 point first, then drill down one level at a time into the functions it
 calls. A snippet holds the changes to one function, method or type, not a
 bare hunk.
 
-Astra comes as three tools that run the same review engine on your machine:
+Taproot comes as three tools that run the same review engine on your machine:
 
 - a CLI for the changes in a local git repository,
 - a Chrome extension for pull requests on github.com,
@@ -40,14 +40,14 @@ hands-on test on a Mac yet.
    once, and the other callers show a reference to it. Tests come after
    the code they test, and each snippet names the changed tests that call
    it. A snippet also names its unchanged callers in the files the diff
-   touches, for example "called by unchanged main.go::main". Astra reads
+   touches, for example "called by unchanged main.go::main". Taproot reads
    only those files, so callers and tests in other files are not shown.
    The tree follows calls, so changed types, struct fields and decorators
    appear as snippets of their own: accept them too before you commit.
 
 The engine is the Go package in `core/`. The CLI links it directly. The
 extension and the web app run the same code compiled to WebAssembly
-(`vendor/core/astra-core.wasm`), and `make parity` checks that both give
+(`vendor/core/taproot-core.wasm`), and `make parity` checks that both give
 the same output on a set of test fixtures.
 
 ## Install the CLI
@@ -64,53 +64,53 @@ It needs `git`. For syntax highlighting it uses
 You need Go 1.26.3 or newer and `make`.
 
 ```sh
-git clone https://github.com/storymode7/astra
-cd astra
+git clone https://github.com/storymode7/taproot
+cd taproot
 make cli
-./astra --version
+./taproot --version
 ```
 
-Copy `./astra` to a directory on your `PATH`. `make cli` runs
-`CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o astra ./apps/cli/cmd/astra`;
+Copy `./taproot` to a directory on your `PATH`. `make cli` runs
+`CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o taproot ./apps/cli/cmd/taproot`;
 run that line yourself if you do not have `make`.
 
 ### Prebuilt binaries
 
 When a release is out, the
-[Releases page](https://github.com/storymode7/astra/releases) has binaries
-named `astra-<version>-<os>-<arch>`, `LICENSE`, `THIRD_PARTY_NOTICES`, the
+[Releases page](https://github.com/storymode7/taproot/releases) has binaries
+named `taproot-<version>-<os>-<arch>`, `LICENSE`, `THIRD_PARTY_NOTICES`, the
 extension zip and `SHA256SUMS`.
 Releases are built by hand with `make dist` and are not signed. For
 example, for v0.1.0 on Linux amd64:
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS
-chmod +x astra-v0.1.0-linux-amd64
-mv astra-v0.1.0-linux-amd64 astra      # then move it to a directory on your PATH
-./astra --version
+chmod +x taproot-v0.1.0-linux-amd64
+mv taproot-v0.1.0-linux-amd64 taproot      # then move it to a directory on your PATH
+./taproot --version
 ```
 
 On macOS, check with `shasum -a 256 -c --ignore-missing SHA256SUMS`. If
 macOS refuses to run a binary that a browser downloaded, remove the
-quarantine flag: `xattr -d com.apple.quarantine astra`.
+quarantine flag: `xattr -d com.apple.quarantine taproot`.
 
 ## Usage
 
 ```sh
-astra diff                                # unstaged changes, as git diff shows them
-astra diff --staged                       # what is staged for commit
-astra diff --base main                    # this branch, the way its PR shows it
-astra diff --base main --head feature     # another branch, without checking it out
-astra diff --base abc123~1 --head abc123  # one commit
-astra diff --ref main                     # the working tree against main, like git diff main
-astra diff --base main | less             # plain text when piped
+taproot diff                                # unstaged changes, as git diff shows them
+taproot diff --staged                       # what is staged for commit
+taproot diff --base main                    # this branch, the way its PR shows it
+taproot diff --base main --head feature     # another branch, without checking it out
+taproot diff --base abc123~1 --head abc123  # one commit
+taproot diff --ref main                     # the working tree against main, like git diff main
+taproot diff --base main | less             # plain text when piped
 ```
 
-Plain `astra diff` leaves out staged changes and untracked files, as
+Plain `taproot diff` leaves out staged changes and untracked files, as
 `git diff` does. To review a new file, mark it with `git add -N` first, or
 `git add` it and use `--staged`.
 
-| Option | Meaning (from `astra --help`) |
+| Option | Meaning (from `taproot --help`) |
 |---|---|
 | `--base <ref>` | Review a branch the way its PR shows it: changes since it forked from `<ref>` (`git diff <ref>...HEAD`). |
 | `--head <ref>` | With `--base`: review this branch or commit instead of HEAD, without checking it out. |
@@ -121,16 +121,16 @@ Plain `astra diff` leaves out staged changes and untracked files, as
 | `--no-apply` | Record verdicts only; leave the git index alone. |
 | `--no-tty` | Print the review without the interactive UI (plain text when piped or when `NO_COLOR` is set). |
 | `--no-delta` | Skip delta; use bat or the built-in highlighting instead. |
-| `--no-delta-config` | Ignore `~/.gitconfig` delta settings and use Astra's GitHub-style theme. |
+| `--no-delta-config` | Ignore `~/.gitconfig` delta settings and use Taproot's GitHub-style theme. |
 | `-h`, `--help` | Show the help. |
 | `-V`, `--version` | Show the version. |
 
 A value can also follow `=`, as in `--base=main`. `--staged`, `--ref` and
 `--base` exclude each other, and `--head` needs `--base`.
 
-Environment: `ASTRA_THEME` (`dark` or `light`; the default comes from
-`COLORFGBG`, else dark), `ASTRA_DELTA_THEME` (a delta syntax theme for
-Astra's own delta style; it has no effect when your git config sets
+Environment: `TAPROOT_THEME` (`dark` or `light`; the default comes from
+`COLORFGBG`, else dark), `TAPROOT_DELTA_THEME` (a delta syntax theme for
+Taproot's own delta style; it has no effect when your git config sets
 delta's look, unless you pass `--no-delta-config`), `VISUAL` /
 `EDITOR` (the editor for `o`; the default is vi) and `NO_COLOR` (any
 value turns color off: the interactive view keeps bold, dim and inverse
@@ -143,7 +143,7 @@ and 1 for any other error. A mistake exits 2 with `--help` or
 
 ### Keys
 
-In a terminal, `astra diff` opens the review: the call tree on top and the
+In a terminal, `taproot diff` opens the review: the call tree on top and the
 focused snippet's diff below it.
 
 | Key | Action |
@@ -176,13 +176,13 @@ shows `[staging]`:
 - `x` or `r` on a snippet you accepted unstages it again.
 - `--no-apply` turns staging off, so the keys only record verdicts.
 
-Astra changes only the index, never your files. A staged snippet leaves
-the unstaged diff, so the next `astra diff` no longer shows it, and
-`astra diff --staged` shows it as accepted. If HEAD, the index or a file
-changes outside astra during a staging review, the next `y`, `x` or `r`
+Taproot changes only the index, never your files. A staged snippet leaves
+the unstaged diff, so the next `taproot diff` no longer shows it, and
+`taproot diff --staged` shows it as accepted. If HEAD, the index or a file
+changes outside taproot during a staging review, the next `y`, `x` or `r`
 reloads the diff instead; press the key again.
 
-Verdicts are saved in `.git/astra/verdicts.json`, keyed by the snippet and
+Verdicts are saved in `.git/taproot/verdicts.json`, keyed by the snippet and
 its exact change. If you edit a change after judging it, the snippet is
 pending again. A snippet with a name, such as a function, a type or the
 imports, is keyed by that name, so its verdict follows the change across
@@ -190,7 +190,7 @@ commit, amend and rebase, and every mode sees it. A snippet without a
 name, such as a comment between two functions or a hunk in a Markdown
 file, is keyed by the line it starts on. Its verdict resets when lines
 above it are added or removed, for example by a rebase, and
-`astra diff --staged` can show it as pending after `y` staged it, when
+`taproot diff --staged` can show it as pending after `y` staged it, when
 unstaged changes sit above it. In the staging review, ✓ means staged: an
 accepted snippet that is still unstaged shows as pending.
 
@@ -198,20 +198,20 @@ Changed files that give no snippet are listed on a `Not shown:` line with
 the reason: binary, renamed, mode, empty, conflict or no-diff. In
 `--base` and `--staged` reviews, when your working tree no longer holds
 the reviewed version of a file, `o` opens a read-only copy of that version.
-Astra deletes these copies when it exits.
+Taproot deletes these copies when it exits.
 
 ## Chrome extension
 
-The extension adds an **⭐ Astra** button to the Files changed tab of a
+The extension adds an **🌱 Taproot** button to the Files changed tab of a
 pull request on github.com (the `…/pull/<n>/changes` page). The button
 opens a panel with the review tree and the snippets.
 
 It is not in the Chrome Web Store. To install it:
 
-1. Get the extension folder. Download `astra-extension-<version>.zip`
-   from a [release](https://github.com/storymode7/astra/releases). The
+1. Get the extension folder. Download `taproot-extension-<version>.zip`
+   from a [release](https://github.com/storymode7/taproot/releases). The
    zip has no top-level folder, so unzip it into a new, empty folder, for
-   example with `unzip astra-extension-<version>.zip -d astra-extension`.
+   example with `unzip taproot-extension-<version>.zip -d taproot-extension`.
    Or use `apps/extension/` in a clone of this repository.
 2. Open `chrome://extensions` and turn on Developer mode.
 3. Click **Load unpacked** and select that folder.
@@ -227,7 +227,7 @@ What it can do:
   supported language. These are same-origin requests from the page, so the
   browser sends your GitHub session with them, and private repositories
   you can open work. GitHub redirects the raw source requests to
-  `raw.githubusercontent.com`. Astra stores no token.
+  `raw.githubusercontent.com`. Taproot stores no token.
 - It never writes to GitHub. Verdicts and comments stay in the extension's
   storage in this browser.
 
@@ -280,7 +280,7 @@ call structure. They come last in the review, under the heading
 ## Security
 
 - No backend, no OAuth, no telemetry, and no stored tokens.
-- No part of Astra writes to GitHub.
+- No part of Taproot writes to GitHub.
 - The Go module has no third-party dependencies, and the web code uses no
   npm packages. The few vendored files are pinned by SHA-256.
 - Releases are not signed.
@@ -295,11 +295,11 @@ and the browser tests, and `make core-wasm` also needs `sha256sum`. There
 is no npm install and no build step for the web code.
 
 ```sh
-make cli                              # build ./astra
+make cli                              # build ./taproot
 make test                             # go test ./... and the browser tests
 go vet ./...
 node --test shared/test/*.test.mjs    # tests for the browser code
-make core-wasm                        # rebuild vendor/core/astra-core.wasm
+make core-wasm                        # rebuild vendor/core/taproot-core.wasm
 sh scripts/sync-extension-lib.sh      # copy shared/lib and vendor/core into both web apps
 make parity                           # check the committed WASM against the Go golden files
 ```
@@ -338,11 +338,11 @@ because SECURITY.md sends reports there. Then make each release by hand:
 4. `make dist` stops when `git status` lists any change, so commit or
    stash first. It runs the sync check and the parity check, then writes
    `dist/`:
-   - `astra-<VERSION>-linux-amd64`, `-linux-arm64`, `-darwin-amd64` and
+   - `taproot-<VERSION>-linux-amd64`, `-linux-arm64`, `-darwin-amd64` and
      `-darwin-arm64`, built with `CGO_ENABLED=0`, `-trimpath` and
      `-ldflags "-s -w -X main.version=<VERSION>"`;
    - `LICENSE` and `THIRD_PARTY_NOTICES`, which go with the binaries;
-   - `astra-extension-<manifest version>.zip`, with the tracked files of
+   - `taproot-extension-<manifest version>.zip`, with the tracked files of
      `apps/extension/`, `LICENSE` and `THIRD_PARTY_NOTICES`;
    - `SHA256SUMS`.
 5. Check the files: `cd dist && sha256sum -c SHA256SUMS`. On macOS, use
@@ -354,7 +354,7 @@ because SECURITY.md sends reports there. Then make each release by hand:
 ```
 core/              review engine (Go, no I/O): entities, snippets, call edges, review tree
 core/wasmmain/     WebAssembly entry point for the browser surfaces
-apps/cli/          the astra CLI and its terminal UI
+apps/cli/          the taproot CLI and its terminal UI
 apps/extension/    Chrome extension (Manifest V3, plain JavaScript)
 apps/pwa/          static web app for public pull requests (plain JavaScript)
 shared/lib/        browser code for both web surfaces; synced into each app
@@ -366,9 +366,9 @@ docs/              self-hosting guide for the web app
 
 ## License
 
-Astra is open source under the MIT license; see [LICENSE](LICENSE).
+Taproot is open source under the MIT license; see [LICENSE](LICENSE).
 
-The CLI binaries and `astra-core.wasm` contain the Go runtime and standard
+The CLI binaries and `taproot-core.wasm` contain the Go runtime and standard
 library, and the web surfaces ship Go's `wasm_exec.js`. The extension also
 ships highlight.js 11.11.1. Both are under the BSD 3-Clause license; see
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).

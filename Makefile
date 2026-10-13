@@ -1,4 +1,4 @@
-# Astra build targets.
+# Taproot build targets.
 
 # Build the pure review engine as a WASM module for the browser surfaces
 # (PWA, extension) and vendor it alongside the matching wasm_exec.js glue
@@ -8,9 +8,9 @@
 .PHONY: core-wasm
 core-wasm:
 	mkdir -p vendor/core
-	GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o vendor/core/astra-core.wasm ./core/wasmmain
+	GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o vendor/core/taproot-core.wasm ./core/wasmmain
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" vendor/core/wasm_exec.js
-	cd vendor/core && sha256sum astra-core.wasm wasm_exec.js > checksums.txt
+	cd vendor/core && sha256sum taproot-core.wasm wasm_exec.js > checksums.txt
 	@echo "vendored:" && cat vendor/core/checksums.txt
 
 .PHONY: test
@@ -26,7 +26,7 @@ parity:
 
 .PHONY: cli
 cli:
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o astra ./apps/cli/cmd/astra
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o taproot ./apps/cli/cmd/taproot
 
 # Release artifacts in dist/: the CLI for linux and darwin on amd64 and arm64,
 # LICENSE and THIRD_PARTY_NOTICES, the extension zip named after its manifest
@@ -44,12 +44,12 @@ dist:
 		os=$${t%/*} arch=$${t#*/}; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath \
 			-ldflags "-s -w -X main.version=$(VERSION)" \
-			-o dist/astra-$(VERSION)-$$os-$$arch ./apps/cli/cmd/astra || exit 1; \
+			-o dist/taproot-$(VERSION)-$$os-$$arch ./apps/cli/cmd/taproot || exit 1; \
 	done
 	cp LICENSE THIRD_PARTY_NOTICES dist/
 	ext=$$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' apps/extension/manifest.json) && \
 		test -n "$$ext" && \
-		(cd apps/extension && git ls-files | zip -q -X -@ ../../dist/astra-extension-$$ext.zip) && \
-		zip -q -X -j dist/astra-extension-$$ext.zip LICENSE THIRD_PARTY_NOTICES
-	cd dist && sha256sum astra-* > SHA256SUMS
+		(cd apps/extension && git ls-files | zip -q -X -@ ../../dist/taproot-extension-$$ext.zip) && \
+		zip -q -X -j dist/taproot-extension-$$ext.zip LICENSE THIRD_PARTY_NOTICES
+	cd dist && sha256sum taproot-* > SHA256SUMS
 	@cat dist/SHA256SUMS

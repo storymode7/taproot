@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/storymode7/astra/apps/cli/internal/state"
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/apps/cli/internal/state"
+	"github.com/storymode7/taproot/core"
 )
 
 func fnSnippet(ret string) *core.Snippet {
@@ -40,7 +40,7 @@ func TestSetStatus_ReloadsWhenTheDiffChanged(t *testing.T) {
 	if len(staged) != 0 {
 		t.Errorf("y staged %q from the diff read before the change", staged)
 	}
-	if want := "a.go changed on disk outside astra: reloaded the diff, verdict not recorded"; r.status != want {
+	if want := "a.go changed on disk outside taproot: reloaded the diff, verdict not recorded"; r.status != want {
 		t.Errorf("status = %q, want %q", r.status, want)
 	}
 	if n := r.currentNode(); n == nil || n.Snippet != fresh {

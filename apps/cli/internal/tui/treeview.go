@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // visRow is one visible row of the tree pane. A row with no node is the
@@ -19,7 +19,7 @@ type visRow struct {
 
 // otherFilesNote explains the group of files in languages the engine does
 // not read.
-const otherFilesNote = "Plain hunks, no call info. Astra reads Go, JavaScript, TypeScript, Python, Java and Rust."
+const otherFilesNote = "Plain hunks, no call info. Taproot reads Go, JavaScript, TypeScript, Python, Java and Rust."
 
 // treeState tracks which canonical nodes are expanded and which rows that
 // makes visible.

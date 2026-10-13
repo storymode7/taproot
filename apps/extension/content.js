@@ -4,7 +4,7 @@
  * Responsibilities:
  *   1. Detect that we're on a PR files page, including after GitHub's
  *      in-page navigation.
- *   2. Inject the Astra side panel into the DOM.
+ *   2. Inject the Taproot side panel into the DOM.
  *   3. Fetch the PR diff via same-origin fetch (user's existing GH session).
  *   4. Post messages to the panel iframe with diff data.
  *
@@ -42,13 +42,13 @@
 
   function mount(pr) {
     // A restored page snapshot can bring back copies without listeners.
-    document.querySelectorAll("#astra-toggle, #astra-panel-root").forEach((el) => el.remove());
+    document.querySelectorAll("#taproot-toggle, #taproot-panel-root").forEach((el) => el.remove());
 
     // -------------------------------------------------------------------------
     // Build the side panel container
     // -------------------------------------------------------------------------
     const container = document.createElement("div");
-    container.id = "astra-panel-root";
+    container.id = "taproot-panel-root";
     container.style.cssText = [
       "position: fixed",
       "top: 0",
@@ -63,7 +63,7 @@
     const iframe = document.createElement("iframe");
     const loaded = new Promise((resolve) => iframe.addEventListener("load", resolve, { once: true }));
     iframe.src = chrome.runtime.getURL("panel/panel.html");
-    iframe.title = "Astra review panel";
+    iframe.title = "Taproot review panel";
     iframe.style.cssText = "width:100%;height:100%;border:none;";
     iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
     container.appendChild(iframe);
@@ -73,9 +73,9 @@
     // Toggle button
     // -------------------------------------------------------------------------
     const toggle = document.createElement("button");
-    toggle.id = "astra-toggle";
-    toggle.textContent = "⭐ Astra";
-    toggle.title = "Toggle the Astra review panel";
+    toggle.id = "taproot-toggle";
+    toggle.textContent = "🌱 Taproot";
+    toggle.title = "Toggle the Taproot review panel";
     toggle.style.cssText = [
       "position: fixed",
       "top: 64px",
@@ -122,7 +122,7 @@
   // Handle close from inside the panel iframe.
   window.addEventListener("message", (e) => {
     if (!view || e.source !== view.iframe.contentWindow || e.origin !== PANEL_ORIGIN) return;
-    if (e.data?.type === "astra-close") setOpen(view, false);
+    if (e.data?.type === "taproot-close") setOpen(view, false);
   });
 
   // ---------------------------------------------------------------------------
@@ -182,7 +182,7 @@
       }
     }
 
-    // Convert GitHub's internal format to the shape Astra's panel expects
+    // Convert GitHub's internal format to the shape Taproot's panel expects
     // (mirrors the GitHub REST API response for /pulls/:number/files).
     const files = summaries.map(summary => {
       const content = contentsByPath.get(summary.path);

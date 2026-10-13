@@ -1,13 +1,13 @@
 /**
- * lib/pipeline.js — PWA adapter for the shared Astra pipeline.
+ * lib/pipeline.js — PWA adapter for the shared Taproot pipeline.
  *
  * All review logic (entity mapping, hunk splitting, call edges, review
- * tree, ordering) runs in the Go core (vendor/core/astra-core.wasm) —
+ * tree, ordering) runs in the Go core (vendor/core/taproot-core.wasm) —
  * identical to the CLI. This file only wires PWA-specific paths and
- * fetching into shared/astra.js (a synced copy of /shared/lib/astra.js).
+ * fetching into shared/taproot.js (a synced copy of /shared/lib/taproot.js).
  */
 
-import { initAstra } from "./shared/astra.js";
+import { initTaproot } from "./shared/taproot.js";
 
 // Relative to the page: the PWA ships its own copy (scripts/sync-extension-lib.sh).
 const CORE = "vendor/core";
@@ -38,7 +38,7 @@ export function rawContentURL(rawURL) {
   return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}/${path}`;
 }
 
-export const { buildReview, reorderReview } = initAstra({
+export const { buildReview, reorderReview } = initTaproot({
   coreBase: CORE,
   fetchSource,
 });

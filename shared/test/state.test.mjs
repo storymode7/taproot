@@ -7,7 +7,7 @@ const snippet = (hunk, ...lines) => ({ id: "eaeed2db87666e6f", diffLines: [hunk,
 const main = snippet("@@ -15,4 +15,5 @@", " export function main() {", "   checkAuth();", '+  console.log("ready");', "   serve();");
 
 test("state does not follow a snippet into another PR", async () => {
-  const store = new StateStore("astra-test");
+  const store = new StateStore("taproot-test");
   await store.load("alice/shop#1", [main]);
   store.set(main.id, { status: "accepted", comment: "alice/shop#1 only" });
   assert.equal(store.get(main.id).status, "accepted");

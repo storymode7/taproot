@@ -4,21 +4,21 @@
 
 Report it privately through GitHub: on the repository's **Security** tab,
 click **Report a vulnerability**
-(<https://github.com/storymode7/astra/security/advisories/new>). Please do
+(<https://github.com/storymode7/taproot/security/advisories/new>). Please do
 not open a public issue.
 
 ## Trust model
 
-- **No backend.** Astra runs no server. The CLI runs on your machine, and
-  the extension and the web app run in your browser. No part of Astra
+- **No backend.** Taproot runs no server. The CLI runs on your machine, and
+  the extension and the web app run in your browser. No part of Taproot
   sends your code to a server; the browser surfaces only fetch from
   GitHub, with the requests listed below.
-- **No OAuth and no tokens.** Astra never asks for, stores or sends a
+- **No OAuth and no tokens.** Taproot never asks for, stores or sends a
   GitHub token. The extension's requests carry your github.com session
   because they are same-origin requests from the GitHub page. The web app
   makes only unauthenticated requests.
 - **No telemetry.** No analytics, no error reports and no update checks.
-- **Read-only toward GitHub.** No part of Astra writes to GitHub. Verdicts
+- **Read-only toward GitHub.** No part of Taproot writes to GitHub. Verdicts
   and comments made in a browser stay in that browser.
 
 ## What each part can reach
@@ -28,7 +28,7 @@ not open a public issue.
 - It makes no network requests of its own. It runs `git`, `stty`, your
   `$VISUAL` / `$EDITOR` for the `o` key, and `delta` or `bat` when one is
   installed.
-- It writes `.git/astra/verdicts.json` in your repository. In the default
+- It writes `.git/taproot/verdicts.json` in your repository. In the default
   review, `y`, `x` and `r` also stage or unstage snippets in the git index;
   `--no-apply`, `--staged`, `--ref` and `--base` turn that off. It never
   changes the files in your working tree.
@@ -92,7 +92,7 @@ These files are vendored and pinned by SHA-256:
 
 | File | What it is | Pinned in |
 |---|---|---|
-| `vendor/core/astra-core.wasm` | The engine, built from `core/` by `make core-wasm` | `vendor/core/checksums.txt` |
+| `vendor/core/taproot-core.wasm` | The engine, built from `core/` by `make core-wasm` | `vendor/core/checksums.txt` |
 | `vendor/core/wasm_exec.js` | Go's WebAssembly loader, copied from the Go toolchain by `make core-wasm` | `vendor/core/checksums.txt` |
 | `apps/pwa/vendor/core/`, `apps/extension/vendor/core/` | Copies of `vendor/core/`, written by `scripts/sync-extension-lib.sh` | the `checksums.txt` in each copy |
 | `apps/extension/vendor/highlight.min.js` | highlight.js 11.11.1 with its Go, Java, JavaScript, Python, Rust and TypeScript languages, bundled and minified | `apps/extension/vendor/checksums.txt` |
@@ -134,6 +134,6 @@ Limits of these checks:
   built them.
 - There is no reproducible-build guarantee. The bytes depend on the Go
   toolchain and the build settings.
-- `go version -m astra` prints the Go version, the build settings and the
+- `go version -m taproot` prints the Go version, the build settings and the
   commit (`vcs.revision`) that a binary says it was built from.
 - To avoid trusting a binary, build the CLI from source with `make cli`.

@@ -1,4 +1,4 @@
-// Package tui provides the terminal UI for the Astra CLI.
+// Package tui provides the terminal UI for the Taproot CLI.
 //
 // It uses only the Go standard library — no TUI framework dependency.
 // Output is ANSI-escaped plain text with keyboard control via raw terminal mode.
@@ -15,8 +15,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/storymode7/astra/apps/cli/internal/state"
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/apps/cli/internal/state"
+	"github.com/storymode7/taproot/core"
 )
 
 // Colors (ANSI escape codes, reset-safe)
@@ -231,7 +231,7 @@ type Runner struct {
 	// Reload reads the diff again, after o changed a file or when Changed
 	// reports a change; nil when the review is not of the working tree.
 	Reload func() (*core.ReviewForest, []core.SkippedFile, error)
-	// Changed names what changed outside astra since the diff was read,
+	// Changed names what changed outside taproot since the diff was read,
 	// "" when nothing did. y, x and r check it first when they stage.
 	Changed func() string
 	// Notice is shown on the hint line at start.
@@ -498,7 +498,7 @@ func (r *Runner) editorPath(s *core.Snippet) (path, note string, err error) {
 		}
 	}
 	if r.copies == "" {
-		if r.copies, err = os.MkdirTemp("", "astra-"); err != nil {
+		if r.copies, err = os.MkdirTemp("", "taproot-"); err != nil {
 			return "", "", err
 		}
 	}
@@ -787,7 +787,7 @@ func (r *Runner) setStatus(status string) {
 	// read from, or staging would write changes nobody reviewed.
 	if r.applyMode && r.Changed != nil {
 		if why := r.Changed(); why != "" {
-			r.reload(why + " outside astra: reloaded the diff, verdict not recorded")
+			r.reload(why + " outside taproot: reloaded the diff, verdict not recorded")
 			return
 		}
 	}
@@ -916,7 +916,7 @@ func (r *Runner) render() {
 	if r.applyMode {
 		applyLabel = "  " + paint(yellow) + "[staging]" + reset
 	}
-	head := fmt.Sprintf("%s Astra%s  %d/%d reviewed ", bold+paint(blue)+"⭐", reset, done, total)
+	head := fmt.Sprintf("%s Taproot%s  %d/%d reviewed ", bold+paint(blue)+"🌱", reset, done, total)
 	tail := fmt.Sprintf(" %d%%  %s%s%s%s", pct, dim, autoLabel, reset, applyLabel)
 	notShown := ""
 	if len(r.Skipped) > 0 {
@@ -1016,7 +1016,7 @@ func (r *Runner) render() {
 
 func (r *Runner) renderHelp() {
 	lines := []string{
-		bold + "⭐ Astra keyboard shortcuts" + reset,
+		bold + "🌱 Taproot keyboard shortcuts" + reset,
 		"",
 		"  J / ↓       Move down the tree",
 		"  K / ↑       Move up the tree",
@@ -1043,7 +1043,7 @@ func (r *Runner) renderHelp() {
 		dim + "functions/types the focused snippet calls. Roots are entry points" + reset,
 		dim + "nothing else in the diff calls. Tests follow the code they test." + reset,
 		"",
-		dim + "Note: verdicts are saved under .git/astra/, per change. A named snippet" + reset,
+		dim + "Note: verdicts are saved under .git/taproot/, per change. A named snippet" + reset,
 		dim + "      keeps its verdict across commits and rebases; an unnamed one resets" + reset,
 		dim + "      when lines above it move. In working tree mode y also stages the" + reset,
 		dim + "      snippet and x/r unstages it; pass --no-apply to leave the index alone." + reset,

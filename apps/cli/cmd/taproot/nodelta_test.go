@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/storymode7/astra/apps/cli/internal/tui"
+	"github.com/storymode7/taproot/apps/cli/internal/tui"
 )
 
-// TestNoDeltaFlag runs `astra diff --no-tty` with a fake delta first on PATH
+// TestNoDeltaFlag runs `taproot diff --no-tty` with a fake delta first on PATH
 // and checks that --no-delta keeps it from running on a terminal, and that
 // it never runs for /dev/null, a character device that is no terminal.
 func TestNoDeltaFlag(t *testing.T) {
@@ -77,7 +77,7 @@ func TestNoDeltaFlag(t *testing.T) {
 		}
 		_, err := os.Stat(calls)
 		if called := err == nil; called != wantDelta {
-			t.Errorf("astra %v to %s: delta ran = %v, want %v", args, out.Name(), called, wantDelta)
+			t.Errorf("taproot %v to %s: delta ran = %v, want %v", args, out.Name(), called, wantDelta)
 		}
 	}
 

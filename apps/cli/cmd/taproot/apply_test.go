@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/storymode7/astra/core"
+	"github.com/storymode7/taproot/core"
 )
 
 // apply puts the fragments of snippets, given by their diff lines, into base.

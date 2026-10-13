@@ -1,5 +1,5 @@
 /**
- * shared/lib/astra.js — the single browser-side Astra pipeline.
+ * shared/lib/taproot.js — the single browser-side Taproot pipeline.
  *
  * SOURCE OF TRUTH lives in /shared/lib; the copies under
  * apps/pwa/lib/shared/ and apps/extension/lib/shared/ are written by
@@ -9,16 +9,16 @@
  *
  * All review logic (entity mapping, hunk splitting, call edges, review
  * tree, ordering) runs in the Go core compiled to WASM (vendor/core/
- * astra-core.wasm) — the same code the CLI runs natively, parity-tested
+ * taproot-core.wasm) — the same code the CLI runs natively, parity-tested
  * in core/testdata/parity. This module only:
  *   1. parses GitHub patches into wire hunks,
  *   2. attaches each file's full source and no entities, so the core finds
  *      entities and call edges with the same rules as the CLI,
- *   3. calls astraCore.process() and returns the response.
+ *   3. calls taprootCore.process() and returns the response.
  *
  * Environment differences are injected through an adapter:
- *   initAstra({
- *     coreBase,                  // base URL for vendor/core (wasm_exec.js, astra-core.wasm)
+ *   initTaproot({
+ *     coreBase,                  // base URL for vendor/core (wasm_exec.js, taproot-core.wasm)
  *     fetchSource(file, signal), // → full post-image source string or null
  *   })
  */
@@ -26,7 +26,7 @@
 // Source fetches in flight at once, as many as a browser opens to one host.
 const SOURCE_FETCHES = 6;
 
-export function initAstra(adapter) {
+export function initTaproot(adapter) {
   let corePromise = null;
   const builtFrom = new WeakMap();
 
@@ -37,21 +37,21 @@ export function initAstra(adapter) {
       const go = new globalThis.Go();
       // no-cache revalidates, so an upgraded engine never runs against
       // stale cached bytes (a 304 costs nothing when unchanged).
-      const resp = await fetch(`${adapter.coreBase}/astra-core.wasm`, { cache: "no-cache" });
+      const resp = await fetch(`${adapter.coreBase}/taproot-core.wasm`, { cache: "no-cache" });
       let instance;
       try {
         ({ instance } = await WebAssembly.instantiateStreaming(resp, go.importObject));
       } catch {
         // Some static hosts serve .wasm without the right MIME type.
-        const buf = await (await fetch(`${adapter.coreBase}/astra-core.wasm`, { cache: "no-cache" })).arrayBuffer();
+        const buf = await (await fetch(`${adapter.coreBase}/taproot-core.wasm`, { cache: "no-cache" })).arrayBuffer();
         ({ instance } = await WebAssembly.instantiate(buf, go.importObject));
       }
-      go.run(instance); // resolves only on exit; astraCore installs at startup
-      for (let i = 0; i < 200 && !globalThis.astraCore; i++) {
+      go.run(instance); // resolves only on exit; taprootCore installs at startup
+      for (let i = 0; i < 200 && !globalThis.taprootCore; i++) {
         await new Promise((r) => setTimeout(r, 10));
       }
-      if (!globalThis.astraCore) throw new Error("astra-core.wasm did not install astraCore");
-      return globalThis.astraCore;
+      if (!globalThis.taprootCore) throw new Error("taproot-core.wasm did not install taprootCore");
+      return globalThis.taprootCore;
     })().catch((e) => {
       corePromise = null;
       throw new Error(`Couldn't load the review engine: ${e.message}`, { cause: e });
@@ -134,7 +134,7 @@ export function initAstra(adapter) {
     const resp = JSON.parse(
       core.process(JSON.stringify({ files: input.wireFiles, options: { order } })),
     );
-    if (resp.error) throw new Error(`astra core: ${resp.error}`);
+    if (resp.error) throw new Error(`taproot core: ${resp.error}`);
     for (const s of resp.snippets ?? []) s.status = "pending";
     resp.missingSource = input.missing;
     resp.skipped = [...input.skipped, ...(resp.skipped ?? [])]

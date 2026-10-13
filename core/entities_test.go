@@ -514,7 +514,7 @@ func TestExtractEntities_JS_SemicolonlessArrow(t *testing.T) {
 	// must not swallow the declarations that follow it.
 	src := `const double = x =>
   x * 2
-const NAME = 'astra'
+const NAME = 'taproot'
 function after() {
   return NAME
 }
@@ -1219,7 +1219,7 @@ var (
 	y = 2
 )
 
-const usage = `+"`"+`usage: astra
+const usage = `+"`"+`usage: taproot
   --base REF
 `+"`"+`
 

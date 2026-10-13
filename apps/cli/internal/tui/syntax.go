@@ -179,7 +179,7 @@ func deltaArgs() []string {
 }
 
 // userHasDeltaStyle reports whether ~/.gitconfig sets delta's look. When it
-// does, those settings win; otherwise Astra applies its GitHub-style theme.
+// does, those settings win; otherwise Taproot applies its GitHub-style theme.
 func userHasDeltaStyle() bool {
 	out, err := exec.Command("git", "config", "--get-regexp", `^delta\.`).Output()
 	if err != nil {
@@ -196,10 +196,10 @@ func userHasDeltaStyle() bool {
 	return false
 }
 
-// lightTheme picks GitHub's light palette when ASTRA_THEME=light, or when
-// ASTRA_THEME is unset and COLORFGBG reports a light background.
+// lightTheme picks GitHub's light palette when TAPROOT_THEME=light, or when
+// TAPROOT_THEME is unset and COLORFGBG reports a light background.
 func lightTheme() bool {
-	switch os.Getenv("ASTRA_THEME") {
+	switch os.Getenv("TAPROOT_THEME") {
 	case "light":
 		return true
 	case "dark":
@@ -247,7 +247,7 @@ func githubDeltaStyle() []string {
 	if lightTheme() {
 		mode = "--light"
 	}
-	if theme := os.Getenv("ASTRA_DELTA_THEME"); theme != "" {
+	if theme := os.Getenv("TAPROOT_DELTA_THEME"); theme != "" {
 		p.syntax = theme
 	}
 	return []string{

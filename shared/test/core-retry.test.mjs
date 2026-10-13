@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { initAstra } from "../lib/astra.js";
+import { initTaproot } from "../lib/taproot.js";
 
 const root = new URL("../../", import.meta.url);
 const fail = { script: false, wasm: false };
@@ -29,7 +29,7 @@ globalThis.document = {
   },
 };
 globalThis.fetch = async (url) => {
-  if (url.endsWith("astra-core.wasm") && fail.wasm) {
+  if (url.endsWith("taproot-core.wasm") && fail.wasm) {
     fail.wasm = false;
     throw new TypeError("Failed to fetch");
   }
@@ -39,17 +39,17 @@ globalThis.fetch = async (url) => {
 const files = [{ filename: "notes.txt", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" }];
 
 test("a review after a failed wasm_exec.js load loads it again", async () => {
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async () => null });
   fail.script = true;
-  await assert.rejects(astra.buildReview(files), /^Error: Couldn't load the review engine: Failed to load vendor\/core\/wasm_exec\.js$/);
-  const review = await astra.buildReview(files);
+  await assert.rejects(taproot.buildReview(files), /^Error: Couldn't load the review engine: Failed to load vendor\/core\/wasm_exec\.js$/);
+  const review = await taproot.buildReview(files);
   assert.equal(review.snippets.length, 1);
 });
 
 test("a review after a failed engine download downloads it again", async () => {
-  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
+  const taproot = initTaproot({ coreBase: "vendor/core", fetchSource: async () => null });
   fail.wasm = true;
-  await assert.rejects(astra.buildReview(files), /^Error: Couldn't load the review engine: Failed to fetch$/);
-  const review = await astra.buildReview(files);
+  await assert.rejects(taproot.buildReview(files), /^Error: Couldn't load the review engine: Failed to fetch$/);
+  const review = await taproot.buildReview(files);
   assert.equal(review.snippets.length, 1);
 });

@@ -148,7 +148,7 @@ func TestFiles_IgnoresUserDiffConfig(t *testing.T) {
 	}
 }
 
-// TestIndexWrites_IgnoreUserConfig: what astra writes to the index is the
+// TestIndexWrites_IgnoreUserConfig: what taproot writes to the index is the
 // text it gives, whatever filters and line-ending settings the user has,
 // and a path is a path, never a pattern.
 func TestIndexWrites_IgnoreUserConfig(t *testing.T) {
