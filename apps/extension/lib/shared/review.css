@@ -153,7 +153,7 @@
 .taproot-card.folded .taproot-card-body, .taproot-card.folded .taproot-notes { display: none; }
 .taproot-card.folded .taproot-fold { transform: rotate(-90deg); }
 .taproot-fold { border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 2px; }
-.taproot-title { flex: 1; min-width: 0; overflow-wrap: anywhere; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.taproot-title { flex: 1 1 16ch; min-width: 0; overflow-wrap: anywhere; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .taproot-crumbs, .taproot-symbol, .taproot-path { cursor: text; }
 .taproot-crumbs { color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
 .taproot-symbol { font-family: var(--mono); font-size: 13px; }
