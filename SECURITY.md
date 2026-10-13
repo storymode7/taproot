@@ -126,12 +126,19 @@ Limits of these checks:
 
 ## Releases
 
-- Releases are built by hand with `make dist` and uploaded to GitHub
-  Releases. No workflow publishes them; CI only checks that the CLI
-  builds.
-- Release files are not signed. `SHA256SUMS` detects a damaged download,
-  but it comes from the same place as the files, so it does not prove who
-  built them.
+- Releases are built on GitHub by `.github/workflows/release.yml` when a
+  `v*` tag is pushed. It runs `make dist` on the tagged commit and creates
+  a draft release, which a maintainer reviews and publishes.
+- The release job is the only job with write access. It uses only
+  GitHub-owned actions (`checkout`, `setup-go`,
+  `attest-build-provenance`) and the preinstalled `gh` CLI.
+- Each release file has a build provenance signed through Sigstore. Run
+  `gh attestation verify <file> --repo storymode7/taproot` to check that
+  the file came from this repository's release workflow and which commit
+  it was built from. This is not a code signature: macOS and Windows do
+  not know about it.
+- `SHA256SUMS` detects a damaged download, but it comes from the same
+  place as the files, so on its own it does not prove who built them.
 - There is no reproducible-build guarantee. The bytes depend on the Go
   toolchain and the build settings.
 - `go version -m taproot` prints the Go version, the build settings and the

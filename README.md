@@ -80,16 +80,20 @@ When a release is out, the
 [Releases page](https://github.com/storymode7/taproot/releases) has binaries
 named `taproot-<version>-<os>-<arch>`, `LICENSE`, `THIRD_PARTY_NOTICES`, the
 extension zip and `SHA256SUMS`.
-Releases are built by hand with `make dist` and are not signed. For
-example, for v0.1.0 on Linux amd64:
+A workflow builds each release on GitHub from the tagged commit, and
+signs a provenance record for every file. For example, for v0.1.0 on
+Linux amd64:
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify taproot-v0.1.0-linux-amd64 --repo storymode7/taproot
 chmod +x taproot-v0.1.0-linux-amd64
 mv taproot-v0.1.0-linux-amd64 taproot      # then move it to a directory on your PATH
 ./taproot --version
 ```
 
+`gh attestation verify` proves that the file was built by this
+repository's release workflow; it needs the [GitHub CLI](https://cli.github.com).
 On macOS, check with `shasum -a 256 -c --ignore-missing SHA256SUMS`. If
 macOS refuses to run a binary that a browser downloaded, remove the
 quarantine flag: `xattr -d com.apple.quarantine taproot`.
@@ -283,7 +287,7 @@ call structure. They come last in the review, under the heading
 - No part of Taproot writes to GitHub.
 - The Go module has no third-party dependencies, and the web code uses no
   npm packages. The few vendored files are pinned by SHA-256.
-- Releases are not signed.
+- Release files carry a signed build provenance, not a code signature.
 
 [SECURITY.md](SECURITY.md) describes the trust model in full and tells you
 how to report a vulnerability.
@@ -323,31 +327,38 @@ and the browser tests.
 
 ## Releasing
 
-No workflow builds or publishes releases. Before the first release, turn
-on private vulnerability reporting in the repository's security settings,
-because SECURITY.md sends reports there. Then make each release by hand:
+Pushing a tag that starts with `v` runs
+`.github/workflows/release.yml`. It builds the files with `make dist`,
+signs a build provenance for each file with
+`actions/attest-build-provenance`, and creates a **draft** release with
+the files and generated notes. Nothing is public until you publish the
+draft.
 
 1. If the extension changed, bump `"version"` in
-   `apps/extension/manifest.json`. Chrome accepts one to four numbers
-   separated by dots. The zip is named after this version.
-2. Tag the release commit, for example `git tag v0.1.0`.
-3. Run `make dist`. `VERSION` defaults to
-   `git describe --tags --always --dirty`, which is the tag on a tagged
-   commit. To set it, run `make dist VERSION=v0.1.0`. `make dist` needs
-   git, go, node, zip and sha256sum.
-4. `make dist` stops when `git status` lists any change, so commit or
-   stash first. It runs the sync check and the parity check, then writes
-   `dist/`:
-   - `taproot-<VERSION>-linux-amd64`, `-linux-arm64`, `-darwin-amd64` and
-     `-darwin-arm64`, built with `CGO_ENABLED=0`, `-trimpath` and
-     `-ldflags "-s -w -X main.version=<VERSION>"`;
-   - `LICENSE` and `THIRD_PARTY_NOTICES`, which go with the binaries;
-   - `taproot-extension-<manifest version>.zip`, with the tracked files of
-     `apps/extension/`, `LICENSE` and `THIRD_PARTY_NOTICES`;
-   - `SHA256SUMS`.
-5. Check the files: `cd dist && sha256sum -c SHA256SUMS`. On macOS, use
-   `shasum -a 256 -c SHA256SUMS`.
-6. Create a GitHub release for the tag, and upload every file in `dist/`.
+   `apps/extension/manifest.json` and commit. Chrome accepts one to four
+   numbers separated by dots. The zip is named after this version.
+2. Push the commit, then tag it and push the tag:
+   `git tag -a v0.1.0 -m "Taproot v0.1.0"` and `git push origin v0.1.0`.
+3. Wait for the Release workflow to finish. Open the draft on the
+   Releases page, edit the notes, and click **Publish release**.
+
+Dependabot (`.github/dependabot.yml`) opens a pull request each month when
+a GitHub Action used by CI or the release workflow has a new version.
+
+To build the same files on your machine, run `make dist`. `VERSION`
+defaults to `git describe --tags --always --dirty`, which is the tag on a
+tagged commit; to set it, run `make dist VERSION=v0.1.0`. `make dist`
+needs git, go, node, zip and sha256sum. It stops when `git status` lists
+any change, runs the sync check and the parity check, then writes
+`dist/`:
+
+- `taproot-<VERSION>-linux-amd64`, `-linux-arm64`, `-darwin-amd64` and
+  `-darwin-arm64`, built with `CGO_ENABLED=0`, `-trimpath` and
+  `-ldflags "-s -w -X main.version=<VERSION>"`;
+- `LICENSE` and `THIRD_PARTY_NOTICES`, which go with the binaries;
+- `taproot-extension-<manifest version>.zip`, with the tracked files of
+  `apps/extension/`, `LICENSE` and `THIRD_PARTY_NOTICES`;
+- `SHA256SUMS`.
 
 ## Layout
 

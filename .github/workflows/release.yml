@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the draft release
+      id-token: write      # sign the provenance with Sigstore
+      attestations: write  # store the provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false  # never build a release from a cache another run saved
+
+      - name: Build the release files
+        run: make dist VERSION="$GITHUB_REF_NAME"
+
+      - name: Check the files
+        run: cd dist && sha256sum -c SHA256SUMS
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*'
+
+      - name: Create a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --draft --verify-tag --generate-notes
+          --title "Taproot $GITHUB_REF_NAME"
