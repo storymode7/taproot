@@ -60,7 +60,12 @@ func View(snippets []*core.Snippet, store *state.Store) {
 		plainView(snippets, store)
 		return
 	}
+	heading := false
 	for i, s := range snippets {
+		if !heading && s.OtherLanguage() {
+			heading = true
+			fmt.Printf("\n%sOther files%s %s· %s%s\n", bold, reset, dim, otherFilesNote, reset)
+		}
 		st := store.Get(state.Key(s.ID, s.DiffLines))
 		// Indent by call-tree depth so the drill-down structure survives
 		// in plain output.
@@ -93,7 +98,12 @@ func printSnippetHeader(idx, total int, s *core.Snippet, status, indent string) 
 }
 
 func plainView(snippets []*core.Snippet, store *state.Store) {
+	heading := false
 	for i, s := range snippets {
+		if !heading && s.OtherLanguage() {
+			heading = true
+			fmt.Printf("Other files · %s\n\n", otherFilesNote)
+		}
 		indent := strings.Repeat("  ", s.Depth)
 		title := fmt.Sprintf("%s:%d", displaySafe(s.FilePath), firstChangedLine(s))
 		if s.SymbolPath != "" {
@@ -247,7 +257,7 @@ type Runner struct {
 // applyMode enables git-staging; stage applies one snippet to the index
 // (reverse unstages it) and may be nil.
 func NewRunner(forest *core.ReviewForest, store *state.Store, autoAdvance, applyMode bool, stage func(s *core.Snippet, reverse bool) error) *Runner {
-	return &Runner{
+	r := &Runner{
 		forest:      forest,
 		flat:        forest.Flatten(core.OrderPre),
 		store:       store,
@@ -257,6 +267,8 @@ func NewRunner(forest *core.ReviewForest, store *state.Store, autoAdvance, apply
 		tree:        newTreeState(forest),
 		diffCache:   make(map[string][]string),
 	}
+	r.cursor = r.tree.firstRow()
+	return r
 }
 
 // Run starts the interactive loop. Returns when the user quits (q).
@@ -449,7 +461,7 @@ func (r *Runner) reload(why string) {
 	}
 	r.keys, r.search = nil, nil
 	r.diffCache = make(map[string][]string)
-	r.cursor = 0
+	r.cursor = r.tree.firstRow()
 	r.focusNode(id)
 	r.status = why
 	r.render()
@@ -648,6 +660,14 @@ func (r *Runner) moveCursor(delta int) {
 	next := r.cursor + delta
 	if next < 0 || next >= len(r.tree.visible) {
 		return
+	}
+	// Step over the heading of the other files; it is never the last row.
+	if r.tree.visible[next].node == nil {
+		if delta < 0 && next > 0 {
+			next--
+		} else {
+			next++
+		}
 	}
 	r.cursor = next
 	r.diffScroll = 0
@@ -919,6 +939,10 @@ func (r *Runner) render() {
 	r.tree.scrollTo(r.cursor, treeH)
 	for i := r.tree.top; i < r.tree.top+treeH && i < len(r.tree.visible); i++ {
 		row := r.tree.visible[i]
+		if row.node == nil {
+			fmt.Println(renderHeadingRow(cols))
+			continue
+		}
 		fmt.Println(r.tree.renderTreeRow(row, r.statusOf(row.node.Snippet), i == r.cursor, cols))
 	}
 

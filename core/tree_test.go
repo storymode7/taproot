@@ -205,6 +205,26 @@ func TestBuildForest_NonEntityTrailingRoots(t *testing.T) {
 	}
 }
 
+func TestBuildForest_OtherLanguagesTrailLast(t *testing.T) {
+	notes := &Snippet{ID: "notes", FilePath: "a.txt", NodeType: "hunk", StartLine: 1}
+	imports := &Snippet{ID: "imp", FilePath: "b.go", Language: "go", SymbolPath: "imports", NodeType: "imports", StartLine: 1}
+	preamble := &Snippet{ID: "pre", FilePath: "c.py", Language: "python", NodeType: "hunk", StartLine: 1}
+	gone := &Snippet{ID: "gone", FilePath: "0.txt", SymbolPath: "(deleted)", NodeType: "file", IsDeleted: true, StartLine: 1}
+	readme := &Snippet{ID: "readme", FilePath: "README.md", NodeType: "hunk", StartLine: 3}
+	entity := fn("f", "z.go", "f", 1)
+
+	f := BuildForest([]*Snippet{notes, imports, preamble, gone, readme, entity}, nil)
+	want := "gone f imp pre readme notes"
+	if got := strings.Join(rootIDs(f), " "); got != want {
+		t.Fatalf("roots = %s, want %s", got, want)
+	}
+	for _, s := range []*Snippet{imports, preamble, gone, entity} {
+		if s.OtherLanguage() {
+			t.Errorf("%s counts as a file in another language", s.ID)
+		}
+	}
+}
+
 func TestFlatten_PostOrder(t *testing.T) {
 	snippets := []*Snippet{
 		fn("main", "main.go", "main", 1),

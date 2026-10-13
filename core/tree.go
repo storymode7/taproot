@@ -39,7 +39,8 @@ type ReviewNode struct {
 type ReviewForest struct {
 	// Roots holds, in review order: call-tree roots (code components
 	// largest first, then test components), then non-entity snippets (imports, preamble, fallback hunks)
-	// as trailing childless roots sorted by file.
+	// as trailing childless roots sorted by file, with the hunks of files in
+	// other languages last.
 	Roots []*ReviewNode
 
 	// ByID maps snippet ID to its canonical node.
@@ -261,14 +262,20 @@ func BuildForest(snippets []*Snippet, edges []SymbolEdge) *ReviewForest {
 		}
 	}
 
-	// Trailing non-entity snippets, grouped by file order.
+	// Trailing non-entity snippets, grouped by file order. Files in other
+	// languages come last, so the surfaces can show them as one group.
 	var trailing []*Snippet
 	for _, s := range snippets {
 		if !isPrimary(s) {
 			trailing = append(trailing, s)
 		}
 	}
-	sort.Slice(trailing, func(i, j int) bool { return snippetLess(trailing[i], trailing[j]) })
+	sort.Slice(trailing, func(i, j int) bool {
+		if oi, oj := trailing[i].OtherLanguage(), trailing[j].OtherLanguage(); oi != oj {
+			return oj
+		}
+		return snippetLess(trailing[i], trailing[j])
+	})
 	for _, s := range trailing {
 		node := &ReviewNode{Snippet: s}
 		forest.ByID[s.ID] = node

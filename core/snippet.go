@@ -100,6 +100,13 @@ type Snippet struct {
 	Status SnippetStatus
 }
 
+// OtherLanguage reports whether s is a plain hunk of a file in a language
+// the engine does not read, so it has no entity and no call info. A deleted
+// file's snippet is not one.
+func (s *Snippet) OtherLanguage() bool {
+	return s.Language == "" && s.SymbolPath == ""
+}
+
 // SnippetStatus represents the review state of a snippet.
 type SnippetStatus int
 

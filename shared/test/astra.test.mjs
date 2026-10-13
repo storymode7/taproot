@@ -119,6 +119,18 @@ test("files the core skips are listed with the ones the browser skips", async ()
   assert.deepEqual(review.skipped, [{ path: "b.bin", reason: "binary" }, { path: "c.png", reason: "no-diff" }]);
 });
 
+test("the core puts files in other languages after the imports of the files it reads", async () => {
+  const src = 'import { b } from "./b.js";\n\nexport function main() {\n  b();\n}\n';
+  const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => src });
+  const imports = { filename: "src/z.js", status: "modified", patch: '@@ -1 +1 @@\n-import { a } from "./a.js";\n+import { b } from "./b.js";' };
+  const notes = { filename: "NOTES.txt", status: "modified", patch: "@@ -1 +1 @@\n-a\n+b" };
+  for (const order of ["pre", "post"]) {
+    const review = await astra.buildReview([notes, imports], order);
+    assert.deepEqual(review.snippets.map((s) => [s.filePath, s.symbolPath, s.language]),
+      [["src/z.js", "imports", "javascript"], ["NOTES.txt", "", ""]]);
+  }
+});
+
 test("a reorder uses the files of the review it is given", async () => {
   const astra = initAstra({ coreBase: "vendor/core", fetchSource: async () => null });
   const first = await astra.buildReview([edit]);

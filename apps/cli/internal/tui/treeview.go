@@ -10,11 +10,16 @@ import (
 	"github.com/storymode7/astra/core"
 )
 
-// visRow is one visible row of the tree pane.
+// visRow is one visible row of the tree pane. A row with no node is the
+// heading of the files in other languages, which the cursor skips.
 type visRow struct {
 	node  *core.ReviewNode
 	depth int
 }
+
+// otherFilesNote explains the group of files in languages the engine does
+// not read.
+const otherFilesNote = "Plain hunks, no call info. Astra reads Go, JavaScript, TypeScript, Python, Java and Rust."
 
 // treeState tracks which canonical nodes are expanded and which rows that
 // makes visible.
@@ -50,9 +55,22 @@ func (t *treeState) recompute() {
 			walk(c, depth+1)
 		}
 	}
+	heading := false
 	for _, r := range t.forest.Roots {
+		if !heading && r.Snippet.OtherLanguage() {
+			heading = true
+			t.visible = append(t.visible, visRow{})
+		}
 		walk(r, 0)
 	}
+}
+
+// firstRow is the first row the cursor can stop on.
+func (t *treeState) firstRow() int {
+	if len(t.visible) > 1 && t.visible[0].node == nil {
+		return 1
+	}
+	return 0
 }
 
 func (t *treeState) expandAllNodes() {
@@ -82,7 +100,7 @@ func (t *treeState) expandAncestors(id string) {
 // indexOf returns the visible row index of the canonical node for id, or -1.
 func (t *treeState) indexOf(id string) int {
 	for i, row := range t.visible {
-		if !row.node.Ref && row.node.Snippet.ID == id {
+		if row.node != nil && !row.node.Ref && row.node.Snippet.ID == id {
 			return i
 		}
 	}
@@ -90,13 +108,16 @@ func (t *treeState) indexOf(id string) int {
 }
 
 // scrollTo adjusts the window top so row idx is within a pane of the given
-// height.
+// height, with the heading above it when it is the first of the other files.
 func (t *treeState) scrollTo(idx, height int) {
 	if idx < t.top {
 		t.top = idx
 	}
 	if idx >= t.top+height {
 		t.top = idx - height + 1
+	}
+	if idx == t.top && idx > 0 && height > 1 && t.visible[idx-1].node == nil {
+		t.top--
 	}
 	if t.top < 0 {
 		t.top = 0
@@ -163,6 +184,11 @@ func (t *treeState) renderTreeRow(row visRow, status string, cursor bool, width 
 		line = dim + stripANSI(line) + reset
 	}
 	return line
+}
+
+// renderHeadingRow renders the heading of the files in other languages.
+func renderHeadingRow(width int) string {
+	return renderSegments([]segment{{"Other files", bold}, {"  " + otherFilesNote, dim}}, width, false)
 }
 
 // segment is a run of text with one style.

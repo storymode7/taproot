@@ -272,7 +272,9 @@ Then open <http://127.0.0.1:8080/>. To host your own copy, see
 | Java | `.java` |
 | Rust | `.rs` |
 
-Other files show one snippet for each diff hunk, with no call structure.
+Files in other languages show one snippet for each diff hunk, with no
+call structure. They come last in the review, under the heading
+**Other files**. A deleted file keeps its place in the tree.
 
 ## Security
 

@@ -19,6 +19,9 @@ const STATUS_LABEL = {
   pending: "Pending", reviewed: "Reviewed", accepted: "Accepted", rejected: "Rejected",
 };
 
+const OTHER_FILES = "Other files";
+const OTHER_FILES_NOTE = "Plain hunks, no call info. Astra reads Go, JavaScript, TypeScript, Python, Java and Rust.";
+
 const SKIP_REASON = {
   binary: "binary", renamed: "renamed", mode: "mode change", empty: "empty file",
   conflict: "conflict", "no-diff": "no diff",
@@ -85,8 +88,13 @@ export function renderReview(container, review, store, opts = {}) {
   }
 
   const cards = new Map();
+  let grouped = false;
   for (const id of order) {
     const snippet = byId.get(id);
+    if (!grouped && isOtherLanguage(snippet)) {
+      grouped = true;
+      main.appendChild(otherFilesHeading("div"));
+    }
     const card = makeCard(snippet, {
       store, opts, byId,
       node: nodeOf.get(id),
@@ -185,9 +193,14 @@ export function renderReview(container, review, store, opts = {}) {
 // ---------------------------------------------------------------------------
 function renderTree(nodes, byId, store, onPick) {
   const ul = el("ul");
+  let grouped = false;
   for (const n of nodes) {
     const s = byId.get(n.id);
     if (!s) continue;
+    if (!grouped && isOtherLanguage(s)) {
+      grouped = true;
+      ul.appendChild(otherFilesHeading("li"));
+    }
     const li = el("li");
     li.dataset.id = n.id;
     const row = el("div", "astra-tree-row");
@@ -228,6 +241,18 @@ function renderTree(nodes, byId, store, onPick) {
     ul.appendChild(li);
   }
   return ul;
+}
+
+// A plain hunk of a file in a language the engine does not read. The core
+// puts these last, so they form one group under a heading.
+function isOtherLanguage(s) {
+  return !s.language && !s.symbolPath;
+}
+
+function otherFilesHeading(tag) {
+  const heading = el(tag, "astra-group");
+  heading.append(el("strong", undefined, OTHER_FILES), el("span", undefined, OTHER_FILES_NOTE));
+  return heading;
 }
 
 function paintDot(dot, status) {
