@@ -207,7 +207,8 @@ Taproot deletes these copies when it exits.
 ## Chrome extension
 
 The extension adds an **🌱 Taproot** button to the Files changed tab of a
-pull request on github.com (the `…/pull/<n>/changes` page). The button
+pull request on github.com (the `…/pull/<n>/changes` page, or
+`…/pull/<n>/files`, which GitHub shows when you are signed out). The button
 opens a panel with the review tree and the snippets.
 
 It is not in the Chrome Web Store. To install it:
@@ -232,6 +233,10 @@ What it can do:
   browser sends your GitHub session with them, and private repositories
   you can open work. GitHub redirects the raw source requests to
   `raw.githubusercontent.com`. Taproot stores no token.
+- When you are signed out, GitHub shows the older `…/files` page instead.
+  There the extension reads the pull request from `api.github.com` without
+  credentials, as the web app does: public repositories only, and at most
+  60 requests an hour from one IP address.
 - It never writes to GitHub. Verdicts and notes stay in the extension's
   storage in this browser.
 

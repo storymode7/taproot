@@ -14,8 +14,9 @@ not open a public issue.
   sends your code to a server; the browser surfaces only fetch from
   GitHub, with the requests listed below.
 - **No OAuth and no tokens.** Taproot never asks for, stores or sends a
-  GitHub token. The extension's requests carry your github.com session
-  because they are same-origin requests from the GitHub page. The web app
+  GitHub token. The extension's requests to github.com carry your
+  github.com session because they are same-origin requests from the GitHub
+  page; its `api.github.com` requests carry none. The web app
   makes only unauthenticated requests.
 - **No telemetry.** No analytics, no error reports and no update checks.
 - **Read-only toward GitHub.** No part of Taproot writes to GitHub. Verdicts
@@ -49,8 +50,9 @@ not open a public issue.
 Chrome still shows "Read and change your data on github.com" when you
 install it, because the content script runs on github.com.
 
-The content script acts only on the Files changed page of a pull request
-(`/<owner>/<repo>/pull/<n>/changes`). There it makes same-origin GET
+The content script acts only on the Files changed page of a pull request:
+`/<owner>/<repo>/pull/<n>/changes`, or `/<owner>/<repo>/pull/<n>/files`,
+which GitHub shows to signed-out visitors. On `/changes` it makes same-origin GET
 requests to github.com, so the browser sends your github.com cookies with
 them:
 
@@ -62,6 +64,11 @@ them:
   to `raw.githubusercontent.com`, and the browser fetches the file from
   there without your cookies. For a private repository, the redirect URL
   carries a short-lived token from GitHub.
+
+On `/files` it gets the pull request and its file list from
+`https://api.github.com/repos/<owner>/<repo>/pulls/<n>` and
+`…/pulls/<n>/files?per_page=100&page=<k>`, without credentials, then
+fetches the raw sources as above.
 
 It sends the result to the panel, an extension page in an iframe, which
 runs the engine. The panel and the content script accept messages only

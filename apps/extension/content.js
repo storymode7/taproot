@@ -5,11 +5,13 @@
  *   1. Detect that we're on a PR files page, including after GitHub's
  *      in-page navigation.
  *   2. Inject the Taproot side panel into the DOM.
- *   3. Fetch the PR diff via same-origin fetch (user's existing GH session).
+ *   3. Fetch the PR diff: same-origin on /changes (user's existing GH
+ *      session), from the public REST API on /files (signed-out visitors).
  *   4. Post messages to the panel iframe with diff data.
  *
  * Security notes:
- *   - All fetch calls are same-origin to github.com (user's session).
+ *   - Fetches go to github.com (user's session), except on /files, where
+ *     they go to api.github.com without credentials.
  *   - No credentials are stored or transmitted off-device.
  *   - The panel is a local extension resource (web_accessible_resource).
  */
@@ -30,14 +32,14 @@
   // the script re-checks the URL on every navigation. Turbo can also swap
   // <body> after the URL changes, removing the toggle and the panel.
   function sync() {
-    const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/changes/);
+    const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/(changes|files)/);
     const path = m ? location.pathname : null;
     if (view && (view.path !== path || !view.toggle.isConnected || !view.container.isConnected)) {
       view.toggle.remove();
       view.container.remove();
       view = null;
     }
-    if (path && !view) view = mount({ path, owner: m[1], repo: m[2], prNumber: Number(m[3]) });
+    if (path && !view) view = mount({ path, owner: m[1], repo: m[2], prNumber: Number(m[3]), page: m[4] });
   }
 
   function mount(pr) {
@@ -147,6 +149,7 @@
   // Extract diff data already embedded in the page, then fetch any remaining
   // files that GitHub lazy-loads via page_data/diff_entries.
   async function fetchAllDiffContents(v) {
+    if (v.page === "files") return fetchFromApi(v);
     const route = await pageRoute(v.path);
     const summaries = route.diffSummaries || [];
     const loadedContents = route.diffContents || [];
@@ -199,6 +202,33 @@
       };
     });
     return { files, headOid: commitOid };
+  }
+
+  // GitHub serves the older /files page to signed-out visitors, so the pull
+  // request is public: read it from the REST API, as the web app does.
+  async function fetchFromApi(v) {
+    const pr = `https://api.github.com/repos/${v.owner}/${v.repo}/pulls/${v.prNumber}`;
+    const meta = await apiGet(pr);
+    const files = [];
+    for (let n = 1; files.length < Math.min(meta.changed_files, 3000); n++) {
+      const page = await apiGet(`${pr}/files?per_page=100&page=${n}`);
+      for (const f of page) {
+        const { filename, status, additions, deletions, changes, patch = "" } = f;
+        files.push({ filename, status, additions, deletions, changes, patch });
+      }
+      if (page.length < 100) break;
+    }
+    return { files, headOid: meta.head?.sha ?? "" };
+  }
+
+  async function apiGet(url) {
+    const resp = await fetch(url, { headers: { Accept: "application/vnd.github+json" }, credentials: "omit" });
+    if (resp.ok) return resp.json();
+    if ((resp.status === 403 || resp.status === 429) && resp.headers.get("x-ratelimit-remaining") === "0") {
+      throw new Error("GitHub allows 60 requests an hour without a login, and they are used up. Sign in to GitHub, or try again later.");
+    }
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(`GitHub API error: ${resp.status} ${body.message ?? resp.statusText}`);
   }
 
   // The live document holds the route data only when it was loaded at this
