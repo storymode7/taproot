@@ -100,6 +100,8 @@ quarantine flag: `xattr -d com.apple.quarantine taproot`.
 
 ## Usage
 
+https://github.com/user-attachments/assets/9e8a8e32-5849-4b64-a3cd-54cfc798e700
+
 ```sh
 taproot diff                                # unstaged changes, as git diff shows them
 taproot diff --staged                       # what is staged for commit
@@ -211,6 +213,8 @@ pull request on github.com (the `…/pull/<n>/changes` page, or
 `…/pull/<n>/files`, which GitHub shows when you are signed out). The button
 opens a panel with the review tree and the snippets.
 
+https://github.com/user-attachments/assets/60a4cf52-7816-4561-88e3-728fea7d69c1
+
 It is not in the Chrome Web Store. To install it:
 
 1. Get the extension folder. Download `taproot-extension-<version>.zip`
@@ -257,6 +261,8 @@ sources from `raw.githubusercontent.com`, with no login,
 and runs the engine in your browser. It cannot read private repositories,
 and it cannot post to GitHub. Verdicts and notes stay in your browser.
 The keys are the same as in the extension.
+
+https://github.com/user-attachments/assets/e0694e4f-208c-408b-8e40-0e82a0360b7f
 
 GitHub allows 60 unauthenticated API requests an hour from one IP
 address. A review uses one request for the pull request and one for each
