@@ -1,4 +1,4 @@
-// taproot — call-tree PR reviewer CLI
+// taproot — call-tree diff reviewer CLI
 //
 // Usage:
 //
@@ -23,7 +23,7 @@ import (
 	"github.com/storymode7/taproot/core"
 )
 
-const usage = `taproot — call-tree PR reviewer
+const usage = `taproot — call-tree diff reviewer
 
 USAGE
   taproot diff [options]

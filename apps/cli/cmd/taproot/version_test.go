@@ -36,7 +36,7 @@ func TestUsage_MatchesTheTUI(t *testing.T) {
 			t.Errorf("usage lacks %q", s)
 		}
 	}
-	if !strings.HasPrefix(usage, "taproot — call-tree PR reviewer\n") {
+	if !strings.HasPrefix(usage, "taproot — call-tree diff reviewer\n") {
 		t.Errorf("usage opens with %q", strings.SplitN(usage, "\n", 2)[0])
 	}
 	for _, s := range []string{"n / x", "does not stage", "they survive commit", "AST-aware", "call-graph depth"} {
