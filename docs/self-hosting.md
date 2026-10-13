@@ -93,9 +93,10 @@ python3 -m http.server --bind 127.0.0.1 8080
 
 Then open <http://127.0.0.1:8080/>.
 
-GitHub Pages publishes a branch from its root or its `docs/` folder. To
-use it, publish the repository root and open
-`https://<user>.github.io/<repo>/apps/pwa/`.
+On GitHub Pages, use the workflow in `.github/workflows/pages.yml`. It
+runs the checks in step 2 and publishes `apps/pwa/` on every push to
+`master`. In the repository settings, under **Pages**, set **Source** to
+**GitHub Actions**. The app is then at `https://<user>.github.io/<repo>/`.
 
 Prefer an origin that serves nothing but the app, such as a domain or
 subdomain of its own. The browser keeps verdicts and comments in

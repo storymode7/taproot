@@ -1,0 +1,43 @@
+name: Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write     # publish the site
+      id-token: write  # prove the deployment came from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Vendored core checksums
+        run: cd apps/pwa/vendor/core && sha256sum -c checksums.txt
+
+      - name: Browser copies in sync
+        run: sh scripts/sync-extension-lib.sh --check
+
+      - name: Committed WASM matches the Go goldens
+        run: node scripts/parity-check.mjs
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/pwa
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

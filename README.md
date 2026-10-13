@@ -245,9 +245,10 @@ reloading it.
 
 ## Web app
 
-`apps/pwa/` is a static web app for public pull requests. Paste a pull
-request URL. The app gets the file list from `api.github.com` and the
-changed files' sources from `raw.githubusercontent.com`, with no login,
+`apps/pwa/` is a static web app for public pull requests. Open it at
+<https://storymode7.github.io/taproot/> and paste a pull request URL.
+The app gets the file list from `api.github.com` and the changed files'
+sources from `raw.githubusercontent.com`, with no login,
 and runs the engine in your browser. It cannot read private repositories,
 and it cannot post to GitHub. Verdicts and comments stay in your browser.
 The keys are the same as in the extension.
