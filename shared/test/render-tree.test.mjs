@@ -48,7 +48,7 @@ const diff = ["@@ -1 +1 @@", "-a", "+b"];
 const snippets = [
   { id: "fn", filePath: "src/c.go", language: "go", symbolPath: "run", nodeType: "function", diffLines: diff },
   { id: "imp", filePath: "src/b.go", language: "go", symbolPath: "imports", nodeType: "imports", diffLines: diff },
-  { id: "imp2", filePath: "lib/d.go", language: "go", symbolPath: "imports", nodeType: "imports", diffLines: diff },
+  { id: "imp2", filePath: "lib/b.go", language: "go", symbolPath: "imports", nodeType: "imports", diffLines: diff },
   { id: "txt", filePath: "docs/a.txt", language: "", symbolPath: "", nodeType: "hunk", diffLines: diff },
   { id: "yml", filePath: "ci.yml", language: "", symbolPath: "", nodeType: "hunk", diffLines: diff },
 ];
@@ -95,9 +95,9 @@ test("the heading is not a snippet: progress, j/k and verdicts skip it", () => {
 });
 
 
-test("imports rows name their file", () => {
+test("imports rows show the file path, so two b.go rows differ", () => {
   const { nav, main } = render();
   const names = nav.children[1].children.filter((li) => li.dataset.id).map((li) => li.children[0].children[2].textContent);
-  assert.deepEqual(names, ["run", "imports · b.go", "imports · d.go", "a.txt", "ci.yml"]);
-  assert.match(main.children.find((e) => cardId(e) === "imp2").children[0].html, /<strong class="taproot-symbol">imports · d\.go<\/strong>/);
+  assert.deepEqual(names, ["run", "imports · src/b.go", "imports · lib/b.go", "a.txt", "ci.yml"]);
+  assert.match(main.children.find((e) => cardId(e) === "imp2").children[0].html, /<strong class="taproot-symbol">imports · lib\/b\.go<\/strong>/);
 });

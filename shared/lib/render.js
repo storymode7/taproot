@@ -265,7 +265,7 @@ function paintDot(dot, status) {
 function label(s) {
   const base = displaySafe(s.filePath.split("/").pop());
   if (s.isDeleted) return `${base} (deleted)`;
-  if (s.nodeType === "imports") return `imports · ${base}`;
+  if (s.nodeType === "imports") return `imports · ${displaySafe(s.filePath)}`;
   return s.symbolPath ? displaySafe(s.symbolPath) : base;
 }
 
