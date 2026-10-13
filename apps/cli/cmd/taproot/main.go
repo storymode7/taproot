@@ -79,7 +79,8 @@ ENVIRONMENT
 
 KEYBOARD SHORTCUTS (interactive mode)
   The main view is a call tree of the changed code: children are the
-  functions/types the focused snippet calls; roots are entry points.
+  functions/types the focused snippet calls; roots are the snippets that
+  nothing else in the diff calls.
 
   J / ↓   Move down          y / a   Accept        ] / [  Next/prev pending
   K / ↑   Move up            x       Reject        j / k  Scroll / next

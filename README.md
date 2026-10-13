@@ -1,8 +1,8 @@
 # Taproot
 
-Taproot turns a diff into a call tree of the changed code. You read the entry
-point first, then drill down one level at a time into the functions it
-calls. A snippet holds the changes to one function, method or type, not a
+Taproot turns a diff into a call tree of the changed code. You start with
+the changes that nothing else in the diff calls, then drill down one level
+at a time into the functions they call. A snippet holds the changes to one function, method or type, not a
 bare hunk.
 
 Taproot comes as three tools that run the same review engine on your machine:
