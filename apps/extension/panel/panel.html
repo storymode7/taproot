@@ -12,9 +12,9 @@
   <header class="panel-header">
     <span class="astra-logo">⭐ Astra</span>
     <div class="panel-controls">
-      <select id="preset-select" title="Review order preset">
-        <option value="top-down">Top-down</option>
-        <option value="bottom-up">Bottom-up</option>
+      <select id="order-select" title="Reading order">
+        <option value="callers-first" title="Start with the code that calls the other changes: main → parse → tokenize">Callers first</option>
+        <option value="callees-first" title="Start with the code the other changes call: tokenize → parse → main">Callees first</option>
       </select>
       <button id="btn-close" title="Close panel">✕</button>
     </div>

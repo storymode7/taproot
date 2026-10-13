@@ -10,7 +10,7 @@
  *   2. Fetch diff from api.github.com (unauthenticated)
  *   3. Fetch each changed file's full source (raw.githubusercontent.com)
  *   4. Build snippets (hunk → AST node) + symbol graph
- *   5. Order snippets by selected preset
+ *   5. Order snippets in the selected reading order
  *   6. Render the call-tree sidebar and diff cards
  */
 
@@ -128,9 +128,9 @@ function showRateLimit(retryAt) {
 // ---------------------------------------------------------------------------
 // Core review flow
 // ---------------------------------------------------------------------------
-// The core orders top-down (tree pre-order) or bottom-up (post-order).
-function presetToOrder(preset) {
-  return preset === "bottom-up" ? "post" : "pre";
+// The core orders callers first (tree pre-order) or callees first (post-order).
+function coreOrder(order) {
+  return order === "callees-first" ? "post" : "pre";
 }
 
 async function loadReview(url, { owner, repo, prNumber }, signal, say) {
@@ -140,8 +140,8 @@ async function loadReview(url, { owner, repo, prNumber }, signal, say) {
   });
 
   // The Go core (WASM) builds snippets, call edges, and the review tree.
-  const preset = document.getElementById("preset-select").value;
-  const review = await buildReview(files, presetToOrder(preset), {
+  const order = document.getElementById("order-select").value;
+  const review = await buildReview(files, coreOrder(order), {
     signal,
     onProgress: (done, total) =>
       say(done < total ? `Fetching sources (${done} of ${total})…` : "Building the review…"),
@@ -158,12 +158,12 @@ async function loadReview(url, { owner, repo, prNumber }, signal, say) {
 }
 
 // ---------------------------------------------------------------------------
-// Preset change → re-order without re-fetching
+// Order change → re-order without re-fetching
 // ---------------------------------------------------------------------------
-document.getElementById("preset-select").addEventListener("change", async (e) => {
+document.getElementById("order-select").addEventListener("change", async (e) => {
   const was = shown;
   if (!was) return;
-  const review = await reorderReview(was.review, presetToOrder(e.target.value));
+  const review = await reorderReview(was.review, coreOrder(e.target.value));
   if (shown !== was) return;
   was.review = review;
   render();

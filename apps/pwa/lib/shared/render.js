@@ -44,7 +44,7 @@ export function renderReview(container, review, store, opts = {}) {
   const byId = new Map(snippets.map((s) => [s.id, s]));
   const roots = review.tree?.roots ?? snippets.map((s) => ({ id: s.id }));
 
-  // Cards follow the core's reading order (top-down or bottom-up); the
+  // Cards follow the core's reading order (callers or callees first); the
   // tree supplies each snippet's node and parent (for breadcrumbs).
   const order = snippets.map((s) => s.id);
   const parentOf = new Map();

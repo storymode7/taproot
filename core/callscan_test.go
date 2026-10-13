@@ -328,7 +328,7 @@ func TestOrderSnippets_ImportEdgesDoNotSetDepth(t *testing.T) {
 	b := entitySnippet("b", "b.go", "go", "fb", "function", 1, "func fb() {}")
 	edges := []SymbolEdge{{From: "a", To: "b", Kind: EdgeImport}}
 
-	ordered := OrderSnippets([]*Snippet{a, b}, edges, PresetTopDown)
+	ordered := OrderSnippets([]*Snippet{a, b}, edges, OrderPre)
 	for _, s := range ordered {
 		if s.Depth != 0 {
 			t.Errorf("snippet %s: depth %d from import edge, want 0", s.ID, s.Depth)

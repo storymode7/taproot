@@ -15,7 +15,7 @@ func snippetIDs(snippets []*Snippet) []string {
 }
 
 func TestOrderSnippets_Empty(t *testing.T) {
-	result := OrderSnippets(nil, nil, PresetTopDown)
+	result := OrderSnippets(nil, nil, OrderPre)
 	if len(result) != 0 {
 		t.Fatalf("expected empty result, got %d snippets", len(result))
 	}
@@ -27,7 +27,7 @@ func TestOrderSnippets_NoEdges_SortedByFilePath(t *testing.T) {
 		{ID: "a", FilePath: "a.go"},
 		{ID: "b", FilePath: "b.go"},
 	}
-	result := OrderSnippets(snippets, nil, PresetTopDown)
+	result := OrderSnippets(snippets, nil, OrderPre)
 	ids := snippetIDs(result)
 	expected := []string{"a", "b", "c"}
 	for i, id := range expected {
@@ -37,35 +37,35 @@ func TestOrderSnippets_NoEdges_SortedByFilePath(t *testing.T) {
 	}
 }
 
-func TestOrderSnippets_TopDown(t *testing.T) {
-	// A → B (A calls B), top-down: A first (depth 0), then B (depth 1)
+func TestOrderSnippets_CallersFirst(t *testing.T) {
+	// A → B (A calls B), callers first: A first (depth 0), then B (depth 1)
 	snippets := []*Snippet{
 		{ID: "B", FilePath: "b.go"},
 		{ID: "A", FilePath: "a.go"},
 	}
 	edges := []SymbolEdge{{From: "A", To: "B"}}
-	result := OrderSnippets(snippets, edges, PresetTopDown)
+	result := OrderSnippets(snippets, edges, OrderPre)
 	if result[0].ID != "A" {
-		t.Errorf("top-down: expected A first, got %s", result[0].ID)
+		t.Errorf("callers first: expected A first, got %s", result[0].ID)
 	}
 	if result[1].ID != "B" {
-		t.Errorf("top-down: expected B second, got %s", result[1].ID)
+		t.Errorf("callers first: expected B second, got %s", result[1].ID)
 	}
 }
 
-func TestOrderSnippets_BottomUp(t *testing.T) {
-	// A → B, bottom-up: B first (deeper), A last
+func TestOrderSnippets_CalleesFirst(t *testing.T) {
+	// A → B, callees first: B first (deeper), A last
 	snippets := []*Snippet{
 		{ID: "A", FilePath: "a.go"},
 		{ID: "B", FilePath: "b.go"},
 	}
 	edges := []SymbolEdge{{From: "A", To: "B"}}
-	result := OrderSnippets(snippets, edges, PresetBottomUp)
+	result := OrderSnippets(snippets, edges, OrderPost)
 	if result[0].ID != "B" {
-		t.Errorf("bottom-up: expected B first, got %s", result[0].ID)
+		t.Errorf("callees first: expected B first, got %s", result[0].ID)
 	}
 	if result[1].ID != "A" {
-		t.Errorf("bottom-up: expected A second, got %s", result[1].ID)
+		t.Errorf("callees first: expected A second, got %s", result[1].ID)
 	}
 }
 
@@ -77,7 +77,7 @@ func TestOrderSnippets_DepthAssignment(t *testing.T) {
 		{ID: "C", FilePath: "c.go"},
 	}
 	edges := []SymbolEdge{{From: "A", To: "B"}, {From: "B", To: "C"}}
-	result := OrderSnippets(snippets, edges, PresetTopDown)
+	result := OrderSnippets(snippets, edges, OrderPre)
 	byID := make(map[string]*Snippet)
 	for _, s := range result {
 		byID[s.ID] = s
@@ -102,7 +102,7 @@ func TestOrderSnippets_Cycles(t *testing.T) {
 		{ID: "B", FilePath: "b.go"},
 	}
 	edges := []SymbolEdge{{From: "A", To: "B"}, {From: "B", To: "A"}}
-	result := OrderSnippets(snippets, edges, PresetTopDown)
+	result := OrderSnippets(snippets, edges, OrderPre)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 snippets, got %d", len(result))
 	}
@@ -114,7 +114,7 @@ func TestOrderSnippets_Cycles(t *testing.T) {
 	}
 }
 
-func TestOrderSnippets_Clusters(t *testing.T) {
+func TestOrderSnippets_LargestComponentFirst(t *testing.T) {
 	// Two disconnected components: {A,B} and {C}
 	// {A,B} is larger → comes first
 	snippets := []*Snippet{
@@ -123,7 +123,7 @@ func TestOrderSnippets_Clusters(t *testing.T) {
 		{ID: "C", FilePath: "c.go"},
 	}
 	edges := []SymbolEdge{{From: "A", To: "B"}}
-	result := OrderSnippets(snippets, edges, PresetClusters)
+	result := OrderSnippets(snippets, edges, OrderPre)
 	if len(result) != 3 {
 		t.Fatalf("expected 3 snippets, got %d", len(result))
 	}
@@ -158,7 +158,7 @@ func TestOrderSnippets_DoesNotMutateInput(t *testing.T) {
 		{ID: "A", FilePath: "a.go"},
 	}
 	original := snippetIDs(snippets)
-	OrderSnippets(snippets, nil, PresetTopDown)
+	OrderSnippets(snippets, nil, OrderPre)
 	after := snippetIDs(snippets)
 	for i := range original {
 		if original[i] != after[i] {

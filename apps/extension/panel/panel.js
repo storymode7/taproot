@@ -26,17 +26,17 @@ window.addEventListener("message", async (e) => {
   }
 });
 
-// The core orders top-down (tree pre-order) or bottom-up (post-order).
-function presetToOrder(preset) {
-  return preset === "bottom-up" ? "post" : "pre";
+// The core orders callers first (tree pre-order) or callees first (post-order).
+function coreOrder(order) {
+  return order === "callees-first" ? "post" : "pre";
 }
 
 async function handleFiles({ owner, repo, prNumber, files }) {
   setStatus("Building the review…");
   try {
-    const preset = document.getElementById("preset-select").value;
+    const order = document.getElementById("order-select").value;
     // The Go core (WASM) builds snippets, call edges, and the review tree.
-    currentReview = await buildReview(files, presetToOrder(preset));
+    currentReview = await buildReview(files, coreOrder(order));
     currentSnippets = currentReview.snippets ?? [];
     await store.load(`${owner}/${repo}#${prNumber}`, currentSnippets);
     render();
@@ -59,9 +59,9 @@ function highlight(code, language) {
   return hljs.highlight(code, { language, ignoreIllegals: true }).value;
 }
 
-document.getElementById("preset-select").addEventListener("change", async (e) => {
+document.getElementById("order-select").addEventListener("change", async (e) => {
   if (!currentSnippets.length) return;
-  currentReview = await reorderReview(currentReview, presetToOrder(e.target.value));
+  currentReview = await reorderReview(currentReview, coreOrder(e.target.value));
   currentSnippets = currentReview.snippets ?? [];
   render();
 });

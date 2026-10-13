@@ -67,11 +67,11 @@
       <div id="review-header">
         <button id="btn-back-review">← Back</button>
         <span id="review-title"></span>
-        <div id="preset-controls">
+        <div id="order-controls">
           <label>Order:
-            <select id="preset-select">
-              <option value="top-down">Top-down (entry → deps)</option>
-              <option value="bottom-up">Bottom-up (utils → caller)</option>
+            <select id="order-select">
+              <option value="callers-first" title="Start with the code that calls the other changes: main → parse → tokenize">Callers first</option>
+              <option value="callees-first" title="Start with the code the other changes call: tokenize → parse → main">Callees first</option>
             </select>
           </label>
         </div>

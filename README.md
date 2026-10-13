@@ -116,7 +116,7 @@ Plain `astra diff` leaves out staged changes and untracked files, as
 | `--head <ref>` | With `--base`: review this branch or commit instead of HEAD, without checking it out. |
 | `--staged` | Review what is staged for commit (`git diff --cached`). |
 | `--ref <ref>` | Diff the working tree against `<ref>` exactly as it is now (`git diff <ref>`). Includes uncommitted edits. |
-| `--preset <name>` | Reading order for `--no-tty` output: `top-down` (default), `bottom-up`, or `clusters` (same as top-down). |
+| `--order <order>` | Reading order for `--no-tty` output. `callers-first` (the default) starts with the code that calls the other changes, then what it calls: main → parse → tokenize. `callees-first` is the reverse: tokenize → parse → main. The interactive view always shows callers first. |
 | `--no-auto-advance` | Stay on the current snippet after accept, reject or reviewed. |
 | `--no-apply` | Record verdicts only; leave the git index alone. |
 | `--no-tty` | Print the review without the interactive UI (plain text when piped or when `NO_COLOR` is set). |
@@ -137,7 +137,7 @@ value turns color off: the interactive view keeps bold, dim and inverse
 text, and `--no-tty` prints plain text).
 
 Exit status: 0 on success, 2 for a mistake on the command line (an unknown
-flag or preset, a stray argument, a missing value or conflicting flags),
+flag or order, a stray argument, a missing value or conflicting flags),
 and 1 for any other error.
 
 ### Keys

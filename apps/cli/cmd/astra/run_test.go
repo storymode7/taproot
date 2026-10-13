@@ -125,7 +125,9 @@ func TestRun_RejectsArgumentsItDoesNotKnow(t *testing.T) {
 		{"diff", "--base="},
 		{"diff", "--ref"},
 		{"diff", "--ref", "--staged"},
-		{"diff", "--preset", "sideways"},
+		{"diff", "--order", "sideways"},
+		{"diff", "--order", "top-down"},
+		{"diff", "--preset", "top-down"},
 		{"diff", "--staged", "--ref", "main"},
 		{"diff", "--head", "feature"},
 	} {
@@ -138,6 +140,36 @@ func TestRun_RejectsArgumentsItDoesNotKnow(t *testing.T) {
 	_, _, err := runIn(t, dir, "diff", "main")
 	if err == nil || !strings.Contains(err.Error(), `"main"`) || !strings.Contains(err.Error(), "--base") || !strings.Contains(err.Error(), "--ref") {
 		t.Errorf("astra diff main: %v, want a hint naming --base and --ref", err)
+	}
+}
+
+func TestRun_OrderPicksTheReadingOrder(t *testing.T) {
+	r := newRepo(t, "")
+	r.write("a.py", "def main():\n    return parse()\n\n\ndef parse():\n    return tokenize()\n\n\ndef tokenize():\n    return 1\n")
+	r.commit("base")
+	r.write("a.py", "def main():\n    return parse() + 1\n\n\ndef parse():\n    return tokenize() + 1\n\n\ndef tokenize():\n    return 2\n")
+
+	symbols := func(out string) []string {
+		var got []string
+		for _, l := range strings.Split(out, "\n") {
+			if _, sym, ok := strings.Cut(l, " :: "); ok && strings.Contains(l, "--- ") {
+				got = append(got, strings.Fields(sym)[0])
+			}
+		}
+		return got
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{nil, "main parse tokenize"},
+		{[]string{"--order", "callers-first"}, "main parse tokenize"},
+		{[]string{"--order=callees-first"}, "tokenize parse main"},
+	} {
+		out, _, err := runIn(t, r.dir, append([]string{"diff", "--no-tty"}, c.args...)...)
+		if got := strings.Join(symbols(out), " "); err != nil || got != c.want {
+			t.Errorf("astra diff %v: order %q, %v; want %q", c.args, got, err, c.want)
+		}
 	}
 }
 

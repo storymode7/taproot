@@ -18,7 +18,7 @@ body {
 }
 .astra-logo { font-weight: 600; font-size: 14px; }
 .panel-controls { display: flex; align-items: center; gap: 8px; }
-#preset-select {
+#order-select {
   background: var(--btn-bg); border: 1px solid var(--btn-border);
   border-radius: 6px; color: var(--text); padding: 3px 6px; font-size: 12px;
 }

@@ -55,8 +55,8 @@ button:hover { border-color: var(--text-dim); }
   margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
 }
 #review-title { font-weight: 600; font-size: 16px; flex: 1; }
-#preset-controls label { color: var(--text-dim); font-size: 13px; }
-#preset-select {
+#order-controls label { color: var(--text-dim); font-size: 13px; }
+#order-select {
   background: var(--btn-bg); border: 1px solid var(--btn-border);
   border-radius: 6px; color: var(--text); padding: 4px 8px;
 }

@@ -15,8 +15,8 @@ type ProcessRequest struct {
 	Options ProcessOptions `json:"options"`
 }
 
-// ProcessOptions selects the flatten order: "pre" (top-down, default) or
-// "post" (bottom-up).
+// ProcessOptions selects the flatten order: "pre" (callers first, the
+// default) or "post" (callees first).
 type ProcessOptions struct {
 	Order string `json:"order"`
 }

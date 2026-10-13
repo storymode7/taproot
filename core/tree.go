@@ -50,9 +50,9 @@ type ReviewForest struct {
 type FlattenOrder int
 
 const (
-	// OrderPre yields parents before children (top-down review).
+	// OrderPre yields parents before children (callers first).
 	OrderPre FlattenOrder = iota
-	// OrderPost yields children before parents (bottom-up review).
+	// OrderPost yields children before parents (callees first).
 	OrderPost
 )
 

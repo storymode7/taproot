@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	astra diff [--base <ref> [--head <ref>] | --ref <ref> | --staged] [--preset top-down|bottom-up|clusters]
+//	astra diff [--base <ref> [--head <ref>] | --ref <ref> | --staged] [--order callers-first|callees-first]
 //
 // Reads the git diff in the current repository, reorders hunks by
 // call-graph depth, and presents an interactive review TUI.
@@ -43,10 +43,12 @@ OPTIONS
   --staged             Review what is staged for commit (git diff --cached).
   --ref <ref>          Diff the working tree against <ref> exactly as it is
                        now (git diff <ref>). Includes uncommitted edits.
-  --preset <name>      Reading order for --no-tty output (default: top-down)
-                         top-down   Entry-point first, callees after (tree pre-order)
-                         bottom-up  Leaves first, entry-point last (tree post-order)
-                         clusters   Same as top-down (clustering is built in)
+  --order <order>      Reading order for --no-tty output. The interactive
+                       view always shows callers first.
+                         callers-first  main → parse → tokenize (default)
+                         callees-first  tokenize → parse → main
+                       callers-first starts with the code that calls the other
+                       changes, then what it calls. callees-first is the reverse.
   --no-auto-advance    Stay on the current snippet after accept/reject/reviewed
                        (default: auto-advance to next snippet, like git add -p)
   --no-apply           Record verdicts only; leave the git index alone.
@@ -139,7 +141,7 @@ func usagef(format string, args ...any) error {
 
 func run(args []string) error {
 	var ref, base, head string
-	var presetName = "top-down"
+	var orderName = "callers-first"
 	var noTTY bool
 	var staged bool
 	var noAutoAdvance bool
@@ -148,7 +150,7 @@ func run(args []string) error {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch name, value, inline := strings.Cut(arg, "="); name {
-		case "--ref", "--base", "--head", "--preset":
+		case "--ref", "--base", "--head", "--order":
 			if !inline && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 				i++
 				value = args[i]
@@ -164,7 +166,7 @@ func run(args []string) error {
 			case "--head":
 				head = value
 			default:
-				presetName = value
+				orderName = value
 			}
 			continue
 		}
@@ -207,7 +209,7 @@ func run(args []string) error {
 	}
 	tui.DetectHighlighter()
 
-	preset, err := parsePreset(presetName)
+	order, err := parseOrder(orderName)
 	if err != nil {
 		return err
 	}
@@ -267,10 +269,6 @@ func run(args []string) error {
 	}
 
 	if noTTY || !isTTY() {
-		order := core.OrderPre
-		if preset == core.PresetBottomUp {
-			order = core.OrderPost
-		}
 		tui.Plain = !isTTY() || os.Getenv("NO_COLOR") != ""
 		if len(d.skipped) > 0 {
 			fmt.Println(tui.NotShownLine(d.skipped))
@@ -419,16 +417,14 @@ func checkRefs(a *diff.GitDiffAdapter) error {
 	return nil
 }
 
-func parsePreset(name string) (core.Preset, error) {
+func parseOrder(name string) (core.FlattenOrder, error) {
 	switch name {
-	case "top-down":
-		return core.PresetTopDown, nil
-	case "bottom-up":
-		return core.PresetBottomUp, nil
-	case "clusters":
-		return core.PresetClusters, nil
+	case "callers-first":
+		return core.OrderPre, nil
+	case "callees-first":
+		return core.OrderPost, nil
 	default:
-		return 0, usagef("unknown preset %q (want: top-down, bottom-up, clusters)", name)
+		return 0, usagef("unknown order %q (want: callers-first, callees-first)", name)
 	}
 }
 
