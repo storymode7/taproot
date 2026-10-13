@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false  # never build a release from a cache another run saved
