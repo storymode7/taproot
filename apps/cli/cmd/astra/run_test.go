@@ -130,6 +130,11 @@ func TestRun_RejectsArgumentsItDoesNotKnow(t *testing.T) {
 		{"diff", "--preset", "top-down"},
 		{"diff", "--staged", "--ref", "main"},
 		{"diff", "--head", "feature"},
+		{"--version", "extra"},
+		{"--help", "extra"},
+		{"help", "me"},
+		{"diff", "--staged", "--base", "main", "--help"},
+		{"diff", "--order", "sideways", "--version"},
 	} {
 		_, _, err := runIn(t, dir, args...)
 		var ue usageError
@@ -169,6 +174,22 @@ func TestRun_OrderPicksTheReadingOrder(t *testing.T) {
 		out, _, err := runIn(t, r.dir, append([]string{"diff", "--no-tty"}, c.args...)...)
 		if got := strings.Join(symbols(out), " "); err != nil || got != c.want {
 			t.Errorf("astra diff %v: order %q, %v; want %q", c.args, got, err, c.want)
+		}
+	}
+}
+
+func TestRun_HelpAndVersionNeedNoRepository(t *testing.T) {
+	dir := t.TempDir()
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"diff", "--help"}, {"diff", "--staged", "--help"}} {
+		out, _, err := runIn(t, dir, args...)
+		if err != nil || out != usage {
+			t.Errorf("astra %q printed %q, %v; want the usage", args, out, err)
+		}
+	}
+	for _, args := range [][]string{{"--version"}, {"-V"}, {"version"}} {
+		out, _, err := runIn(t, dir, args...)
+		if err != nil || out != "astra "+buildVersion()+"\n" {
+			t.Errorf("astra %q printed %q, %v; want the version", args, out, err)
 		}
 	}
 }

@@ -138,7 +138,8 @@ text, and `--no-tty` prints plain text).
 
 Exit status: 0 on success, 2 for a mistake on the command line (an unknown
 flag or order, a stray argument, a missing value or conflicting flags),
-and 1 for any other error.
+and 1 for any other error. A mistake exits 2 with `--help` or
+`--version` too.
 
 ### Keys
 

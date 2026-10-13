@@ -146,6 +146,7 @@ func run(args []string) error {
 	var staged bool
 	var noAutoAdvance bool
 	var noApply bool
+	var help, showVersion bool
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -172,11 +173,9 @@ func run(args []string) error {
 		}
 		switch arg {
 		case "--help", "-h", "help":
-			fmt.Print(usage)
-			return nil
+			help = true
 		case "--version", "-V", "version":
-			fmt.Println("astra", buildVersion())
-			return nil
+			showVersion = true
 		case "--no-tty":
 			noTTY = true
 		case "--staged", "--cached":
@@ -207,8 +206,6 @@ func run(args []string) error {
 				"  --ref <ref>    the working tree against it, like git diff <ref>", arg)
 		}
 	}
-	tui.DetectHighlighter()
-
 	order, err := parseOrder(orderName)
 	if err != nil {
 		return err
@@ -223,6 +220,15 @@ func run(args []string) error {
 	if head != "" && base == "" {
 		return usagef("--head needs --base (e.g. --base main --head %s)", head)
 	}
+	if help {
+		fmt.Print(usage)
+		return nil
+	}
+	if showVersion {
+		fmt.Println("astra", buildVersion())
+		return nil
+	}
+	tui.DetectHighlighter()
 	applyMode := !noApply && !staged && ref == "" && base == ""
 
 	// Find git repo root.
