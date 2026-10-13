@@ -232,11 +232,11 @@ What it can do:
   browser sends your GitHub session with them, and private repositories
   you can open work. GitHub redirects the raw source requests to
   `raw.githubusercontent.com`. Taproot stores no token.
-- It never writes to GitHub. Verdicts and comments stay in the extension's
+- It never writes to GitHub. Verdicts and notes stay in the extension's
   storage in this browser.
 
 Keys in the panel: `j` / `k` move, `y` or `a` accepts, `x` rejects, `r`
-marks reviewed, `c` comments and `z` folds a snippet. In the comment box,
+marks reviewed, `c` adds a note and `z` folds a snippet. In the note box,
 `Ctrl+Enter` (`Cmd+Enter` on a Mac) saves, and `Esc` hides the box. A
 draft you have not saved is there again when you reopen the box or the
 panel. **Cancel** drops it, and so does anything that draws the review
@@ -250,7 +250,7 @@ reloading it.
 The app gets the file list from `api.github.com` and the changed files'
 sources from `raw.githubusercontent.com`, with no login,
 and runs the engine in your browser. It cannot read private repositories,
-and it cannot post to GitHub. Verdicts and comments stay in your browser.
+and it cannot post to GitHub. Verdicts and notes stay in your browser.
 The keys are the same as in the extension.
 
 GitHub allows 60 unauthenticated API requests an hour from one IP

@@ -172,7 +172,7 @@ document.getElementById("order-select").addEventListener("change", async (e) => 
 function render() {
   document.getElementById("review-title").textContent = shown.title;
   renderReview(document.getElementById("snippet-list"), shown.review, store, {
-    commentHint: "Saved in this browser only — the PWA can't post to GitHub.",
+    commentHint: "Saved in this browser only — this app can't post to GitHub.",
     notice: shown.notice,
   });
 }

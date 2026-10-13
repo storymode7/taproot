@@ -9,7 +9,7 @@
  * have the action:
  *   j / k  next / previous snippet (J / K too)    y / a  accept
  *   x      reject                                 r      mark reviewed
- *   c      comment                                z      fold / unfold
+ *   c      note                                   z      fold / unfold
  *
  * Vanilla JS, no dependencies. Syntax highlighting is optional and injected
  * (the extension passes highlight.js; the PWA renders plain code).
@@ -299,7 +299,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
       <button data-status="accepted" title="Accept (y)">Accept</button>
       <button data-status="rejected" title="Reject (x)">Reject</button>
       <button data-status="reviewed" title="Mark reviewed (r)">Reviewed</button>
-      <button data-comment title="Comment (c)">Comment</button>
+      <button data-comment title="Note (c)">Note</button>
     </div>`;
   card.appendChild(head);
 
@@ -328,11 +328,11 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
   const form = el("form", "taproot-comment-form");
   form.hidden = true;
   form.innerHTML = `
-    <textarea rows="3" placeholder="Leave a comment on this snippet"></textarea>
+    <textarea rows="3" placeholder="Add a private note on this snippet"></textarea>
     <div class="taproot-comment-bar">
       <span class="taproot-hint">${esc(opts.commentHint ?? "")}</span>
       <button type="button" data-cancel>Cancel</button>
-      <button type="submit" class="primary">Save comment</button>
+      <button type="submit" class="primary">Save note</button>
     </div>`;
   const textarea = form.querySelector("textarea");
   textarea.value = state.comment ?? "";
@@ -342,7 +342,7 @@ function makeCard(snippet, { store, opts, byId, node, crumbs, onJudge }) {
   const showSaved = () => {
     const text = store.get(snippet.id).comment;
     saved.hidden = !text;
-    saved.innerHTML = text ? `<b>Your comment</b><p>${esc(text)}</p>` : "";
+    saved.innerHTML = text ? `<b title="Stays in this browser">Your note</b><p>${esc(text)}</p>` : "";
   };
   showSaved();
 

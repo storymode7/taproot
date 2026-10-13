@@ -19,7 +19,7 @@ not open a public issue.
   makes only unauthenticated requests.
 - **No telemetry.** No analytics, no error reports and no update checks.
 - **Read-only toward GitHub.** No part of Taproot writes to GitHub. Verdicts
-  and comments made in a browser stay in that browser.
+  and notes made in a browser stay in that browser.
 
 ## What each part can reach
 
@@ -65,7 +65,7 @@ them:
 
 It sends the result to the panel, an extension page in an iframe, which
 runs the engine. The panel and the content script accept messages only
-from each other's origin. Verdicts and comments go to the extension's
+from each other's origin. Verdicts and notes go to the extension's
 IndexedDB.
 
 ### Web app
@@ -80,7 +80,7 @@ credentials:
   the source of each changed file in a supported language;
 - its own files, from the host that serves it.
 
-Verdicts and comments go to IndexedDB for the app's origin. When the page
+Verdicts and notes go to IndexedDB for the app's origin. When the page
 is not a secure context (plain HTTP from a host other than localhost or
 127.0.0.1), they stay in memory only.
 

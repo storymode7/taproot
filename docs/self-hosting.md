@@ -17,13 +17,13 @@ It can:
 - load up to 3000 changed files, the most that GitHub's API lists for a
   pull request. When a pull request changes more, a banner says how many
   of them the review shows;
-- save verdicts and comments in your browser (IndexedDB, per origin).
+- save verdicts and notes in your browser (IndexedDB, per origin).
 
 It cannot:
 
 - read private repositories (use the Chrome extension);
-- post comments or reviews to GitHub; comments stay in your browser;
-- sync verdicts and comments between browsers or devices;
+- post comments or reviews to GitHub; notes stay in your browser;
+- sync verdicts and notes between browsers or devices;
 - work offline or install as an app: it has no service worker and no web
   manifest.
 
@@ -81,7 +81,7 @@ configuration to do.
 
 Serve it over HTTPS. When the page is not a secure context (plain HTTP
 from a host other than localhost or 127.0.0.1), the browser does not give
-it the crypto API that keys the saved state. Verdicts and comments then
+it the crypto API that keys the saved state. Verdicts and notes then
 stay in memory, and a reload or another pull request clears them.
 
 To try it on your machine:
@@ -99,9 +99,9 @@ runs the checks in step 2 and publishes `apps/pwa/` on every push to
 **GitHub Actions**. The app is then at `https://<user>.github.io/<repo>/`.
 
 Prefer an origin that serves nothing but the app, such as a domain or
-subdomain of its own. The browser keeps verdicts and comments in
+subdomain of its own. The browser keeps verdicts and notes in
 IndexedDB for the whole origin, so any page on the same origin can read
-your comments and mark snippets as accepted. On GitHub Pages, every
+your notes and mark snippets as accepted. On GitHub Pages, every
 project site of an account shares the origin `https://<user>.github.io`
 unless its repository sets a custom domain.
 
