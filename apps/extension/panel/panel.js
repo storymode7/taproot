@@ -2,10 +2,10 @@
  * panel.js — Extension side panel
  *
  * Receives diff data from content.js via postMessage, then runs the same
- * AST + ordering + rendering pipeline as the PWA.
+ * review engine and rendering as the PWA.
  */
 
-import { buildReview, reorderReview } from "../lib/ast-ext.js";
+import { buildReview, reorderReview } from "../lib/pipeline-ext.js";
 import { renderReview } from "../lib/shared/render.js";
 import hljs from "../vendor/highlight.min.js";
 import { StateStore } from "../lib/shared/state.js";

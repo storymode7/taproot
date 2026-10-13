@@ -25,8 +25,8 @@ import (
 	"strings"
 )
 
-// Snippet is a reviewable unit: the smallest named AST entity that encloses
-// one or more diff hunks from a single file.
+// Snippet is a reviewable unit: the smallest named entity that encloses one
+// or more diff hunks from a single file.
 //
 // A single file may produce multiple Snippets — one per distinct enclosing
 // entity. This allows the ordering engine to place, e.g., utils.go::formatDate

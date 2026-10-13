@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Astra — AST-aware PR reviewer",
+  "name": "Astra — call-tree PR reviewer",
   "version": "0.1.0",
-  "description": "Reorders GitHub PR diffs by call-graph depth. Runs entirely locally — no backend, no OAuth, no telemetry.",
+  "description": "Shows a pull request as a tree of the changed functions, callers before callees. Runs locally: no backend, no login, no telemetry.",
 
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"

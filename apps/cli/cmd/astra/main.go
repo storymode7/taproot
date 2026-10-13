@@ -1,12 +1,12 @@
-// astra — AST-aware PR diff reviewer CLI
+// astra — call-tree PR reviewer CLI
 //
 // Usage:
 //
 //	astra diff [--base <ref> [--head <ref>] | --ref <ref> | --staged] [--order callers-first|callees-first]
 //
-// Reads the git diff in the current repository, reorders hunks by
-// call-graph depth, and presents an interactive review TUI.
-// Zero network calls. All parsing is local.
+// Reads the git diff in the current repository, shows it as a tree of the
+// changed functions, callers before callees, and presents an interactive
+// review TUI. Zero network calls. Everything runs locally.
 package main
 
 import (
@@ -23,7 +23,7 @@ import (
 	"github.com/storymode7/astra/core"
 )
 
-const usage = `astra — AST-aware PR diff reviewer
+const usage = `astra — call-tree PR reviewer
 
 USAGE
   astra diff [options]

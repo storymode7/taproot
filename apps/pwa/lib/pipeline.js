@@ -1,5 +1,5 @@
 /**
- * lib/ast.js — PWA adapter for the shared Astra pipeline.
+ * lib/pipeline.js — PWA adapter for the shared Astra pipeline.
  *
  * All review logic (entity mapping, hunk splitting, call edges, review
  * tree, ordering) runs in the Go core (vendor/core/astra-core.wasm) —

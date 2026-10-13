@@ -9,13 +9,13 @@
  *      page URL (?pr=…), so Back, Forward and reload stay in the app
  *   2. Fetch diff from api.github.com (unauthenticated)
  *   3. Fetch each changed file's full source (raw.githubusercontent.com)
- *   4. Build snippets (hunk → AST node) + symbol graph
+ *   4. Build snippets (hunk → enclosing function or type) + call edges
  *   5. Order snippets in the selected reading order
  *   6. Render the call-tree sidebar and diff cards
  */
 
 import { parsePRUrl, fetchPRFiles } from "./lib/github.js";
-import { buildReview, reorderReview } from "./lib/ast.js";
+import { buildReview, reorderReview } from "./lib/pipeline.js";
 import { renderReview } from "./lib/shared/render.js";
 import { StateStore } from "./lib/shared/state.js";
 

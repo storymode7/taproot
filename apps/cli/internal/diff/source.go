@@ -52,7 +52,7 @@ type Source interface {
 	Files() ([]*FileDiff, error)
 
 	// FileBlob returns the full content of a file at a given commit SHA.
-	// Used by the snippet builder to parse AST context around hunks.
+	// The core finds the entities and calls around hunks in it.
 	FileBlob(req BlobRequest) ([]byte, error)
 
 	// PostReviewComment posts an inline comment on the PR.

@@ -36,7 +36,10 @@ func TestUsage_MatchesTheTUI(t *testing.T) {
 			t.Errorf("usage lacks %q", s)
 		}
 	}
-	for _, s := range []string{"n / x", "does not stage", "they survive commit"} {
+	if !strings.HasPrefix(usage, "astra — call-tree PR reviewer\n") {
+		t.Errorf("usage opens with %q", strings.SplitN(usage, "\n", 2)[0])
+	}
+	for _, s := range []string{"n / x", "does not stage", "they survive commit", "AST-aware", "call-graph depth"} {
 		if strings.Contains(usage, s) {
 			t.Errorf("usage still says %q", s)
 		}
