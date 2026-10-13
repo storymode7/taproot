@@ -87,9 +87,9 @@ test("files without a diff are listed, deleted files go to the core", async () =
   core.process = process;
 
   const skipped = [
-    { path: "assets/logo.png", reason: "no-diff" },
-    { path: "dist/app.min.js", reason: "no-diff" },
-    { path: "run.sh", reason: "no-diff" },
+    { path: "assets/logo.png", reason: "no-patch" },
+    { path: "dist/app.min.js", reason: "no-patch" },
+    { path: "run.sh", reason: "no-patch" },
     { path: "src/new_name.py", oldPath: "src/old_name.py", reason: "renamed" },
   ];
   assert.deepEqual(review.skipped, skipped);
@@ -116,7 +116,7 @@ test("files the core skips are listed with the ones the browser skips", async ()
   core.process = (req) => JSON.stringify({ ...JSON.parse(process(req)), skipped: [{ path: "b.bin", reason: "binary" }] });
   const review = await astra.buildReview([{ filename: "c.png", status: "added" }, edit]);
   core.process = process;
-  assert.deepEqual(review.skipped, [{ path: "b.bin", reason: "binary" }, { path: "c.png", reason: "no-diff" }]);
+  assert.deepEqual(review.skipped, [{ path: "b.bin", reason: "binary" }, { path: "c.png", reason: "no-patch" }]);
 });
 
 test("the core puts files in other languages after the imports of the files it reads", async () => {

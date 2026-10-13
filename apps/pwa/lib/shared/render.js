@@ -25,6 +25,7 @@ const OTHER_FILES_NOTE = "Plain hunks, no call info. Astra reads Go, JavaScript,
 const SKIP_REASON = {
   binary: "binary", renamed: "renamed", mode: "mode change", empty: "empty file",
   conflict: "conflict", "no-diff": "no diff",
+  "no-patch": "no diff from GitHub (binary or too large)",
 };
 
 /**

@@ -84,7 +84,7 @@ export function initAstra(adapter) {
       // Only a rename says what it is: a binary file looks like the rest.
       const hunks = hunksFromPatch(file.patch ?? "");
       if (hunks.length === 0) {
-        const entry = { path: file.filename, reason: file.status === "renamed" ? "renamed" : "no-diff" };
+        const entry = { path: file.filename, reason: file.status === "renamed" ? "renamed" : "no-patch" };
         if (file.previous_filename && file.previous_filename !== file.filename) entry.oldPath = file.previous_filename;
         skipped.push(entry);
         continue;
