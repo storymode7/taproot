@@ -25,7 +25,7 @@ const OTHER_FILES_NOTE = "Plain hunks, no call info. Taproot reads Go, JavaScrip
 const SKIP_REASON = {
   binary: "binary", renamed: "renamed", mode: "mode change", empty: "empty file",
   conflict: "conflict", "no-diff": "no diff",
-  "no-patch": "no diff from GitHub (binary or too large)",
+  "no-patch": "no diff from GitHub",
 };
 
 /**

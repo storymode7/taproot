@@ -83,11 +83,11 @@ test("names and code stay escaped", () => {
   assert.ok(html.includes("src/&lt;img src=x onerror=alert(1)&gt;.js"));
 });
 
-test("files GitHub sends no diff for say it might be binary or too large", () => {
+test("files GitHub sends no diff for say so", () => {
   const all = render({ snippets: [], skipped: [
     { path: "logo.png", reason: "no-patch" },
     { path: "b.go", oldPath: "a.go", reason: "renamed" },
   ] });
-  assert.ok(all.includes("logo.png (no diff from GitHub (binary or too large))"), all);
+  assert.ok(all.includes("logo.png (no diff from GitHub)"), all);
   assert.ok(all.includes("a.go → b.go (renamed)"), all);
 });
