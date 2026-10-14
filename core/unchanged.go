@@ -17,7 +17,8 @@ import "sort"
 //
 // A call site names a snippet of kind function/class/type, else of kind
 // var/const (a var holding a function), resolved by last dotted segment
-// with the same same-file/same-dir preference as BuildCallEdges. An
+// with the same same-file/same-dir preference and path-call owner check
+// as BuildCallEdges. An
 // entity's own declaration line is not a call. Lines of an unchanged entity
 // that fall inside a nested
 // entity (e.g. methods inside a class span) are skipped so containers don't
@@ -96,7 +97,7 @@ func AnnotateUnchangedCallers(files []*FileDiff, snippets []*Snippet) {
 							continue
 						}
 					}
-					for _, t := range resolveTargets(from, targets) {
+					for _, t := range resolveTargets(from, pathTargets(c.path, targets)) {
 						if seen[t.ID] == nil {
 							seen[t.ID] = make(map[string]bool)
 						}

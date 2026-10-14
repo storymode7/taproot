@@ -25,7 +25,8 @@
 //
 // A call site resolves to a changed function, class or type, else to a
 // changed var/const: a var can hold a function (a factory hook, a memo or
-// forwardRef component).
+// forwardRef component). A path call (Version::new) names its owner, so it
+// never resolves to another type's method (Scheduler.new).
 //
 // Bare type references (var c Config) are deliberately not matched — calls
 // and constructions are the edges that define reading order. Changed
@@ -35,7 +36,8 @@
 // noise, tokens shorter than three characters or in a keyword/builtin
 // stopword set never resolve to a variable, tokens already matched as call
 // sites don't double as references, and bare references only resolve to
-// declarations in the referencer's own file or directory (same language).
+// declarations in the referencer's own file or directory (same language),
+// or in the module a path names (roster::DEFAULT_TEAM → roster.rs).
 package core
 
 import (
@@ -122,6 +124,7 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 						continue
 					}
 				}
+				targets = pathTargets(c.path, targets)
 				if c.member && !self[c.recv] {
 					targets = without(targets, s)
 				}
@@ -131,11 +134,11 @@ func BuildCallEdges(snippets []*Snippet) []SymbolEdge {
 				continue
 			}
 			for _, tok := range identTokens(line, s.Language) {
-				if len(tok) < 3 || refStopwords[tok] || contains(names, tok) {
+				if len(tok.name) < 3 || refStopwords[tok.name] || contains(names, tok.name) {
 					continue
 				}
-				if targets, ok := varTable[tok]; ok {
-					addEdges(s, varRefTargets(s, targets), callLine)
+				if targets, ok := varTable[tok.name]; ok {
+					addEdges(s, varRefTargets(s, targets, tok.path), callLine)
 				}
 			}
 		}
@@ -197,16 +200,45 @@ func langFamily(lang string) string {
 // identifier has no syntax tying it to the declaration, so only var/const
 // declarations in the referencer's own file or directory (same language) are
 // credible targets — a lone same-named local in another package must not
-// merge unrelated components.
-func varRefTargets(from *Snippet, candidates []*Snippet) []*Snippet {
+// merge unrelated components. A path (roster::DEFAULT_TEAM) is that syntax:
+// it also admits a declaration in the module it names.
+func varRefTargets(from *Snippet, candidates []*Snippet, path string) []*Snippet {
 	var out []*Snippet
 	fromDir := pathDir(from.FilePath)
 	for _, c := range candidates {
 		if c.Language != from.Language {
 			continue
 		}
-		if c.FilePath == from.FilePath || pathDir(c.FilePath) == fromDir {
+		if c.FilePath == from.FilePath || pathDir(c.FilePath) == fromDir ||
+			path != "" && path == moduleName(c.FilePath) {
 			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// moduleName returns the module a source file declares: its file stem, or
+// its directory's name for a mod.rs.
+func moduleName(p string) string {
+	name := strings.TrimSuffix(p[strings.LastIndex(p, "/")+1:], ".rs")
+	if name == "mod" {
+		dir := pathDir(p)
+		return dir[strings.LastIndex(dir, "/")+1:]
+	}
+	return name
+}
+
+// pathTargets drops the methods a path call cannot reach: Version::new()
+// calls Version's new, never Scheduler.new. Self:: and free functions pass.
+func pathTargets(path string, targets []*Snippet) []*Snippet {
+	if path == "" || path == "Self" {
+		return targets
+	}
+	var out []*Snippet
+	for _, t := range targets {
+		i := strings.LastIndex(t.SymbolPath, ".")
+		if i < 0 || lastSegment(t.SymbolPath[:i]) == path {
+			out = append(out, t)
 		}
 	}
 	return out
@@ -342,6 +374,7 @@ type callSite struct {
 	name   string
 	member bool   // the name follows "." (x.name(, super().name()
 	recv   string // what a member call goes through: the identifier before the ".", "super" for super(...)
+	path   string // the segment before "::" (Version for Version::new), else ""
 }
 
 // jsxAllowed reports whether a file can hold JSX: JavaScript, or
@@ -396,7 +429,7 @@ func callSites(line, lang string, jsx bool) []callSite {
 			isCall = true
 		}
 		if isCall {
-			c := callSite{name: word}
+			c := callSite{name: word, path: pathQualifier(runes, start)}
 			c.member, c.recv = receiver(runes, start)
 			sites = append(sites, c)
 		}
@@ -440,11 +473,26 @@ func receiver(runes []rune, start int) (member bool, recv string) {
 	return true, recv
 }
 
+// pathQualifier returns the identifier before a "::" ending just before
+// runes[start] (roster for roster::DEFAULT_TEAM), else "".
+func pathQualifier(runes []rune, start int) string {
+	k := start - 2
+	if k < 1 || runes[k] != ':' || runes[k+1] != ':' {
+		return ""
+	}
+	e := k
+	for k > 0 && isIdentPart(runes[k-1]) {
+		k--
+	}
+	return string(runes[k:e])
+}
+
 // identTokens returns every identifier token on one masked source line
-// (same tokenizer as callSites). Used for bare-reference edges to
-// var/const snippets; the caller applies the length/stopword guard.
-func identTokens(line, lang string) []string {
-	var names []string
+// (same tokenizer as callSites), with its path qualifier. Used for
+// bare-reference edges to var/const snippets; the caller applies the
+// length/stopword guard.
+func identTokens(line, lang string) []callSite {
+	var names []callSite
 	runes := []rune(line)
 	n := len(runes)
 	i := 0
@@ -457,7 +505,7 @@ func identTokens(line, lang string) []string {
 		for i < n && isIdentPart(runes[i]) {
 			i++
 		}
-		names = append(names, string(runes[start:i]))
+		names = append(names, callSite{name: string(runes[start:i]), path: pathQualifier(runes, start)})
 	}
 	return names
 }

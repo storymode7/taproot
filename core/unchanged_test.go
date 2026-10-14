@@ -194,3 +194,35 @@ export function Page() {
 		t.Errorf("useCart unchanged callers: %v", snippets[0].UnchangedCallers)
 	}
 }
+
+func TestAnnotateUnchangedCallers_PathCallMatchesOwner(t *testing.T) {
+	// Version::new() in unchanged code is not a caller of a changed
+	// Scheduler.new; Scheduler::new() is.
+	src := `struct Scheduler;
+
+impl Scheduler {
+    fn new() -> Self {
+        Scheduler
+    }
+}
+
+fn build_v1() -> Version {
+    Version::new()
+}
+
+fn make() -> Scheduler {
+    Scheduler::new()
+}
+`
+	files := []*FileDiff{ucFile("src/lib.rs", "rust", src,
+		Hunk{OldStart: 5, OldLines: 1, NewStart: 5, NewLines: 1,
+			Lines: []string{"-        Scheduler {}", "+        Scheduler"}})}
+	snippets := BuildSnippets(files)
+	AnnotateUnchangedCallers(files, snippets)
+
+	sched := ucSnippet(t, snippets, "src/lib.rs", "Scheduler.new")
+	want := []string{"src/lib.rs::make"}
+	if !reflect.DeepEqual(sched.UnchangedCallers, want) {
+		t.Errorf("UnchangedCallers = %v, want %v", sched.UnchangedCallers, want)
+	}
+}

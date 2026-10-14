@@ -269,6 +269,62 @@ func TestBuildCallEdges_VarRefScopedToFileOrDir(t *testing.T) {
 	}
 }
 
+func TestBuildCallEdges_PathQualifiedVarRefCrossesDirs(t *testing.T) {
+	// roster::DEFAULT_TEAM names the module that declares the const, so the
+	// reference is credible from another directory.
+	v := entitySnippet("v", "src/server/incharge/roster.rs", "rust", "DEFAULT_TEAM", "const", 6,
+		`pub const DEFAULT_TEAM: &str = "squad-core";`)
+	main := entitySnippet("m", "src/bin/server.rs", "rust", "main", "function", 10,
+		"fn main() {",
+		"    let team = incharge::roster::DEFAULT_TEAM.to_string();",
+		"}")
+	other := entitySnippet("o", "src/bin/other.rs", "rust", "other", "function", 1,
+		"fn other() {",
+		"    let t = teams::DEFAULT_TEAM;",
+		"}")
+
+	got := edgeSet(BuildCallEdges([]*Snippet{v, main, other}))
+	if _, ok := got["m->v"]; !ok {
+		t.Errorf("roster::DEFAULT_TEAM from another dir: edge m->v missing, got %v", got)
+	}
+	if _, ok := got["o->v"]; ok {
+		t.Error("teams::DEFAULT_TEAM names another module but linked to roster.rs")
+	}
+}
+
+func TestBuildCallEdges_PathCallMatchesOwner(t *testing.T) {
+	// Version::new() calls Version's new, not a changed Scheduler.new;
+	// Scheduler::new() and Self::new() still resolve to it.
+	sched := entitySnippet("s", "src/schedule.rs", "rust", "Scheduler.new", "function", 5,
+		"    pub fn new(team: String) -> Self {",
+		"        Self { team }",
+		"    }")
+	build := entitySnippet("b", "build.rs", "rust", "build_v4", "function", 1,
+		"fn build_v4() -> Version {",
+		"    let v = Version::new();",
+		"    v",
+		"}")
+	server := entitySnippet("m", "src/main.rs", "rust", "main", "function", 1,
+		"fn main() {",
+		"    let s = schedule::Scheduler::new(team);",
+		"}")
+	reset := entitySnippet("r", "src/schedule.rs", "rust", "Scheduler.reset", "function", 20,
+		"    pub fn reset(&self) -> Self {",
+		"        Self::new(self.team.clone())",
+		"    }")
+
+	got := edgeSet(BuildCallEdges([]*Snippet{sched, build, server, reset}))
+	if _, ok := got["b->s"]; ok {
+		t.Error("Version::new() linked to Scheduler.new")
+	}
+	if _, ok := got["m->s"]; !ok {
+		t.Errorf("Scheduler::new() edge m->s missing, got %v", got)
+	}
+	if _, ok := got["r->s"]; !ok {
+		t.Errorf("Self::new() edge r->s missing, got %v", got)
+	}
+}
+
 func TestBuildCallEdges_CallSiteTokenNotVarRef(t *testing.T) {
 	// A token already matched as a call site resolves to the function; it
 	// must not also create an edge to a same-named var — nor may the
