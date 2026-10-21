@@ -118,13 +118,17 @@ func TestRender_MarksTheEndOfTheSnippet(t *testing.T) {
 		want           string
 	}{
 		{0, 0, "more lines (j/k to scroll)"},
-		{0, 40, "━━ end of fn0 ━━ j → fn1 · pkg/main.go ━━"},
+		{0, 40, "━━━━━ j → fn1 · pkg/main.go ━━\n"},
 		{1, 40, "━━ end of fn1 ━━━━"},
 	} {
 		r.cursor, r.diffScroll = c.cursor, c.scroll
 		if got := stripANSI(strings.Join(frame(t, r, 24, 80), "\n")); !strings.Contains(got, c.want) {
 			t.Errorf("cursor %d, scroll %d: frame lacks %q:\n%s", c.cursor, c.scroll, c.want, got)
 		}
+	}
+	r.cursor, r.diffScroll = 0, 40
+	if got := stripANSI(strings.Join(frame(t, r, 24, 40), "\n")); strings.Contains(got, "j →") || !strings.Contains(got, "━━ end of fn0 ━━") {
+		t.Errorf("at 40 columns the bar must keep only its end label:\n%s", got)
 	}
 }
 

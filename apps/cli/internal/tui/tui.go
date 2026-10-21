@@ -1037,21 +1037,24 @@ func (r *Runner) endBar(s *core.Snippet, cols int) string {
 		}
 		return displaySafe(s.FilePath)
 	}
-	text := "━━ end of " + label(s) + " "
+	left, right := "━━ end of "+label(s)+" ", ""
 	if next := r.cursor + 1; next < len(r.tree.visible) {
 		if r.tree.visible[next].node == nil {
 			next++
 		}
 		ns := r.tree.visible[next].node.Snippet
-		text += "━━ j → " + label(ns)
+		right = " j → " + label(ns)
 		if ns.SymbolPath != "" {
-			text += " · " + displaySafe(ns.FilePath)
+			right += " · " + displaySafe(ns.FilePath)
 		}
-		text += " "
+		right += " ━━"
 	}
-	if pad := cols - 1 - strWidth(text); pad > 0 {
-		text += strings.Repeat("━", pad)
+	// The next stop sits at the far end; a narrow pane drops it first.
+	fill := cols - 1 - strWidth(left) - strWidth(right)
+	if fill < 3 {
+		right, fill = "", cols-1-strWidth(left)
 	}
+	text := left + strings.Repeat("━", max(0, fill)) + right
 	return bold + paint(yellow) + ansiTruncate(text, cols-1) + reset
 }
 
