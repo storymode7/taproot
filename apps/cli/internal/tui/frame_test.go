@@ -110,6 +110,24 @@ func TestRender_CountsLinesBelowThePane(t *testing.T) {
 	}
 }
 
+func TestRender_MarksTheEndOfTheSnippet(t *testing.T) {
+	useHighlighter(t, HighlightBuiltin)
+	r := testRunner(t, manySnippets(2, 40)...)
+	for _, c := range []struct {
+		cursor, scroll int
+		want           string
+	}{
+		{0, 0, "more lines (j/k to scroll)"},
+		{0, 40, "━━ end of fn0 ━━ j → fn1 · pkg/main.go ━━"},
+		{1, 40, "━━ end of fn1 ━━━━"},
+	} {
+		r.cursor, r.diffScroll = c.cursor, c.scroll
+		if got := stripANSI(strings.Join(frame(t, r, 24, 80), "\n")); !strings.Contains(got, c.want) {
+			t.Errorf("cursor %d, scroll %d: frame lacks %q:\n%s", c.cursor, c.scroll, c.want, got)
+		}
+	}
+}
+
 func TestRender_StageErrorStaysOnOneLine(t *testing.T) {
 	r := testRunner(t, manySnippets(3, 40)...)
 	r.applyMode = true

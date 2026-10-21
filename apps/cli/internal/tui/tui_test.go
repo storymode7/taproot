@@ -88,6 +88,20 @@ func TestScrollStep(t *testing.T) {
 	}
 }
 
+func TestScrollDiff_BackLandsAtTheEnd(t *testing.T) {
+	r := testRunner(t, manySnippets(2, 40)...)
+	fixedSize(t, 24, 80)
+	r.cursor = 1
+	captureStdout(t, func() { r.scrollDiff(-1) })
+	if r.cursor != 0 || r.diffMax == 0 || r.diffScroll != r.diffMax {
+		t.Errorf("k from the top of fn1: cursor %d, scroll %d of %d; want fn0 at its end", r.cursor, r.diffScroll, r.diffMax)
+	}
+	captureStdout(t, func() { r.scrollDiff(1) })
+	if r.cursor != 1 || r.diffScroll != 0 {
+		t.Errorf("j from the end of fn0: cursor %d, scroll %d; want fn1 at its top", r.cursor, r.diffScroll)
+	}
+}
+
 func TestAnsiWrap(t *testing.T) {
 	if got := ansiWrap("short", 10); len(got) != 1 || got[0] != "short" {
 		t.Errorf("short line changed: %q", got)

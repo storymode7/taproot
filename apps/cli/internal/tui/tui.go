@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -631,11 +632,16 @@ func (r *Runner) currentNode() *core.ReviewNode {
 }
 
 // scrollDiff scrolls the diff pane by a page step; at the bottom (or top)
-// it moves on to the next (or previous) snippet instead.
+// it moves on to the next (or previous) snippet instead. Going back lands at
+// the previous snippet's end, where the reader left it.
 func (r *Runner) scrollDiff(dir int) {
 	scroll, move := scrollStep(r.diffScroll, r.diffMax, dir)
-	if move != 0 {
-		r.moveCursor(move)
+	if move > 0 {
+		r.moveCursorTo(move, 0)
+		return
+	}
+	if move < 0 {
+		r.moveCursorTo(move, math.MaxInt) // render clamps it to the pane's bottom
 		return
 	}
 	r.diffScroll = scroll
@@ -657,6 +663,11 @@ func scrollStep(scroll, max, dir int) (newScroll, move int) {
 }
 
 func (r *Runner) moveCursor(delta int) {
+	r.moveCursorTo(delta, 0)
+}
+
+// moveCursorTo moves the cursor delta rows and shows the diff from scroll.
+func (r *Runner) moveCursorTo(delta, scroll int) {
 	next := r.cursor + delta
 	if next < 0 || next >= len(r.tree.visible) {
 		return
@@ -670,7 +681,7 @@ func (r *Runner) moveCursor(delta int) {
 		}
 	}
 	r.cursor = next
-	r.diffScroll = 0
+	r.diffScroll = scroll
 	r.render()
 }
 
@@ -996,8 +1007,11 @@ func (r *Runner) render() {
 			}
 			fmt.Println(ansiTruncate(l, cols))
 		}
-		if end < len(lines) {
+		switch {
+		case end < len(lines):
 			fmt.Println(dim + ansiTruncate(fmt.Sprintf("… %s (j/k to scroll)", plural(len(lines)-end, "more line")), cols-1) + reset)
+		default:
+			fmt.Println(r.endBar(s, cols))
 		}
 	}
 
@@ -1012,6 +1026,33 @@ func (r *Runner) render() {
 		hints := "? help · q quit · J/K move · l/h drill in/out · y/x/r judge · ]/[ pending · j/k scroll · / search · o open · E/C fold · tab auto"
 		fmt.Print(dim + ansiTruncate(hints, cols-1) + reset)
 	}
+}
+
+// endBar closes the diff pane with a full-width bar that names where j goes
+// next, so leaving the snippet is never a surprise.
+func (r *Runner) endBar(s *core.Snippet, cols int) string {
+	label := func(s *core.Snippet) string {
+		if s.SymbolPath != "" {
+			return displaySafe(s.SymbolPath)
+		}
+		return displaySafe(s.FilePath)
+	}
+	text := "━━ end of " + label(s) + " "
+	if next := r.cursor + 1; next < len(r.tree.visible) {
+		if r.tree.visible[next].node == nil {
+			next++
+		}
+		ns := r.tree.visible[next].node.Snippet
+		text += "━━ j → " + label(ns)
+		if ns.SymbolPath != "" {
+			text += " · " + displaySafe(ns.FilePath)
+		}
+		text += " "
+	}
+	if pad := cols - 1 - strWidth(text); pad > 0 {
+		text += strings.Repeat("━", pad)
+	}
+	return bold + paint(yellow) + ansiTruncate(text, cols-1) + reset
 }
 
 func (r *Runner) renderHelp() {
