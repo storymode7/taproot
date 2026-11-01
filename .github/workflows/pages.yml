@@ -35,7 +35,7 @@ jobs:
       - name: Committed WASM matches the Go goldens
         run: node scripts/parity-check.mjs
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: apps/pwa
 
